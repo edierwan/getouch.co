@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Getouch PostgreSQL",
+      "Group": "Getouch",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "getouch",
+      "Username": "admin@getouch.co",
+      "SSLMode": "prefer"
+    }
+  }
+}

@@ -1,0 +1,161 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      - web
+      - wa
+      - pgadmin
+      - open-webui
+    environment:
+      ADMIN_AUTH_USER: ${ADMIN_AUTH_USER:-getouchadmin}
+      ADMIN_AUTH_HASH: ${ADMIN_AUTH_HASH}
+    ports:
+      - 127.0.0.1:80:80
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --header='Host: getouch.co' http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /data/getouch/caddy/data:/data
+      - /data/getouch/caddy/config:/config
+    networks:
+      - edge
+      - coolify
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: getouch-web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  wa:
+    build:
+      context: ./services/wa
+      dockerfile: Dockerfile
+    container_name: getouch-wa
+    restart: unless-stopped
+    environment:
+      PORT: ${WA_PORT:-3001}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${WA_PORT:-3001}/healthz | grep -q '\"status\":\"ok\"' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: getouch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${APP_DB_NAME:-getouch}
+      POSTGRES_USER: ${APP_DB_USER:-getouch}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - /data/getouch/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-getouch} -d ${APP_DB_NAME:-getouch}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edge
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: getouch-pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_DISABLE_POSTFIX: "true"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_LISTEN_PORT: "80"
+    volumes:
+      - /data/getouch/pgadmin:/var/lib/pgadmin
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/misc/ping | grep -q PING || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - /srv/apps/ai/ollama:/root/.ollama
+      - /srv/apps/ai/models:/models
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - edge
+
+  open-webui:
+    image: openwebui/open-webui:latest
+    container_name: open-webui
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/open_webui
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-changeme-in-production}
+      WEBUI_NAME: Getouch AI
+      ENABLE_SIGNUP: "true"
+      ENABLE_IMAGE_GENERATION: "false"
+      ENABLE_RAG_WEB_SEARCH: "true"
+      RAG_WEB_SEARCH_ENGINE: "duckduckgo"
+      RAG_EMBEDDING_ENGINE: "ollama"
+      RAG_EMBEDDING_MODEL: "all-minilm:latest"
+      RAG_OLLAMA_BASE_URL: http://ollama:11434
+      ENABLE_ADMIN_EXPORT: "true"
+      DEFAULT_MODELS: "qwen3:14b"
+    volumes:
+      - /srv/apps/ai/open-webui:/app/backend/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - edge
+
+networks:
+  edge:
+    name: getouch-edge
+    driver: bridge
+  coolify:
+    external: true

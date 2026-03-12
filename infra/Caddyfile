@@ -1,0 +1,70 @@
+{
+  auto_https off
+  admin off
+}
+
+(common_headers) {
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options SAMEORIGIN
+    Referrer-Policy no-referrer-when-downgrade
+  }
+}
+
+(admin_auth) {
+  basic_auth {
+    {$ADMIN_AUTH_USER} {$ADMIN_AUTH_HASH}
+  }
+}
+
+http://getouch.co {
+  import common_headers
+  reverse_proxy web:80
+}
+
+http://ai.getouch.co {
+  import common_headers
+  reverse_proxy open-webui:8080
+}
+
+http://wa.getouch.co {
+  import common_headers
+  reverse_proxy wa:3001
+}
+
+http://db.getouch.co {
+  import common_headers
+  import admin_auth
+  reverse_proxy pgadmin:80
+}
+
+http://coolify.getouch.co {
+  import common_headers
+
+  # WebSocket path for Soketi real-time service
+  @websocket {
+    path /app/*
+    header Connection *Upgrade*
+    header Upgrade websocket
+  }
+  reverse_proxy @websocket coolify-realtime:6001
+
+  # Soketi REST API paths
+  @soketi_api {
+    path /apps/*
+  }
+  reverse_proxy @soketi_api coolify-realtime:6001
+
+  import admin_auth
+  reverse_proxy coolify:8080
+}
+
+http://bot.getouch.co,
+http://api.getouch.co,
+http://grafana.getouch.co,
+http://metrics.getouch.co,
+http://sms.getouch.co,
+http://analytics.getouch.co {
+  import common_headers
+  respond "Not configured on this server." 404
+}
