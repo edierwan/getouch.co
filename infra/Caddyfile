@@ -47,16 +47,29 @@ http://coolify.getouch.co {
     header Connection *Upgrade*
     header Upgrade websocket
   }
-  reverse_proxy @websocket coolify-realtime:6001
+  handle @websocket {
+    reverse_proxy coolify-realtime:6001
+  }
 
   # Soketi REST API paths
-  @soketi_api {
-    path /apps/*
+  handle /apps/* {
+    reverse_proxy coolify-realtime:6001
   }
-  reverse_proxy @soketi_api coolify-realtime:6001
 
-  import admin_auth
-  reverse_proxy coolify:8080
+  # GitHub webhook callbacks — no auth required
+  handle /webhooks/* {
+    reverse_proxy coolify:8080 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+
+  # Everything else requires basic auth
+  handle {
+    import admin_auth
+    reverse_proxy coolify:8080 {
+      header_up X-Forwarded-Proto https
+    }
+  }
 }
 
 http://bot.getouch.co,
