@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Getouch — Platform Services</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{min-height:100vh;background:#0a0a0b;color:#ededef;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:720px;margin:0 auto;padding:2rem 1rem}
+header{display:flex;align-items:center;justify-content:space-between;padding:1.5rem 0;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:2rem}
+.logo{font-weight:700;font-size:1rem;display:flex;align-items:center;gap:.4rem}
+.logo span{color:#818cf8}
+.back{color:#8b8b94;font-size:.85rem;transition:color .2s}
+.back:hover{color:#ededef}
+h1{font-size:1.6rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.3rem}
+.sub{color:#8b8b94;font-size:.9rem;margin-bottom:2rem}
+h2{font-size:1rem;font-weight:600;color:#8b8b94;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid rgba(255,255,255,.06)}
+.card{display:flex;align-items:center;gap:.75rem;padding:.85rem 1rem;background:#16161a;border:1px solid rgba(255,255,255,.06);border-radius:10px;margin-bottom:.5rem;transition:border-color .2s}
+a.card:hover{border-color:#6366f1}
+.icon{font-size:1.4rem;flex-shrink:0;width:2rem;text-align:center}
+.info{flex:1;min-width:0}
+.info h3{font-size:.9rem;font-weight:600}
+.info p{color:#8b8b94;font-size:.78rem}
+.badge{flex-shrink:0;padding:.15rem .5rem;border-radius:999px;font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.live{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);color:#22c55e}
+.planned{background:rgba(139,139,148,.1);border:1px solid rgba(139,139,148,.2);color:#8b8b94}
+.section{margin-bottom:2rem}
+.infra-row{display:flex;justify-content:space-between;padding:.55rem 1rem;background:#16161a;border:1px solid rgba(255,255,255,.06);border-radius:10px;margin-bottom:.35rem;font-size:.85rem}
+.infra-row .label{color:#8b8b94}
+.infra-row .val{font-weight:600}
+footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+footer span{color:#8b8b94;font-size:.75rem}
+footer a{color:#818cf8;font-size:.75rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <a href="/" class="logo"><span>&#9670;</span> Getouch</a>
+  <a href="/" class="back">&larr; Back to Chat</a>
+</header>
+
+<h1>Platform Services</h1>
+<p class="sub">All services running on this VPS.</p>
+
+<div class="section">
+<h2>Active</h2>
+<a class="card" href="/" target="_blank" rel="noopener">
+  <div class="icon">&#129504;</div>
+  <div class="info"><h3>Getouch AI</h3><p>Open WebUI &mdash; AI Chat, RAG, Agents</p></div>
+  <span class="badge live">Live</span>
+</a>
+<a class="card" href="https://coolify.getouch.co" target="_blank" rel="noopener">
+  <div class="icon">&#128640;</div>
+  <div class="info"><h3>Coolify</h3><p>Deployment &amp; container management</p></div>
+  <span class="badge live">Live</span>
+</a>
+<a class="card" href="https://db.getouch.co" target="_blank" rel="noopener">
+  <div class="icon">&#128452;</div>
+  <div class="info"><h3>pgAdmin</h3><p>PostgreSQL database management UI</p></div>
+  <span class="badge live">Live</span>
+</a>
+<a class="card" href="https://wa.getouch.co" target="_blank" rel="noopener">
+  <div class="icon">&#128172;</div>
+  <div class="info"><h3>WhatsApp API</h3><p>WhatsApp Business messaging gateway</p></div>
+  <span class="badge live">Live</span>
+</a>
+<div class="card">
+  <div class="icon">&#128025;</div>
+  <div class="info"><h3>Ollama</h3><p>LLM inference engine (GPU-accelerated)</p></div>
+  <span class="badge live">Live</span>
+</div>
+<div class="card">
+  <div class="icon">&#128024;</div>
+  <div class="info"><h3>PostgreSQL 16</h3><p>Database server (getouch + open_webui)</p></div>
+  <span class="badge live">Live</span>
+</div>
+<div class="card">
+  <div class="icon">&#9889;</div>
+  <div class="info"><h3>Caddy</h3><p>Reverse proxy with auto TLS</p></div>
+  <span class="badge live">Live</span>
+</div>
+<div class="card">
+  <div class="icon">&#9729;&#65039;</div>
+  <div class="info"><h3>Cloudflared</h3><p>Cloudflare Tunnel for secure edge ingress</p></div>
+  <span class="badge live">Live</span>
+</div>
+</div>
+
+<div class="section">
+<h2>Planned</h2>
+<div class="card">
+  <div class="icon">&#128202;</div>
+  <div class="info"><h3>Grafana</h3><p>Metrics dashboards &amp; observability</p></div>
+  <span class="badge planned">Planned</span>
+</div>
+<div class="card">
+  <div class="icon">&#128200;</div>
+  <div class="info"><h3>Prometheus</h3><p>Metrics collection &amp; alerting</p></div>
+  <span class="badge planned">Planned</span>
+</div>
+<div class="card">
+  <div class="icon">&#129302;</div>
+  <div class="info"><h3>Bot Service</h3><p>Chatbot orchestration engine</p></div>
+  <span class="badge planned">Planned</span>
+</div>
+<div class="card">
+  <div class="icon">&#9889;</div>
+  <div class="info"><h3>API Gateway</h3><p>Central REST/GraphQL API endpoint</p></div>
+  <span class="badge planned">Planned</span>
+</div>
+</div>
+
+<div class="section">
+<h2>Infrastructure</h2>
+<div class="infra-row"><span class="label">Server</span><span class="val">Ubuntu 24.04 LTS</span></div>
+<div class="infra-row"><span class="label">CPU</span><span class="val">12 cores</span></div>
+<div class="infra-row"><span class="label">RAM</span><span class="val">64 GB DDR5</span></div>
+<div class="infra-row"><span class="label">GPU</span><span class="val">RTX 5060 Ti 16 GB</span></div>
+<div class="infra-row"><span class="label">Storage</span><span class="val">100 GB (OS) + 1.5 TB (Data)</span></div>
+<div class="infra-row"><span class="label">Edge</span><span class="val">Cloudflare Tunnel</span></div>
+<div class="infra-row"><span class="label">Proxy</span><span class="val">Caddy</span></div>
+<div class="infra-row"><span class="label">Database</span><span class="val">PostgreSQL 16</span></div>
+<div class="infra-row"><span class="label">Containers</span><span class="val">Docker Compose</span></div>
+<div class="infra-row"><span class="label">VPN</span><span class="val">Tailscale</span></div>
+<div class="infra-row"><span class="label">AI Model</span><span class="val">Qwen3 14B + all-minilm</span></div>
+</div>
+
+<footer>
+  <span>&copy; 2026 Getouch. All rights reserved.</span>
+  <a href="/">Back to AI Chat</a>
+</footer>
+</div>
+</body>
+</html>

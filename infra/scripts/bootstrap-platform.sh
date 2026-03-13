@@ -17,6 +17,7 @@ mkdir -p \
   "${platform_root}/caddy/config" \
   "${platform_root}/postgres" \
   "${platform_root}/pgadmin" \
+  "${platform_root}/wa" \
   "${platform_root}/secrets"
 
 # ── System hardening ──
@@ -37,6 +38,7 @@ if [[ ! -f "${platform_env}" ]]; then
 
   admin_hash="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "${admin_password}")"
   app_db_password="$(openssl rand -hex 16)"
+  wa_api_key="$(openssl rand -hex 24)"
 
   cat >"${platform_env}" <<EOF
 CLOUDFLARED_TOKEN=${CLOUDFLARED_TOKEN}
@@ -48,6 +50,7 @@ APP_DB_PASSWORD=${app_db_password}
 PGADMIN_DEFAULT_EMAIL=${admin_email}
 PGADMIN_DEFAULT_PASSWORD=${admin_password}
 WA_PORT=3001
+WA_API_KEY=${wa_api_key}
 EOF
 
   chmod 600 "${platform_env}"
@@ -62,6 +65,7 @@ pgAdmin password: ${admin_password}
 PostgreSQL database: getouch
 PostgreSQL user: getouch
 PostgreSQL password: ${app_db_password}
+WhatsApp API key: ${wa_api_key}
 EOF
 
   chmod 600 "${credentials_file}"

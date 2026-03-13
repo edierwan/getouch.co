@@ -115,6 +115,36 @@ export default function AdminPage() {
           </div>
 
           <section className="admin-section">
+            <h2>Quick Access</h2>
+            <div className="quick-links">
+              <a href="https://ai.getouch.co/admin" target="_blank" rel="noopener noreferrer" className="quick-card">
+                <span className="quick-icon">🧠</span>
+                <div>
+                  <h3>Open WebUI Admin</h3>
+                  <p>Manage users, models, settings &amp; connections</p>
+                </div>
+                <span className="quick-arrow">→</span>
+              </a>
+              <a href="https://db.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
+                <span className="quick-icon">🗄️</span>
+                <div>
+                  <h3>Database Admin</h3>
+                  <p>pgAdmin — manage PostgreSQL databases</p>
+                </div>
+                <span className="quick-arrow">→</span>
+              </a>
+              <a href="https://coolify.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
+                <span className="quick-icon">🚀</span>
+                <div>
+                  <h3>Coolify</h3>
+                  <p>Deployments &amp; container management</p>
+                </div>
+                <span className="quick-arrow">→</span>
+              </a>
+            </div>
+          </section>
+
+          <section className="admin-section">
             <h2>Active Services</h2>
             <div className="service-grid">
               {live.map((s) => (
@@ -182,6 +212,23 @@ export default function AdminPage() {
         }
 
         .service-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+
+        .quick-links { display: flex; flex-direction: column; gap: 0.75rem; }
+        .quick-card {
+          display: flex; align-items: center; gap: 1rem;
+          padding: 1.25rem 1.5rem;
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(99, 102, 241, 0.03));
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          border-radius: var(--radius);
+          transition: border-color 0.2s, transform 0.2s;
+        }
+        .quick-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+        .quick-icon { font-size: 1.8rem; flex-shrink: 0; }
+        .quick-card div { flex: 1; min-width: 0; }
+        .quick-card h3 { font-size: 1rem; font-weight: 700; }
+        .quick-card p { color: var(--text-secondary); font-size: 0.84rem; margin-top: 0.15rem; }
+        .quick-arrow { color: var(--accent-light); font-size: 1.2rem; flex-shrink: 0; transition: transform 0.2s; }
+        .quick-card:hover .quick-arrow { transform: translateX(3px); }
 
         .service-card {
           display: flex; align-items: flex-start; gap: 1rem;

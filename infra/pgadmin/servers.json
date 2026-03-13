@@ -1,13 +1,14 @@
 {
   "Servers": {
     "1": {
-      "Name": "Getouch PostgreSQL",
+      "Name": "getouch-postgres",
       "Group": "Getouch",
       "Host": "postgres",
       "Port": 5432,
-      "MaintenanceDB": "getouch",
-      "Username": "admin@getouch.co",
-      "SSLMode": "prefer"
+      "MaintenanceDB": "postgres",
+      "Username": "getouch",
+      "SSLMode": "prefer",
+      "PasswordExecCommand": "echo 746b2da58816d2c47de813934e678e88"
     }
   }
 }

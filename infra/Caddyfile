@@ -19,7 +19,24 @@
 
 http://getouch.co {
   import common_headers
-  reverse_proxy web:80
+
+  handle /services {
+    root * /etc/caddy/static
+    rewrite * /services.html
+    file_server
+  }
+
+  # Immutable hashed assets — cache aggressively
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  # HTML pages — always revalidate
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy web:80
+  }
 }
 
 http://ai.getouch.co {
@@ -34,7 +51,6 @@ http://wa.getouch.co {
 
 http://db.getouch.co {
   import common_headers
-  import admin_auth
   reverse_proxy pgadmin:80
 }
 
