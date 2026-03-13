@@ -1,7 +1,8 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { rm } from 'node:fs/promises';
-import makeWASocket, {
+import {
+  makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   makeCacheableSignalKeyStore,
@@ -52,7 +53,7 @@ async function startWhatsApp() {
   qrCode = null;
   addEvent('connection', 'Connecting to WhatsApp…');
 
-  sock = makeWASocket.default({
+  sock = makeWASocket({
     version,
     auth: {
       creds: state.creds,
