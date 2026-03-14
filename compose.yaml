@@ -8,6 +8,7 @@ services:
       - wa
       - pgadmin
       - open-webui
+      - searxng
     environment:
       ADMIN_AUTH_USER: ${ADMIN_AUTH_USER:-getouchadmin}
       ADMIN_AUTH_HASH: ${ADMIN_AUTH_HASH}
@@ -136,24 +137,94 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      searxng:
+        condition: service_healthy
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/open_webui
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-changeme-in-production}
-      WEBUI_NAME: Getouch AI
+      WEBUI_NAME: Getouch Chat
       ENABLE_SIGNUP: "true"
       ENABLE_IMAGE_GENERATION: "false"
+
+      # ── RAG Web Search via SearXNG ──
       ENABLE_RAG_WEB_SEARCH: "true"
-      RAG_WEB_SEARCH_ENGINE: "duckduckgo"
+      RAG_WEB_SEARCH_ENGINE: "searxng"
+      SEARXNG_QUERY_URL: "http://searxng:8080/search?q=<query>"
+      RAG_WEB_SEARCH_RESULT_COUNT: "5"
+      RAG_WEB_SEARCH_CONCURRENT_REQUESTS: "5"
+
+      # ── RAG Embeddings ──
       RAG_EMBEDDING_ENGINE: "ollama"
       RAG_EMBEDDING_MODEL: "all-minilm:latest"
       RAG_OLLAMA_BASE_URL: http://ollama:11434
+      RAG_PDF_EXTRACT_IMAGES: "true"
+
+      # ── Pipelines connection ──
+      OPENAI_API_BASE_URLS: "http://pipelines:9099;https://api.openai.com/v1"
+      OPENAI_API_KEYS: "0p3n-w3bu!;${OPENAI_API_KEY:-sk-placeholder}"
+
+      # ── Features ──
       ENABLE_ADMIN_EXPORT: "true"
-      DEFAULT_MODELS: "qwen2.5:14b"
+      ENABLE_COMMUNITY_SHARING: "true"
+      DEFAULT_MODELS: "getouch-smart-assistant"
+    command:
+      - bash
+      - -c
+      - |
+        if [ -f /app/build/index.html ] && ! grep -q 'getouch-custom-css' /app/build/index.html; then
+          sed -i 's|</head>|<style id="getouch-custom-css">.assistant-message-profile-image{width:1.5rem!important;height:1.5rem!important}[id=response-message-model-name]{display:none!important}</style></head>|' /app/build/index.html
+        fi
+        exec bash start.sh
     volumes:
       - /srv/apps/ai/open-webui:/app/backend/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # SearXNG — privacy-respecting meta search engine
+  # ────────────────────────────────────────────────────────
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me-in-production}
+    volumes:
+      - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ./infra/searxng/uwsgi.ini:/etc/searxng/uwsgi.ini:ro
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # Open WebUI Pipelines — extensible AI middleware
+  # ────────────────────────────────────────────────────────
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: open-webui-pipelines
+    restart: unless-stopped
+    environment:
+      PIPELINES_API_KEY: "0p3n-w3bu!"
+    volumes:
+      - /srv/apps/ai/pipelines:/app/pipelines
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:9099/v1/models', headers={'Authorization':'Bearer 0p3n-w3bu!'}))\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

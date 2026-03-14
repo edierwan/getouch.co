@@ -18,7 +18,11 @@ mkdir -p \
   "${platform_root}/postgres" \
   "${platform_root}/pgadmin" \
   "${platform_root}/wa" \
-  "${platform_root}/secrets"
+  "${platform_root}/secrets" \
+  /srv/apps/ai/ollama \
+  /srv/apps/ai/models \
+  /srv/apps/ai/open-webui \
+  /srv/apps/ai/pipelines
 
 # ── System hardening ──
 apt-get install -y -qq fail2ban >/dev/null 2>&1
@@ -39,6 +43,8 @@ if [[ ! -f "${platform_env}" ]]; then
   admin_hash="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "${admin_password}")"
   app_db_password="$(openssl rand -hex 16)"
   wa_api_key="$(openssl rand -hex 24)"
+  searxng_secret="$(openssl rand -hex 32)"
+  webui_secret="$(openssl rand -hex 32)"
 
   cat >"${platform_env}" <<EOF
 CLOUDFLARED_TOKEN=${CLOUDFLARED_TOKEN}
@@ -51,6 +57,8 @@ PGADMIN_DEFAULT_EMAIL=${admin_email}
 PGADMIN_DEFAULT_PASSWORD=${admin_password}
 WA_PORT=3001
 WA_API_KEY=${wa_api_key}
+WEBUI_SECRET_KEY=${webui_secret}
+SEARXNG_SECRET=${searxng_secret}
 EOF
 
   chmod 600 "${platform_env}"
@@ -66,6 +74,8 @@ PostgreSQL database: getouch
 PostgreSQL user: getouch
 PostgreSQL password: ${app_db_password}
 WhatsApp API key: ${wa_api_key}
+SearXNG secret: ${searxng_secret}
+WebUI secret: ${webui_secret}
 EOF
 
   chmod 600 "${credentials_file}"

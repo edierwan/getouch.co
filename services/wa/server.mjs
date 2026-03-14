@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import { rm } from 'node:fs/promises';
+import { rm, mkdir } from 'node:fs/promises';
 import {
   makeWASocket,
   useMultiFileAuthState,
@@ -35,6 +35,29 @@ function addEvent(type, detail) {
 }
 
 // ---------------------------------------------------------------------------
+// Phone number normalisation (Malaysian-aware)
+// ---------------------------------------------------------------------------
+// Accepts: 0192277233, +60192277233, 60192277233, 192277233
+// Returns: 60192277233 (digits only, with country code)
+// Returns null if invalid
+function normalizePhone(raw) {
+  let digits = String(raw || '').replace(/[^0-9]/g, '');
+  if (!digits || digits.length < 8 || digits.length > 15) return null;
+
+  // Malaysian local format: starts with 0 + 1-digit area code (01x, 03, 04, …)
+  if (digits.startsWith('0') && digits.length >= 9 && digits.length <= 12) {
+    digits = '60' + digits.slice(1);
+  }
+  // Bare subscriber number (e.g. 192277233) — 9-10 digits, assume MY
+  else if (!digits.startsWith('60') && digits.length >= 9 && digits.length <= 10) {
+    digits = '60' + digits;
+  }
+
+  if (digits.length < 10 || digits.length > 15) return null;
+  return digits;
+}
+
+// ---------------------------------------------------------------------------
 // WhatsApp connection state
 // ---------------------------------------------------------------------------
 let sock = null;
@@ -42,84 +65,143 @@ let connectionState = 'disconnected'; // disconnected | connecting | open
 let lastDisconnect = null;
 let pairedPhone = null;
 let qrCode = null;
-let pairingRequested = false;
 let startTime = Date.now();
+let authClearing = false;    // prevents saveCreds race during logout/clear
+let reconnectTimer = null;   // pending reconnect setTimeout
+let starting = false;        // prevents concurrent startWhatsApp calls
+
+// Resolves when socket receives first QR → ready for requestPairingCode
+let socketReadyResolve = null;
+let socketReadyPromise = null;
+function resetSocketReady() {
+  socketReadyPromise = new Promise((r) => { socketReadyResolve = r; });
+}
+resetSocketReady();
+
+async function clearAuth() {
+  authClearing = true;
+  try { await rm(AUTH_DIR, { recursive: true, force: true }); } catch {}
+  // Re-create the directory so saveCreds doesn't fail if called later
+  try { await mkdir(AUTH_DIR, { recursive: true }); } catch {}
+  authClearing = false;
+}
+
+// Tear down existing socket and cancel pending reconnect
+function destroySocket() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (sock) {
+    try { sock.ev.removeAllListeners(); } catch {}
+    try { sock.end(undefined); } catch {}
+    sock = null;
+  }
+}
 
 async function startWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+  // Prevent concurrent starts — only one socket at a time
+  if (starting) { logger.info('startWhatsApp already in progress — skipping'); return; }
+  starting = true;
 
-  connectionState = 'connecting';
-  qrCode = null;
-  addEvent('connection', 'Connecting to WhatsApp…');
+  try {
+    // Tear down any existing socket first
+    destroySocket();
 
-  sock = makeWASocket({
-    version,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, logger),
-    },
-    logger,
-    printQRInTerminal: false,
-    browser: ['Getouch WA', 'Server', '1.0.0'],
-    generateHighQualityLinkPreview: false,
-  });
+    const { state, saveCreds: _saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { version } = await fetchLatestBaileysVersion();
 
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect: ld, qr } = update;
-
-    if (qr) {
-      qrCode = qr;
-      addEvent('qr', 'QR code generated — use pairing code instead');
-      logger.info('New QR code generated (use /api/pairing-code endpoint instead)');
-    }
-
-    if (connection === 'open') {
-      connectionState = 'open';
-      qrCode = null;
-      pairingRequested = false;
-      // Try to extract paired phone from creds
-      try {
-        const me = sock.user;
-        if (me?.id) pairedPhone = me.id.split(':')[0].split('@')[0];
-      } catch {}
-      addEvent('connected', `WhatsApp connected${pairedPhone ? ' as ' + pairedPhone : ''}`);
-      logger.info('WhatsApp connection opened');
-    }
-
-    if (connection === 'close') {
-      connectionState = 'disconnected';
-      lastDisconnect = ld;
-      const statusCode = ld?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      addEvent('disconnected', `Closed (code ${statusCode})${shouldReconnect ? ' — reconnecting' : ' — logged out'}`);
-      logger.info({ statusCode, shouldReconnect }, 'Connection closed');
-
-      if (shouldReconnect) {
-        setTimeout(() => startWhatsApp(), 3000);
-      } else {
-        pairedPhone = null;
-        logger.info('Logged out — clearing auth state');
-        await rm(AUTH_DIR, { recursive: true, force: true }).catch(() => {});
+    // Safe saveCreds wrapper — ignore writes during auth clear
+    const safeSaveCreds = async () => {
+      if (authClearing) return;
+      try { await _saveCreds(); } catch (err) {
+        logger.warn(err, 'saveCreds failed (auth dir may have been cleared)');
       }
-    }
-  });
+    };
 
-  sock.ev.on('messages.upsert', ({ messages }) => {
-    for (const msg of messages) {
-      if (!msg.key.fromMe && msg.message) {
-        const sender = msg.key.remoteJid;
-        const text =
-          msg.message.conversation ||
-          msg.message.extendedTextMessage?.text ||
-          '';
-        addEvent('message_in', `From ${sender}: ${text.slice(0, 80)}`);
-        logger.info({ sender, text: text.slice(0, 100) }, 'Incoming message');
+    connectionState = 'connecting';
+    qrCode = null;
+    resetSocketReady();
+    addEvent('connection', 'Connecting to WhatsApp…');
+
+    const newSock = makeWASocket({
+      version,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+      },
+      logger,
+      printQRInTerminal: false,
+      browser: ['Getouch WA', 'Server', '1.0.0'],
+      generateHighQualityLinkPreview: false,
+    });
+
+    // Store reference — if another startWhatsApp fires, it will destroy this one
+    sock = newSock;
+    const mySock = newSock; // local ref to detect if we've been replaced
+
+    newSock.ev.on('creds.update', safeSaveCreds);
+
+    newSock.ev.on('connection.update', async (update) => {
+      // If this socket was replaced by a newer one, ignore its events
+      if (sock !== mySock) return;
+
+      const { connection, lastDisconnect: ld, qr } = update;
+
+      if (qr) {
+        qrCode = qr;
+        // Socket is now ready for requestPairingCode
+        if (socketReadyResolve) { socketReadyResolve(); socketReadyResolve = null; }
+        addEvent('qr', 'QR code generated — use pairing code instead');
+        logger.info('New QR code generated (use /api/pairing-code endpoint instead)');
       }
-    }
-  });
+
+      if (connection === 'open') {
+        connectionState = 'open';
+        qrCode = null;
+        // Try to extract paired phone from creds
+        try {
+          const me = mySock.user;
+          if (me?.id) pairedPhone = me.id.split(':')[0].split('@')[0];
+        } catch {}
+        addEvent('connected', `WhatsApp connected${pairedPhone ? ' as +' + pairedPhone : ''}`);
+        logger.info('WhatsApp connection opened');
+      }
+
+      if (connection === 'close') {
+        connectionState = 'disconnected';
+        lastDisconnect = ld;
+        const statusCode = ld?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        addEvent('disconnected', `Closed (code ${statusCode})${shouldReconnect ? ' — reconnecting' : ' — logged out'}`);
+        logger.info({ statusCode, shouldReconnect }, 'Connection closed');
+
+        if (shouldReconnect) {
+          reconnectTimer = setTimeout(() => startWhatsApp(), 3000);
+        } else {
+          pairedPhone = null;
+          logger.info('Logged out — clearing auth state');
+          await clearAuth();
+          // Auto-restart so pairing code can be requested immediately
+          reconnectTimer = setTimeout(() => startWhatsApp(), 2000);
+        }
+      }
+    });
+
+    newSock.ev.on('messages.upsert', ({ messages }) => {
+      if (sock !== mySock) return;
+      for (const msg of messages) {
+        if (!msg.key.fromMe && msg.message) {
+          const sender = msg.key.remoteJid;
+          const text =
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            '';
+          addEvent('message_in', `From ${sender}: ${text.slice(0, 80)}`);
+          logger.info({ sender, text: text.slice(0, 100) }, 'Incoming message');
+        }
+      }
+    });
+  } finally {
+    starting = false;
+  }
 }
 
 // Start on boot
@@ -181,8 +263,8 @@ function requireConnected(res) {
 }
 
 function toJid(phone) {
-  const digits = String(phone).replace(/[^0-9]/g, '');
-  if (digits.length < 8 || digits.length > 15) return null;
+  const digits = normalizePhone(phone);
+  if (!digits) return null;
   return `${digits}@s.whatsapp.net`;
 }
 
@@ -326,7 +408,7 @@ a:hover{text-decoration:underline}
     <span class="hdr-icon">💬</span>
     <div class="hdr-titles">
       <h1>Getouch WhatsApp Console</h1>
-      <p>Baileys-powered messaging gateway &middot; wa.getouch.co</p>
+      <p>Getouch messaging gateway &middot; wa.getouch.co</p>
     </div>
     <span class="hdr-badge badge-closed" id="hdr-badge">loading…</span>
   </div>
@@ -336,7 +418,7 @@ a:hover{text-decoration:underline}
     <div class="scard">
       <div class="scard-label">Service</div>
       <div class="scard-val" style="color:var(--green)" id="s-service">getouch-wa</div>
-      <div class="scard-sub">Port ${PORT} &middot; Baileys</div>
+      <div class="scard-sub">Port ${PORT} &middot; Getouch WA</div>
     </div>
     <div class="scard">
       <div class="scard-label">Session</div>
@@ -361,15 +443,19 @@ a:hover{text-decoration:underline}
     <div class="panel">
       <h2><span class="pi">🔗</span> Pair / Connect Number</h2>
       <div class="field">
-        <label for="pair-phone">Phone number (with country code)</label>
-        <input type="text" id="pair-phone" placeholder="60123456789" maxlength="15"/>
+        <label for="pair-phone">Phone number</label>
+        <input type="text" id="pair-phone" placeholder="0192277233" maxlength="15"/>
+        <div style="font-size:.72rem;color:var(--text3);margin-top:.2rem">Malaysian numbers auto-converted: 019… → 6019…</div>
       </div>
       <div class="field">
         <label for="pair-key">API Key</label>
         <input type="password" id="pair-key" placeholder="your WA_API_KEY"/>
       </div>
-      <button class="btn btn-primary" id="pair-btn" onclick="doPair()">Request Pairing Code</button>
-      <button class="btn btn-danger btn-sm" style="margin-left:.5rem" id="logout-btn" onclick="doLogout()">Logout</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="pair-btn" onclick="doPair()">Request Pairing Code</button>
+        <button class="btn btn-danger btn-sm" id="logout-btn" onclick="doLogout()">Logout</button>
+        <button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" id="reset-btn" onclick="doReset()">Reset Session</button>
+      </div>
       <div class="result" id="pair-result"></div>
       <div class="callout" style="margin-top:.75rem">
         <strong>How to pair:</strong>
@@ -381,6 +467,7 @@ a:hover{text-decoration:underline}
           <li>Choose <strong>Link with Phone Number</strong></li>
           <li>Enter the pairing code shown above</li>
         </ol>
+        <div style="margin-top:.5rem;color:var(--yellow)"><strong>Tip:</strong> If pairing fails, click <strong>Reset Session</strong> first, wait 5 seconds, then try again.</div>
       </div>
     </div>
 
@@ -389,7 +476,7 @@ a:hover{text-decoration:underline}
       <h2><span class="pi">✉️</span> Send Test Message</h2>
       <div class="field">
         <label for="send-to">Recipient phone number</label>
-        <input type="text" id="send-to" placeholder="60123456789" maxlength="15"/>
+        <input type="text" id="send-to" placeholder="0192277233" maxlength="15"/>
       </div>
       <div class="field">
         <label for="send-text">Message</label>
@@ -417,6 +504,7 @@ a:hover{text-decoration:underline}
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/send-image</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Send image with optional caption</td></tr>
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/send-document</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Send document/file</td></tr>
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/logout</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Logout &amp; clear session</td></tr>
+        <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/reset</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Force-reset session &amp; reconnect</td></tr>
         <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/api/events</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Recent service events/logs</td></tr>
       </tbody>
     </table>
@@ -455,7 +543,7 @@ a:hover{text-decoration:underline}
     </div>
   </div>
 
-  <div class="ft">Getouch WhatsApp Console &middot; Powered by <a href="https://github.com/WhiskeySockets/Baileys" target="_blank">Baileys</a></div>
+  <div class="ft">Getouch WhatsApp Console &middot; Powered by Getouch</div>
 </div>
 
 <script>
@@ -530,13 +618,15 @@ async function doPair(){
   if(!phone){show(res,'result-err','Enter a phone number');return}
   if(!key){show(res,'result-err','Enter your API key');return}
   $('pair-btn').disabled=true;$('pair-btn').innerHTML='<span class="spin"></span> Requesting…';
+  show(res,'result-info','Connecting to WhatsApp servers… this may take a few seconds');
   try{
     const r=await fetch('/api/pairing-code?phone='+phone,{headers:{'X-API-Key':key}});
     const d=await r.json();
     if(r.ok){
-      show(res,'result-ok','Pairing Code: '+d.pairingCode+'\\n\\nPhone: +'+d.phone+'\\n\\n'+d.instructions);
+      const norm=d.normalized?' (normalized from '+phone+')':'';
+      show(res,'result-ok','🔑 Pairing Code: '+d.pairingCode+'\\n\\nPhone: +'+d.phone+norm+'\\n\\n'+d.instructions);
     }else{
-      show(res,'result-err',d.error||(r.status+' error'));
+      show(res,'result-err',d.error+(d.hint?'\\n'+d.hint:''));
     }
   }catch(e){show(res,'result-err','Request failed: '+e.message)}
   $('pair-btn').disabled=false;$('pair-btn').textContent='Request Pairing Code';
@@ -557,6 +647,22 @@ async function doLogout(){
   }catch(e){show(res,'result-err','Request failed: '+e.message)}
   $('logout-btn').disabled=false;
   setTimeout(()=>{refreshStatus();refreshEvents()},1500);
+}
+
+// ── Reset Session ───────────────────────────────────
+async function doReset(){
+  const key=getKey('pair-key');
+  const res=$('pair-result');
+  if(!key){show(res,'result-err','Enter your API key');return}
+  if(!confirm('Force-reset session? This clears all auth data and reconnects.'))return;
+  $('reset-btn').disabled=true;$('reset-btn').textContent='Resetting…';
+  try{
+    const r=await fetch('/api/reset',{method:'POST',headers:{'X-API-Key':key}});
+    const d=await r.json();
+    show(res,r.ok?'result-info':'result-err',r.ok?d.message:(d.error||'Reset failed'));
+  }catch(e){show(res,'result-err','Request failed: '+e.message)}
+  $('reset-btn').disabled=false;$('reset-btn').textContent='Reset Session';
+  setTimeout(()=>{refreshStatus();refreshEvents()},2000);
 }
 
 // ── Send ─────────────────────────────────────────────
@@ -641,25 +747,40 @@ const server = http.createServer(async (req, res) => {
     // GET /api/pairing-code?phone=6012xxxxxxx
     if (path === '/api/pairing-code' && method === 'GET') {
       if (!requireAuth(req, res)) return;
-      const phone = parsed.searchParams.get('phone');
-      if (!phone || !/^[0-9]{8,15}$/.test(phone.replace(/[^0-9]/g, ''))) {
-        return json(res, 400, { error: 'Invalid phone number — provide digits only, 8-15 chars (e.g. 60123456789)' });
-      }
-      if (!sock) {
-        return json(res, 503, { error: 'WhatsApp socket not initialized — wait a moment and retry' });
+      const rawPhone = parsed.searchParams.get('phone');
+      const digits = normalizePhone(rawPhone);
+      if (!digits) {
+        return json(res, 400, {
+          error: 'Invalid phone number. Enter your Malaysian number (e.g. 0192277233) or with country code (e.g. 60192277233)',
+          hint: 'Malaysian numbers starting with 0 are auto-converted to 60-prefix',
+        });
       }
       if (connectionState === 'open') {
         return json(res, 400, { error: 'Already connected — logout first to re-pair' });
       }
+      if (!sock) {
+        return json(res, 503, { error: 'WhatsApp socket not initialized — wait a moment and retry' });
+      }
 
       try {
-        const digits = phone.replace(/[^0-9]/g, '');
         addEvent('pairing', `Pairing code requested for +${digits}`);
+        // Wait for socket to be ready (QR generated = socket connected to WA servers)
+        const ready = await Promise.race([
+          socketReadyPromise,
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000)),
+        ]);
+      } catch (waitErr) {
+        addEvent('error', 'Socket not ready for pairing — timed out waiting for connection');
+        return json(res, 503, { error: 'WhatsApp is still connecting — please wait a few seconds and try again' });
+      }
+
+      try {
         const code = await sock.requestPairingCode(digits);
         addEvent('pairing', `Pairing code generated for +${digits}: ${code}`);
         return json(res, 200, {
           pairingCode: code,
           phone: digits,
+          normalized: rawPhone !== digits,
           instructions: 'Open WhatsApp > Linked Devices > Link a Device > Link with Phone Number, then enter the pairing code',
         });
       } catch (err) {
@@ -725,25 +846,29 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/logout' && method === 'POST') {
       if (!requireAuth(req, res)) return;
       try {
-        if (sock) await sock.logout();
-        await rm(AUTH_DIR, { recursive: true, force: true }).catch(() => {});
-        connectionState = 'disconnected';
-        pairedPhone = null;
-        sock = null;
-        addEvent('logout', 'Session cleared');
-        logger.info('Logged out and cleared session');
-        setTimeout(() => startWhatsApp(), 1000);
-        return json(res, 200, { success: true, message: 'Logged out — session cleared' });
-      } catch (err) {
-        logger.error(err, 'Logout failed');
-        await rm(AUTH_DIR, { recursive: true, force: true }).catch(() => {});
-        connectionState = 'disconnected';
-        pairedPhone = null;
-        sock = null;
-        addEvent('logout', 'Force-cleared session');
-        setTimeout(() => startWhatsApp(), 1000);
-        return json(res, 200, { success: true, message: 'Force logged out — session cleared' });
-      }
+        if (sock) await sock.logout().catch(() => {});
+      } catch {}
+      destroySocket();
+      connectionState = 'disconnected';
+      pairedPhone = null;
+      await clearAuth();
+      addEvent('logout', 'Session cleared');
+      logger.info('Logged out and cleared session');
+      reconnectTimer = setTimeout(() => startWhatsApp(), 1000);
+      return json(res, 200, { success: true, message: 'Logged out — session cleared' });
+    }
+
+    // POST /api/reset — force-clear auth and restart (no WA logout call)
+    if (path === '/api/reset' && method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      destroySocket();
+      connectionState = 'disconnected';
+      pairedPhone = null;
+      await clearAuth();
+      addEvent('logout', 'Session force-reset');
+      logger.info('Session force-reset');
+      reconnectTimer = setTimeout(() => startWhatsApp(), 500);
+      return json(res, 200, { success: true, message: 'Session reset — reconnecting' });
     }
 
     // 404
