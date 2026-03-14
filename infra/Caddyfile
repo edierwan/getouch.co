@@ -35,7 +35,7 @@ http://getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy web:80
+    reverse_proxy web:3000
   }
 }
 
@@ -85,9 +85,8 @@ http://coolify.getouch.co {
     }
   }
 
-  # Everything else requires basic auth
+  # Auth handled by Cloudflare Access — no basic auth needed
   handle {
-    import admin_auth
     reverse_proxy coolify:8080 {
       header_up X-Forwarded-Proto https
     }
