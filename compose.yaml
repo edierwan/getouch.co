@@ -110,13 +110,9 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
     volumes:
       - /srv/apps/ai/ollama:/root/.ollama
       - /srv/apps/ai/models:/models
