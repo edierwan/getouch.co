@@ -35,7 +35,35 @@ http://getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy web:3000
+    reverse_proxy getouch-web-prod:3000
+  }
+}
+
+http://dev.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-dev:3000
+  }
+}
+
+http://stg.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-stg:3000
   }
 }
 
@@ -98,7 +126,11 @@ http://api.getouch.co,
 http://grafana.getouch.co,
 http://metrics.getouch.co,
 http://sms.getouch.co,
-http://analytics.getouch.co {
+http://analytics.getouch.co,
+http://billing.getouch.co,
+http://auth.getouch.co,
+http://portal.getouch.co,
+http://admin.getouch.co {
   import common_headers
   respond "Not configured on this server." 404
 }
