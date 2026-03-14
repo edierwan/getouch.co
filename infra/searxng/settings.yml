@@ -1,0 +1,87 @@
+use_default_settings: true
+
+server:
+  secret_key: "ultrasecretkey"  # Overridden by SEARXNG_SECRET env var
+  limiter: false                # No rate limiting within Docker network
+  image_proxy: true
+  port: 8080
+  bind_address: "0.0.0.0"
+
+search:
+  safe_search: 0
+  autocomplete: "google"
+  default_lang: "en"
+  formats:
+    - html
+    - json  # Required for Open WebUI RAG integration
+
+ui:
+  static_use_cdn: false
+  default_theme: simple
+  results_on_new_tab: false
+
+engines:
+  # General search
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+
+  - name: bing
+    engine: bing
+    shortcut: b
+    disabled: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: dd
+    disabled: false
+
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+
+  # Shopping / product searches
+  - name: google shopping
+    engine: google
+    shortcut: gs
+    disabled: false
+    categories: shopping
+    additional_params:
+      tbm: shop
+
+  # News
+  - name: google news
+    engine: google_news
+    shortcut: gn
+    disabled: false
+
+  # IT / tech
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+    disabled: false
+
+  - name: github
+    engine: github
+    shortcut: gh
+    disabled: false
+
+  # Wikipedia
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+
+  # Science
+  - name: arxiv
+    engine: arxiv
+    shortcut: ax
+    disabled: false
+
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 15.0
+  pool_connections: 100
+  pool_maxsize: 20

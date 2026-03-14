@@ -32,6 +32,12 @@ http://wa.getouch.co {
   reverse_proxy wa:3001
 }
 
+http://search.getouch.co {
+  import common_headers
+  import admin_auth
+  reverse_proxy searxng:8080
+}
+
 http://db.getouch.co {
   import common_headers
   import admin_auth
