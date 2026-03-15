@@ -1,0 +1,127 @@
+import { db } from '@/lib/db';
+import { users, appProvisions } from '@/lib/schema';
+import { getSession } from '@/lib/auth';
+import { desc, eq, inArray } from 'drizzle-orm';
+import { redirect } from 'next/navigation';
+import { updateUserRole, provisionToOpenWebUI } from './actions';
+
+export default async function UsersPage() {
+  const session = await getSession();
+  if (!session || session.role !== 'admin') redirect('/admin');
+
+  const allUsers = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .orderBy(desc(users.createdAt));
+
+  // Get provisioned user IDs for Open WebUI
+  const provisions = await db
+    .select({ userId: appProvisions.userId })
+    .from(appProvisions)
+    .where(eq(appProvisions.app, 'open_webui'));
+  const provisionedIds = new Set(provisions.map((p) => p.userId));
+
+  return (
+    <main className="admin-main">
+      <div className="container">
+        <div className="admin-header">
+          <span className="section-tag">User Management</span>
+          <h1>Users</h1>
+          <p className="admin-sub">
+            Manage platform users, roles, and downstream provisioning.
+          </p>
+        </div>
+
+        <section className="admin-section">
+          <div className="users-table-wrap">
+            <table className="users-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>AI Access</th>
+                  <th>Joined</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allUsers.map((user) => (
+                  <tr key={user.id}>
+                    <td className="user-name">{user.name}</td>
+                    <td className="user-email">{user.email}</td>
+                    <td>
+                      <span className={`role-badge role-${user.role}`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td>
+                      {provisionedIds.has(user.id) ? (
+                        <span className="prov-badge prov-yes">Provisioned</span>
+                      ) : (
+                        <span className="prov-badge prov-no">—</span>
+                      )}
+                    </td>
+                    <td className="user-date">
+                      {new Date(user.createdAt).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </td>
+                    <td className="user-actions">
+                      {user.role === 'pending' && (
+                        <form action={updateUserRole}>
+                          <input type="hidden" name="userId" value={user.id} />
+                          <input type="hidden" name="role" value="user" />
+                          <button type="submit" className="action-btn action-approve">
+                            Approve
+                          </button>
+                        </form>
+                      )}
+                      {user.role === 'user' && (
+                        <form action={updateUserRole}>
+                          <input type="hidden" name="userId" value={user.id} />
+                          <input type="hidden" name="role" value="admin" />
+                          <button type="submit" className="action-btn action-promote">
+                            Make Admin
+                          </button>
+                        </form>
+                      )}
+                      {user.role === 'admin' && user.id !== session.userId && (
+                        <form action={updateUserRole}>
+                          <input type="hidden" name="userId" value={user.id} />
+                          <input type="hidden" name="role" value="user" />
+                          <button type="submit" className="action-btn action-demote">
+                            Demote
+                          </button>
+                        </form>
+                      )}
+                      {user.role === 'admin' && user.id === session.userId && (
+                        <span className="action-you">You</span>
+                      )}
+                      {!provisionedIds.has(user.id) && user.role !== 'pending' && (
+                        <form action={provisionToOpenWebUI}>
+                          <input type="hidden" name="userId" value={user.id} />
+                          <button type="submit" className="action-btn action-provision">
+                            → AI
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
