@@ -9,6 +9,7 @@ import {
   fetchLatestBaileysVersion,
 } from 'baileys';
 import pino from 'pino';
+import QRCode from 'qrcode';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -65,6 +66,7 @@ let connectionState = 'disconnected'; // disconnected | connecting | open
 let lastDisconnect = null;
 let pairedPhone = null;
 let qrCode = null;
+let qrDataUrl = null;   // base64 data-URL of the current QR image
 let startTime = Date.now();
 let authClearing = false;    // prevents saveCreds race during logout/clear
 let reconnectTimer = null;   // pending reconnect setTimeout
@@ -147,15 +149,18 @@ async function startWhatsApp() {
 
       if (qr) {
         qrCode = qr;
+        // Generate data-URL for the console QR display
+        try { qrDataUrl = await QRCode.toDataURL(qr, { width: 320, margin: 2 }); } catch { qrDataUrl = null; }
         // Socket is now ready for requestPairingCode
         if (socketReadyResolve) { socketReadyResolve(); socketReadyResolve = null; }
-        addEvent('qr', 'QR code generated — use pairing code instead');
-        logger.info('New QR code generated (use /api/pairing-code endpoint instead)');
+        addEvent('qr', 'QR code generated — scan QR or use pairing code');
+        logger.info('New QR code generated (use /api/qr-code or /api/pairing-code)');
       }
 
       if (connection === 'open') {
         connectionState = 'open';
         qrCode = null;
+        qrDataUrl = null;
         // Try to extract paired phone from creds
         try {
           const me = mySock.user;
@@ -399,6 +404,20 @@ a:hover{text-decoration:underline}
 /* Spinner */
 .spin{display:inline-block;width:.85rem;height:.85rem;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* Tabs */
+.tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1rem}
+.tab-btn{padding:.55rem 1.1rem;font-size:.85rem;font-weight:600;background:none;border:none;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .2s,border-color .2s}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-btn:hover:not(.active){color:var(--text2)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* QR code */
+.qr-container{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1rem 0}
+.qr-container img{border-radius:.5rem;border:3px solid var(--border);background:#fff}
+.qr-placeholder{width:320px;height:320px;display:flex;align-items:center;justify-content:center;border-radius:.5rem;border:2px dashed var(--border);color:var(--text3);font-size:.85rem;text-align:center;padding:1rem}
+.qr-timer{font-size:.78rem;color:var(--text3)}
 </style>
 </head>
 <body>
@@ -442,32 +461,72 @@ a:hover{text-decoration:underline}
     <!-- Pair Number -->
     <div class="panel">
       <h2><span class="pi">🔗</span> Pair / Connect Number</h2>
-      <div class="field">
-        <label for="pair-phone">Phone number</label>
-        <input type="text" id="pair-phone" placeholder="0192277233" maxlength="15"/>
-        <div style="font-size:.72rem;color:var(--text3);margin-top:.2rem">Malaysian numbers auto-converted: 019… → 6019…</div>
+
+      <!-- Tab bar -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('qr')">📷 QR Code</button>
+        <button class="tab-btn" onclick="switchTab('phone')">📱 Phone Number</button>
       </div>
-      <div class="field">
-        <label for="pair-key">API Key</label>
-        <input type="password" id="pair-key" placeholder="your WA_API_KEY"/>
+
+      <!-- QR Code tab -->
+      <div class="tab-panel active" id="tab-qr">
+        <div class="field">
+          <label for="qr-key">API Key</label>
+          <input type="password" id="qr-key" placeholder="your WA_API_KEY"/>
+        </div>
+        <div class="qr-container" id="qr-container">
+          <div class="qr-placeholder" id="qr-placeholder">
+            <span>Enter your API key above.<br/>QR code will appear automatically<br/>when WhatsApp is ready.</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;margin-top:.25rem">
+          <button class="btn btn-primary btn-sm" onclick="refreshQR()">Refresh QR</button>
+          <button class="btn btn-danger btn-sm" id="logout-btn-qr" onclick="doLogout()">Logout</button>
+          <button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" onclick="doReset()">Reset Session</button>
+        </div>
+        <div class="result" id="qr-result"></div>
+        <div class="callout" style="margin-top:.75rem">
+          <strong>How to pair with QR Code:</strong>
+          <ol>
+            <li>Wait for the QR code to appear above</li>
+            <li>Open WhatsApp on your phone</li>
+            <li>Go to <strong>Linked Devices</strong></li>
+            <li>Tap <strong>Link a Device</strong></li>
+            <li>Point your camera at the QR code</li>
+          </ol>
+          <div style="margin-top:.5rem;color:var(--yellow)"><strong>Tip:</strong> QR codes refresh every ~20s. If expired, click <strong>Refresh QR</strong> or <strong>Reset Session</strong>.</div>
+        </div>
       </div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="btn btn-primary" id="pair-btn" onclick="doPair()">Request Pairing Code</button>
-        <button class="btn btn-danger btn-sm" id="logout-btn" onclick="doLogout()">Logout</button>
-        <button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" id="reset-btn" onclick="doReset()">Reset Session</button>
-      </div>
-      <div class="result" id="pair-result"></div>
-      <div class="callout" style="margin-top:.75rem">
-        <strong>How to pair:</strong>
-        <ol>
-          <li>Enter your phone number above and click <strong>Request Pairing Code</strong></li>
-          <li>Open WhatsApp on your phone</li>
-          <li>Go to <strong>Linked Devices</strong></li>
-          <li>Tap <strong>Link a Device</strong></li>
-          <li>Choose <strong>Link with Phone Number</strong></li>
-          <li>Enter the pairing code shown above</li>
-        </ol>
-        <div style="margin-top:.5rem;color:var(--yellow)"><strong>Tip:</strong> If pairing fails, click <strong>Reset Session</strong> first, wait 5 seconds, then try again.</div>
+
+      <!-- Phone Number tab -->
+      <div class="tab-panel" id="tab-phone">
+        <div class="field">
+          <label for="pair-phone">Phone number</label>
+          <input type="text" id="pair-phone" placeholder="0192277233" maxlength="15"/>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:.2rem">Malaysian numbers auto-converted: 019… → 6019…</div>
+        </div>
+        <div class="field">
+          <label for="pair-key">API Key</label>
+          <input type="password" id="pair-key" placeholder="your WA_API_KEY"/>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-primary" id="pair-btn" onclick="doPair()">Request Pairing Code</button>
+          <button class="btn btn-danger btn-sm" id="logout-btn" onclick="doLogout()">Logout</button>
+          <button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" id="reset-btn" onclick="doReset()">Reset Session</button>
+        </div>
+        <div class="result" id="pair-result"></div>
+        <div class="callout" style="margin-top:.75rem">
+          <strong>How to pair with Phone Number:</strong>
+          <ol>
+            <li>Enter your phone number above and click <strong>Request Pairing Code</strong></li>
+            <li>Open WhatsApp on your phone</li>
+            <li>Go to <strong>Linked Devices</strong></li>
+            <li>Tap <strong>Link a Device</strong></li>
+            <li>Choose <strong>Link with Phone Number</strong></li>
+            <li>Enter the pairing code shown above</li>
+          </ol>
+          <div style="margin-top:.5rem;color:var(--yellow)"><strong>Tip:</strong> If pairing fails, click <strong>Reset Session</strong> first, wait 5 seconds, then try again.</div>
+        </div>
       </div>
     </div>
 
@@ -500,6 +559,7 @@ a:hover{text-decoration:underline}
         <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/healthz</code></td><td><span class="auth-tag auth-pub">Public</span></td><td>Container health check</td></tr>
         <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/api/status</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Connection state &amp; session details</td></tr>
         <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/api/pairing-code?phone=6012…</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Generate WhatsApp pairing code</td></tr>
+        <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/api/qr-code</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Get current QR code (data URL)</td></tr>
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/send-text</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Send text message</td></tr>
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/send-image</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Send image with optional caption</td></tr>
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/send-document</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Send document/file</td></tr>
@@ -561,8 +621,73 @@ function getKey(fieldId){const v=$(fieldId).value.trim();if(v)saveKey(v);return 
 // Pre-fill API key fields from localStorage
 window.addEventListener('DOMContentLoaded',()=>{
   const k=savedKey();
-  if(k){$('pair-key').value=k;$('send-key').value=k}
+  if(k){$('pair-key').value=k;$('send-key').value=k;$('qr-key').value=k}
+  // Start QR polling
+  pollQR();
 });
+
+// Sync API key across all fields
+function syncKeys(src){
+  const v=$(src).value;
+  if(v)saveKey(v);
+  ['pair-key','send-key','qr-key'].forEach(id=>{if(id!==src)$(id).value=v});
+}
+['pair-key','send-key','qr-key'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('change',()=>syncKeys(id));
+});
+
+// ── Tab switching ───────────────────────────────────
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  $('tab-'+tab).classList.add('active');
+  document.querySelector('.tab-btn[onclick*="'+tab+'"]').classList.add('active');
+  if(tab==='qr')pollQR();
+}
+
+// ── QR Code polling ─────────────────────────────────
+let qrInterval=null;
+async function pollQR(){
+  clearInterval(qrInterval);
+  await fetchQR();
+  qrInterval=setInterval(fetchQR,3000);
+}
+async function fetchQR(){
+  const key=getKey('qr-key');
+  const container=$('qr-container');
+  const placeholder=$('qr-placeholder');
+  if(!key){
+    container.innerHTML='<div class="qr-placeholder"><span>Enter your API key above.<br/>QR code will appear automatically<br/>when WhatsApp is ready.</span></div>';
+    return;
+  }
+  try{
+    const r=await fetch('/api/qr-code',{headers:{'X-API-Key':key}});
+    const d=await r.json();
+    if(r.ok && d.available && d.qr){
+      container.innerHTML='<img src="'+d.qr+'" alt="WhatsApp QR Code" width="320" height="320"/><div class="qr-timer">QR refreshes automatically \u2014 scan now</div>';
+    }else if(d.error && d.error.includes('Already connected')){
+      container.innerHTML='<div class="qr-placeholder" style="border-color:var(--green-border);color:var(--green)"><span>\u2705 Already connected!<br/>Logout first to re-pair.</span></div>';
+      clearInterval(qrInterval);
+    }else{
+      container.innerHTML='<div class="qr-placeholder"><span><span class="spin" style="border-color:var(--text3);border-top-color:var(--accent);width:1.2rem;height:1.2rem;margin-bottom:.5rem;display:inline-block"></span><br/>Waiting for QR code\u2026<br/><span style="font-size:.75rem">WhatsApp is connecting</span></span></div>';
+    }
+  }catch(e){
+    container.innerHTML='<div class="qr-placeholder"><span>Failed to load QR code<br/><span style="font-size:.75rem;color:var(--red)">'+e.message+'</span></span></div>';
+  }
+}
+async function refreshQR(){
+  const key=getKey('qr-key');
+  const res=$('qr-result');
+  if(!key){show(res,'result-err','Enter your API key');return}
+  show(res,'result-info','Refreshing QR code\u2026');
+  await fetchQR();
+  if($('qr-container').querySelector('img')){
+    show(res,'result-ok','QR code refreshed \u2014 scan now!');
+  }else{
+    show(res,'result-info','Waiting for new QR code\u2026 the socket may still be connecting');
+  }
+  setTimeout(()=>{res.classList.remove('show')},3000);
+}
 
 // ── Status polling ──────────────────────────────────
 async function refreshStatus(){
@@ -742,6 +867,18 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/events' && method === 'GET') {
       if (!requireAuth(req, res)) return;
       return json(res, 200, events);
+    }
+
+    // GET /api/qr-code — current QR code as data URL
+    if (path === '/api/qr-code' && method === 'GET') {
+      if (!requireAuth(req, res)) return;
+      if (connectionState === 'open') {
+        return json(res, 400, { error: 'Already connected — logout first to re-pair', available: false });
+      }
+      if (!qrDataUrl) {
+        return json(res, 503, { error: 'No QR code available yet — wait for connection', available: false });
+      }
+      return json(res, 200, { available: true, qr: qrDataUrl });
     }
 
     // GET /api/pairing-code?phone=6012xxxxxxx
