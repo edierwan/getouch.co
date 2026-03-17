@@ -20,6 +20,13 @@
 http://getouch.co {
   import common_headers
 
+  # Coolify webhook proxy — bypasses Cloudflare Access on coolify.getouch.co
+  handle /webhooks/source/* {
+    reverse_proxy coolify:8080 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+
   handle /services {
     root * /etc/caddy/static
     rewrite * /services.html
@@ -119,6 +126,16 @@ http://coolify.getouch.co {
       header_up X-Forwarded-Proto https
     }
   }
+}
+
+http://sb-stg-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-stg-kong:8000
+}
+
+http://st-stg-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-stg-studio:3000
 }
 
 http://bot.getouch.co,
