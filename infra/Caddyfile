@@ -84,9 +84,14 @@ http://wa.getouch.co {
   reverse_proxy wa:3001
 }
 
-http://s3.getouch.co {
+http://s3api.getouch.co {
   import common_headers
   reverse_proxy seaweed-s3:8333
+}
+
+http://s3.getouch.co {
+  import common_headers
+  reverse_proxy filestash:8334
 }
 
 http://search.getouch.co {

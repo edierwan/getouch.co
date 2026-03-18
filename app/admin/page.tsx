@@ -8,6 +8,8 @@ const services = [
   { name: 'Coolify', desc: 'Deployment & container management', url: 'https://coolify.getouch.co', status: 'live', icon: '🚀' },
   { name: 'pgAdmin', desc: 'PostgreSQL database management', url: 'https://db.getouch.co', status: 'live', icon: '🗄️' },
   { name: 'WhatsApp API', desc: 'WhatsApp Business messaging', url: 'https://wa.getouch.co', status: 'live', icon: '💬' },
+  { name: 'S3 Storage', desc: 'S3-compatible object storage', url: 'https://s3.getouch.co', status: 'live', icon: '📦' },
+  { name: 'S3 API', desc: 'S3 API endpoint (s3api.getouch.co)', url: 'https://s3api.getouch.co', status: 'live', icon: '🔌' },
   { name: 'Grafana', desc: 'Metrics & observability', url: 'https://grafana.getouch.co', status: 'planned', icon: '📊' },
   { name: 'Bot Service', desc: 'Chatbot orchestration engine', url: 'https://bot.getouch.co', status: 'planned', icon: '🤖' },
   { name: 'API Gateway', desc: 'Central REST/GraphQL API', url: 'https://api.getouch.co', status: 'planned', icon: '⚡' },
@@ -114,6 +116,11 @@ export default async function AdminPage() {
             <a href="https://coolify.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
               <span className="quick-icon">🚀</span>
               <div><h3>Coolify</h3><p>Deployments &amp; container management</p></div>
+              <span className="quick-arrow">→</span>
+            </a>
+            <a href="https://s3.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
+              <span className="quick-icon">📦</span>
+              <div><h3>S3 Storage</h3><p>Browse &amp; manage files in S3 buckets</p></div>
               <span className="quick-arrow">→</span>
             </a>
           </div>

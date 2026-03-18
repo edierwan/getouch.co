@@ -306,6 +306,23 @@ services:
     networks:
       - edge
 
+  filestash:
+    image: machines/filestash:latest
+    container_name: filestash
+    restart: unless-stopped
+    environment:
+      APPLICATION_URL: https://s3.getouch.co
+    ports: []
+    volumes:
+      - /data/getouch/filestash:/app/data/state
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8334/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
 networks:
   edge:
     name: getouch-edge
