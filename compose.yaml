@@ -295,7 +295,9 @@ services:
     depends_on:
       seaweed-filer:
         condition: service_healthy
-    command: s3 -filer=seaweed-filer:8888 -port=8333 -ip.bind=0.0.0.0
+    command: s3 -filer=seaweed-filer:8888 -port=8333 -ip.bind=0.0.0.0 -config=/etc/seaweedfs/s3.json
+    volumes:
+      - ./infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333/ || exit 1"]
       interval: 15s
