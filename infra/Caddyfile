@@ -91,7 +91,9 @@ http://s3api.getouch.co {
 
 http://s3.getouch.co {
   import common_headers
-  reverse_proxy filestash:8334
+  reverse_proxy filestash:8334 {
+    header_up X-Forwarded-Proto https
+  }
 }
 
 http://search.getouch.co {
