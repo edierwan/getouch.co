@@ -84,7 +84,7 @@ http://wa.getouch.co {
   reverse_proxy wa:3001
 }
 
-http://s3.getouch.co {
+http://s3.getouch.co, http://s3.getouch.cloud {
   import common_headers
   reverse_proxy seaweed-s3:8333
 }

@@ -80,6 +80,7 @@ services:
       retries: 10
     networks:
       - edge
+      - coolify
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -238,9 +239,14 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: seaweed-master
     restart: unless-stopped
-    command: server -master.port=9333 -mdir=/data
+    command: master -port=9333 -mdir=/data -defaultReplication=000
     volumes:
       - /data/getouch/seaweed/master:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks:
       - edge
 
@@ -248,9 +254,17 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: seaweed-volume
     restart: unless-stopped
-    command: server -volume.port=8080 -dir=/data -max=5 -mserver=seaweed-master:9333
+    depends_on:
+      seaweed-master:
+        condition: service_healthy
+    command: volume -port=8080 -ip.bind=0.0.0.0 -dir=/data -max=10 -mserver=seaweed-master:9333 -dataCenter=dc1
     volumes:
       - /data/getouch/seaweed/volume:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks:
       - edge
 
@@ -258,9 +272,19 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: seaweed-filer
     restart: unless-stopped
-    command: filer -master=seaweed-master:9333 -port=8888
+    depends_on:
+      seaweed-master:
+        condition: service_healthy
+      seaweed-volume:
+        condition: service_healthy
+    command: filer -master=seaweed-master:9333 -port=8888 -ip.bind=0.0.0.0
     volumes:
       - /data/getouch/seaweed/filer:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8888/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks:
       - edge
 
@@ -268,7 +292,15 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: seaweed-s3
     restart: unless-stopped
-    command: s3 -filer=seaweed-filer:8888 -port=8333
+    depends_on:
+      seaweed-filer:
+        condition: service_healthy
+    command: s3 -filer=seaweed-filer:8888 -port=8333 -ip.bind=0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks:
       - edge
 
