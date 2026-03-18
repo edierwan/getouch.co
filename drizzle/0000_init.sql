@@ -1,6 +1,8 @@
 -- Getouch Central Auth: initial schema
 -- Applies to: getouch.co, getouch.co.dev, getouch.co.stg databases
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 DO $$ BEGIN
   CREATE TYPE user_role AS ENUM ('admin', 'user', 'pending');
 EXCEPTION WHEN duplicate_object THEN NULL;

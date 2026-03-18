@@ -27,3 +27,6 @@ npm run build
 docker build -t getouch-co .
 docker run --rm -p 3000:80 getouch-co
 ```
+
+### VPS Access
+ssh deploy@100.84.14.93 / Turun@2020
