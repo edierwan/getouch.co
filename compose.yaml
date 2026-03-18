@@ -228,6 +228,50 @@ services:
     networks:
       - edge
 
+  # ────────────────────────────────────────────────────────
+  # SeaweedFS (S3-compatible storage)
+  # Master, Volume, Filer and S3 gateway
+  # Single-node setup (suitable for development / small deployments)
+  # For production consider running multiple volume nodes and masters.
+  # ────────────────────────────────────────────────────────
+  seaweed-master:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-master
+    restart: unless-stopped
+    command: server -master.port=9333 -mdir=/data
+    volumes:
+      - /data/getouch/seaweed/master:/data
+    networks:
+      - edge
+
+  seaweed-volume:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-volume
+    restart: unless-stopped
+    command: server -volume.port=8080 -dir=/data -max=5 -mserver=seaweed-master:9333
+    volumes:
+      - /data/getouch/seaweed/volume:/data
+    networks:
+      - edge
+
+  seaweed-filer:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-filer
+    restart: unless-stopped
+    command: filer -master=seaweed-master:9333 -port=8888
+    volumes:
+      - /data/getouch/seaweed/filer:/data
+    networks:
+      - edge
+
+  seaweed-s3:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-s3
+    restart: unless-stopped
+    command: s3 -filer=seaweed-filer:8888 -port=8333
+    networks:
+      - edge
+
 networks:
   edge:
     name: getouch-edge
