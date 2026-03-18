@@ -299,7 +299,7 @@ services:
     volumes:
       - ./infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qS --spider http://127.0.0.1:8333/ 2>&1 | grep -q '403\\|200' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
