@@ -25,6 +25,7 @@ export async function login(_prev: unknown, formData: FormData) {
   // Try Supabase SSO authentication first
   try {
     const supabase = getSupabase();
+    if (!supabase) throw new Error('SSO not configured');
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({ email, password });
 
@@ -112,6 +113,10 @@ export async function register(_prev: unknown, formData: FormData) {
 
   // Create user in Supabase SSO (Identity DB)
   const supabase = getSupabase();
+  if (!supabase) {
+    return { error: 'SSO service is not configured. Please contact an admin.' };
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
