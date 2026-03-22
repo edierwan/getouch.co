@@ -311,7 +311,7 @@ services:
     container_name: filestash
     restart: unless-stopped
     environment:
-      APPLICATION_URL: https://s3.getouch.co
+      APPLICATION_URL: s3.getouch.co
     ports: []
     volumes:
       - /data/getouch/filestash:/app/data/state
