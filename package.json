@@ -8,6 +8,7 @@
     "start": "next start --hostname 0.0.0.0 --port 3000"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.99.3",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.1",
     "jose": "^6.2.1",

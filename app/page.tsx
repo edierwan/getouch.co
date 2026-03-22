@@ -34,6 +34,7 @@ export default function HomePage() {
           </p>
           <div className="lp-hero-actions">
             <a href="https://ai.getouch.co" className="lp-btn-primary">Get Started</a>
+            <a href="https://auth.getouch.co/auth/register" className="lp-btn-secondary">Register</a>
           </div>
         </div>
       </section>

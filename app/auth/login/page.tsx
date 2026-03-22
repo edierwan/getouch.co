@@ -2,7 +2,6 @@
 
 import { useActionState } from 'react';
 import { login } from '../actions';
-import Link from 'next/link';
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState(login, null);
@@ -49,7 +48,7 @@ export default function LoginPage() {
 
       <p className="auth-switch">
         Don&apos;t have an account?{' '}
-        <Link href="/auth/register">Create one</Link>
+        <a href="https://auth.getouch.co/auth/register">Create one</a>
       </p>
     </div>
   );

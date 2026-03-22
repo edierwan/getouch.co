@@ -150,6 +150,50 @@ http://st-stg-serapod.getouch.co {
   reverse_proxy serapod-stg-studio:3000
 }
 
+http://sb-dev-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-dev-kong:8000
+}
+
+http://st-dev-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-dev-studio:3000
+}
+
+http://sb-prd-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-prd-kong:8000
+}
+
+http://st-prd-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-prd-studio:3000
+}
+
+http://sb-sso.getouch.co {
+  import common_headers
+  reverse_proxy getouch-sso-kong:8000
+}
+
+http://st-sso.getouch.co {
+  import common_headers
+  reverse_proxy getouch-sso-studio:3000
+}
+
+http://auth.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-prod:3000
+  }
+}
+
 http://bot.getouch.co,
 http://api.getouch.co,
 http://grafana.getouch.co,
@@ -157,7 +201,6 @@ http://metrics.getouch.co,
 http://sms.getouch.co,
 http://analytics.getouch.co,
 http://billing.getouch.co,
-http://auth.getouch.co,
 http://portal.getouch.co,
 http://admin.getouch.co {
   import common_headers

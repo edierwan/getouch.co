@@ -27,6 +27,7 @@ const serviceCategories = [
       {
         name: 'Supabase',
         services: [
+          { name: 'Getouch SSO', desc: 'Central shared sign-in / identity', url: 'https://st-sso.getouch.co', icon: '🔐' },
           { name: 'Serapod Staging', desc: 'Serapod staging database', url: 'https://st-stg-serapod.getouch.co', icon: '⚡' },
           { name: 'QR System Dev', desc: 'QR System development', url: 'https://st-dev-qrsys.getouch.co', icon: '🔧' },
           { name: 'QR System Prod', desc: 'QR System production', url: 'https://st-prd-qrsys.getouch.co', icon: '🟢' },
