@@ -92,7 +92,12 @@ http://s3api.getouch.co {
 http://s3.getouch.co {
   import common_headers
 
-  handle /login {
+  # Serve custom login page at root and /login to inject SeaweedFS endpoint
+  @login {
+    not path /api/* /files/* /assets/* /custom.css /admin/* /favicon.ico /sw_cache.js /manifest.json /overrides/*
+    not header Cookie *cookie=*
+  }
+  handle @login {
     root * /etc/caddy/static
     rewrite * /s3-login.html
     file_server
