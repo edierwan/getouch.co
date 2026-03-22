@@ -1,0 +1,65 @@
+{
+  "kind": "collectionType",
+  "collectionName": "articles",
+  "info": {
+    "singularName": "article",
+    "pluralName": "articles",
+    "displayName": "Article",
+    "description": "News articles"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": { "type": "string", "required": true, "maxLength": 500 },
+    "slug": { "type": "uid", "targetField": "title", "required": true },
+    "excerpt": { "type": "text", "maxLength": 1000 },
+    "content_html": { "type": "richtext" },
+    "cover_image": { "type": "media", "multiple": false, "allowedTypes": ["images"] },
+    "cover_image_url": { "type": "string", "maxLength": 2000 },
+    "source_name": { "type": "string", "maxLength": 200 },
+    "source_url": { "type": "string", "maxLength": 2000 },
+    "original_published_at": { "type": "datetime" },
+    "category": {
+      "type": "enumeration",
+      "enum": ["politics", "business", "technology", "sports", "entertainment", "world", "lifestyle", "health", "education", "crime", "environment", "opinion"],
+      "default": "politics"
+    },
+    "region": {
+      "type": "enumeration",
+      "enum": ["malaysia", "dunia"],
+      "default": "malaysia"
+    },
+    "language": {
+      "type": "enumeration",
+      "enum": ["bm", "en"],
+      "default": "bm"
+    },
+    "ai_summary": { "type": "text" },
+    "ai_rewrite": { "type": "richtext" },
+    "status": {
+      "type": "enumeration",
+      "enum": ["draft", "review", "approved", "published", "rejected"],
+      "default": "draft"
+    },
+    "publish_mode": {
+      "type": "enumeration",
+      "enum": ["manual", "auto"],
+      "default": "manual"
+    },
+    "social_caption": { "type": "text", "maxLength": 2000 },
+    "fb_post_status": {
+      "type": "enumeration",
+      "enum": ["pending", "posted", "failed", "skipped"],
+      "default": "pending"
+    },
+    "dedupe_hash": { "type": "string", "maxLength": 64 },
+    "source": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::source.source",
+      "inversedBy": "articles"
+    }
+  }
+}

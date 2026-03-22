@@ -1,0 +1,35 @@
+{
+  "kind": "singleType",
+  "collectionName": "settings",
+  "info": {
+    "singularName": "setting",
+    "pluralName": "settings",
+    "displayName": "Setting",
+    "description": "Global news settings"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "site_name": { "type": "string", "default": "Berita Getouch" },
+    "site_description": { "type": "text" },
+    "coverage": {
+      "type": "enumeration",
+      "enum": ["malaysia", "dunia", "both"],
+      "default": "both"
+    },
+    "language_mode": {
+      "type": "enumeration",
+      "enum": ["bm", "en", "both"],
+      "default": "both"
+    },
+    "publish_mode_default": {
+      "type": "enumeration",
+      "enum": ["manual", "auto"],
+      "default": "manual"
+    },
+    "daily_post_limit": { "type": "integer", "default": 50 },
+    "auto_post_enabled": { "type": "boolean", "default": false }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "kind": "collectionType",
+  "collectionName": "run_logs",
+  "info": {
+    "singularName": "run-log",
+    "pluralName": "run-logs",
+    "displayName": "Run Log",
+    "description": "Workflow execution logs"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "workflow_name": { "type": "string", "required": true, "maxLength": 200 },
+    "started_at": { "type": "datetime" },
+    "ended_at": { "type": "datetime" },
+    "items_found": { "type": "integer", "default": 0 },
+    "items_inserted": { "type": "integer", "default": 0 },
+    "items_rejected": { "type": "integer", "default": 0 },
+    "error_log": { "type": "text" }
+  }
+}

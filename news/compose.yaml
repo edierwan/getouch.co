@@ -1,0 +1,174 @@
+###############################################################################
+# News Publishing System — Isolated Stack
+# All services connect to getouch-edge network for Caddy reverse proxy
+# Databases: news_cms, news_flow, news_social on getouch-postgres
+###############################################################################
+
+services:
+  # ─────────────────────────────────────────────────
+  # CMS — Strapi v4
+  # ─────────────────────────────────────────────────
+  news-cms:
+    build:
+      context: ./strapi
+      dockerfile: Dockerfile
+    container_name: news-cms
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 1337
+      APP_KEYS: ${STRAPI_APP_KEYS}
+      API_TOKEN_SALT: ${STRAPI_API_TOKEN_SALT}
+      ADMIN_JWT_SECRET: ${STRAPI_ADMIN_JWT_SECRET}
+      TRANSFER_TOKEN_SALT: ${STRAPI_TRANSFER_TOKEN_SALT}
+      JWT_SECRET: ${STRAPI_JWT_SECRET}
+      # Database
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: getouch-postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: news_cms
+      DATABASE_USERNAME: ${DB_USER}
+      DATABASE_PASSWORD: ${DB_PASSWORD}
+      DATABASE_SSL: "false"
+      # S3 Upload
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_CDN_URL: ${S3_CDN_URL:-}
+    volumes:
+      - /data/getouch/news/cms:/opt/app/.tmp
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1337/_health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - edge
+
+  # ─────────────────────────────────────────────────
+  # Automation — n8n
+  # ─────────────────────────────────────────────────
+  news-flow:
+    image: n8nio/n8n:latest
+    container_name: news-flow
+    restart: unless-stopped
+    environment:
+      N8N_HOST: flow.news.getouch.co
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://flow.news.getouch.co/
+      GENERIC_TIMEZONE: Asia/Kuala_Lumpur
+      TZ: Asia/Kuala_Lumpur
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: getouch-postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: news_flow
+      DB_POSTGRESDB_USER: ${DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_AUTH_PASSWORD}
+    volumes:
+      - /data/getouch/news/n8n:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - edge
+
+  # ─────────────────────────────────────────────────
+  # RSS — RSSHub
+  # ─────────────────────────────────────────────────
+  news-rss:
+    image: diygod/rsshub:latest
+    container_name: news-rss
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+      CACHE_EXPIRE: 300
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1200/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - edge
+
+  # ─────────────────────────────────────────────────
+  # Social — Postiz
+  # ─────────────────────────────────────────────────
+  news-social:
+    image: ghcr.io/gitroomhq/postiz-app:latest
+    container_name: news-social
+    restart: unless-stopped
+    environment:
+      MAIN_URL: https://social.news.getouch.co
+      FRONTEND_URL: https://social.news.getouch.co
+      NEXT_PUBLIC_BACKEND_URL: https://social.news.getouch.co/api
+      JWT_SECRET: ${POSTIZ_JWT_SECRET}
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@getouch-postgres:5432/news_social
+      REDIS_URL: redis://news-redis:6379
+      UPLOAD_DIRECTORY: /uploads
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
+      STORAGE_PROVIDER: local
+    volumes:
+      - /data/getouch/news/postiz/uploads:/uploads
+    depends_on:
+      - news-redis
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - edge
+
+  news-redis:
+    image: redis:7-alpine
+    container_name: news-redis
+    restart: unless-stopped
+    volumes:
+      - /data/getouch/news/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  # ─────────────────────────────────────────────────
+  # Frontend — Next.js News Site
+  # ─────────────────────────────────────────────────
+  news-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: news-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_STRAPI_URL: http://news-cms:1337
+      STRAPI_URL: http://news-cms:1337
+      STRAPI_API_TOKEN: ${STRAPI_PUBLIC_API_TOKEN:-}
+      HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - edge
+
+networks:
+  edge:
+    name: getouch-edge
+    external: true

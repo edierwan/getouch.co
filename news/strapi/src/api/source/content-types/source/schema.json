@@ -1,0 +1,42 @@
+{
+  "kind": "collectionType",
+  "collectionName": "sources",
+  "info": {
+    "singularName": "source",
+    "pluralName": "sources",
+    "displayName": "Source",
+    "description": "News sources"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": { "type": "string", "required": true, "maxLength": 200 },
+    "type": {
+      "type": "enumeration",
+      "enum": ["rss", "website"],
+      "default": "rss"
+    },
+    "feed_url": { "type": "string", "maxLength": 2000 },
+    "country": { "type": "string", "maxLength": 100, "default": "Malaysia" },
+    "language": {
+      "type": "enumeration",
+      "enum": ["bm", "en"],
+      "default": "bm"
+    },
+    "category": {
+      "type": "enumeration",
+      "enum": ["politics", "business", "technology", "sports", "entertainment", "world", "lifestyle", "health", "education", "crime", "environment", "opinion"],
+      "default": "politics"
+    },
+    "is_active": { "type": "boolean", "default": true },
+    "priority": { "type": "integer", "default": 5, "min": 1, "max": 10 },
+    "articles": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::article.article",
+      "mappedBy": "source"
+    }
+  }
+}
