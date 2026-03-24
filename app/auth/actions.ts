@@ -1,7 +1,7 @@
 'use server';
 
 import { db } from '@/lib/db';
-import { users } from '@/lib/schema';
+import { users, verificationTokens } from '@/lib/schema';
 import {
   verifyPassword,
   createSessionToken,
@@ -9,8 +9,10 @@ import {
   clearSessionCookie,
 } from '@/lib/auth';
 import { getSupabase } from '@/lib/supabase';
+import { sendVerificationEmail } from '@/lib/email';
 import { eq } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
+import crypto from 'crypto';
 
 export async function login(_prev: unknown, formData: FormData) {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
@@ -78,6 +80,10 @@ export async function login(_prev: unknown, formData: FormData) {
     user = localUser;
   }
 
+  if (!user.emailVerified) {
+    return { error: 'Please verify your email before logging in. Check your inbox for the verification link.' };
+  }
+
   if (user.role === 'pending') {
     return { error: 'Your account is pending approval. Please contact an admin.' };
   }
@@ -90,7 +96,13 @@ export async function login(_prev: unknown, formData: FormData) {
   });
 
   await setSessionCookie(token);
-  redirect('/admin');
+
+  // Redirect based on role
+  if (user.role === 'admin') {
+    redirect('/admin');
+  } else {
+    redirect('/portal');
+  }
 }
 
 export async function register(_prev: unknown, formData: FormData) {
@@ -140,17 +152,38 @@ export async function register(_prev: unknown, formData: FormData) {
     .where(eq(users.email, email))
     .limit(1);
 
+  let userId: string;
+
   if (!existing.length && data.user) {
-    await db.insert(users).values({
+    const [newUser] = await db.insert(users).values({
       id: data.user.id,
       name,
       email,
       passwordHash: 'SSO_MANAGED',
       role: 'pending',
-    });
+      emailVerified: false,
+    }).returning();
+    userId = newUser.id;
+  } else if (existing.length) {
+    userId = existing[0].id;
+  } else {
+    return { error: 'Registration failed. Please try again.' };
   }
 
-  return { success: 'Account created! An admin will review your access shortly.' };
+  // Generate verification token
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+  await db.insert(verificationTokens).values({
+    userId,
+    token,
+    expiresAt,
+  });
+
+  // Send verification email
+  await sendVerificationEmail(email, name, token);
+
+  return { success: 'Account created! Please check your email to verify your account.' };
 }
 
 export async function logout() {

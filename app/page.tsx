@@ -14,8 +14,10 @@ export default function HomePage() {
             <span>Getouch</span>
           </a>
           <div className="lp-nav-links">
+            <a href="#product" className="lp-nav-link">Product</a>
+            <a href="#pricing" className="lp-nav-link">Pricing</a>
             <a href="/admin" className="lp-nav-admin">Admin</a>
-            <a href="https://ai.getouch.co" className="lp-nav-cta">Open Chat</a>
+            <a href="https://ai.getouch.co" className="lp-nav-cta">Try Getouch</a>
           </div>
         </div>
       </nav>
@@ -33,8 +35,92 @@ export default function HomePage() {
             and run autonomous agents — all on your own GPU.
           </p>
           <div className="lp-hero-actions">
-            <a href="https://ai.getouch.co" className="lp-btn-primary">Get Started</a>
-            <a href="https://auth.getouch.co/auth/register" className="lp-btn-secondary">Register</a>
+            <a href="https://auth.getouch.co/auth/register" className="lp-btn-primary">Register</a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Product Section ── */}
+      <section id="product" className="lp-section">
+        <div className="lp-container">
+          <p className="lp-section-tag">Product</p>
+          <h2 className="lp-section-title">Everything you need, self-hosted</h2>
+          <div className="lp-features">
+            <div className="lp-feature-card">
+              <span className="lp-feature-icon">🧠</span>
+              <h3>AI Chat</h3>
+              <p>Conversational AI powered by open-source models running on your own GPU.</p>
+            </div>
+            <div className="lp-feature-card">
+              <span className="lp-feature-icon">🖼️</span>
+              <h3>Image Generation</h3>
+              <p>Create images with Stable Diffusion and other generative models locally.</p>
+            </div>
+            <div className="lp-feature-card">
+              <span className="lp-feature-icon">📄</span>
+              <h3>Document Analysis</h3>
+              <p>Upload and analyze documents with RAG-powered retrieval and summarization.</p>
+            </div>
+            <div className="lp-feature-card">
+              <span className="lp-feature-icon">🔍</span>
+              <h3>Web Search</h3>
+              <p>Privacy-first web search integrated directly into your AI conversations.</p>
+            </div>
+            <div className="lp-feature-card">
+              <span className="lp-feature-icon">🤖</span>
+              <h3>Autonomous Agents</h3>
+              <p>Run task-driven agents that can browse, code, and solve complex problems.</p>
+            </div>
+            <div className="lp-feature-card">
+              <span className="lp-feature-icon">🔒</span>
+              <h3>Full Privacy</h3>
+              <p>Your data never leaves your infrastructure. No third-party API calls required.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pricing Section ── */}
+      <section id="pricing" className="lp-section lp-section-alt">
+        <div className="lp-container">
+          <p className="lp-section-tag">Pricing</p>
+          <h2 className="lp-section-title">Simple, transparent pricing</h2>
+          <div className="lp-pricing-grid">
+            <div className="lp-pricing-card">
+              <h3>Free</h3>
+              <p className="lp-pricing-price">$0<span>/month</span></p>
+              <ul className="lp-pricing-features">
+                <li>AI Chat access</li>
+                <li>Web search</li>
+                <li>Document upload (5 files)</li>
+                <li>Community support</li>
+              </ul>
+              <a href="https://auth.getouch.co/auth/register" className="lp-btn-secondary lp-pricing-btn">Get Started</a>
+            </div>
+            <div className="lp-pricing-card lp-pricing-featured">
+              <h3>Pro</h3>
+              <p className="lp-pricing-price">Coming Soon</p>
+              <ul className="lp-pricing-features">
+                <li>Everything in Free</li>
+                <li>Unlimited documents</li>
+                <li>Image generation</li>
+                <li>Autonomous agents</li>
+                <li>Priority support</li>
+              </ul>
+              <span className="lp-btn-primary lp-pricing-btn lp-pricing-soon">Coming Soon</span>
+            </div>
+            <div className="lp-pricing-card">
+              <h3>Enterprise</h3>
+              <p className="lp-pricing-price">Contact Us</p>
+              <ul className="lp-pricing-features">
+                <li>Everything in Pro</li>
+                <li>Dedicated GPU instance</li>
+                <li>Custom model fine-tuning</li>
+                <li>SSO &amp; team management</li>
+                <li>SLA guarantee</li>
+              </ul>
+              <a href="mailto:admin@getouch.co" className="lp-btn-secondary lp-pricing-btn">Contact Sales</a>
+            </div>
           </div>
         </div>
       </section>

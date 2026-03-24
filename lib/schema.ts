@@ -25,6 +25,17 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+/* ─── Email verification tokens ─── */
+export const verificationTokens = pgTable('verification_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .notNull(),
+  token: varchar('token', { length: 255 }).notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 /* ─── Downstream app provisioning records ─── */
 export const appProvisions = pgTable(
   'app_provisions',

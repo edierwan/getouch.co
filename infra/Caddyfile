@@ -243,6 +243,20 @@ http://social.news.getouch.co {
   reverse_proxy news-social:5000
 }
 
+http://portal.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-prod:3000
+  }
+}
+
 http://bot.getouch.co,
 http://api.getouch.co,
 http://grafana.getouch.co,
@@ -250,7 +264,6 @@ http://metrics.getouch.co,
 http://sms.getouch.co,
 http://analytics.getouch.co,
 http://billing.getouch.co,
-http://portal.getouch.co,
 http://admin.getouch.co {
   import common_headers
   respond "Not configured on this server." 404

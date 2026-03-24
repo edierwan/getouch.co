@@ -1,9 +1,9 @@
 import { db } from '@/lib/db';
 import { users, appProvisions } from '@/lib/schema';
 import { getSession } from '@/lib/auth';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
-import { updateUserRole, provisionToOpenWebUI } from './actions';
+import { updateUserRole, provisionToOpenWebUI, deleteUser } from './actions';
 
 export default async function UsersPage() {
   const session = await getSession();
@@ -15,6 +15,7 @@ export default async function UsersPage() {
       name: users.name,
       email: users.email,
       role: users.role,
+      emailVerified: users.emailVerified,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -46,6 +47,7 @@ export default async function UsersPage() {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
+                  <th>Verified</th>
                   <th>AI Access</th>
                   <th>Joined</th>
                   <th>Actions</th>
@@ -60,6 +62,13 @@ export default async function UsersPage() {
                       <span className={`role-badge role-${user.role}`}>
                         {user.role}
                       </span>
+                    </td>
+                    <td>
+                      {user.emailVerified ? (
+                        <span className="prov-badge prov-yes">Yes</span>
+                      ) : (
+                        <span className="prov-badge prov-pending">No</span>
+                      )}
                     </td>
                     <td>
                       {provisionedIds.has(user.id) ? (
@@ -111,6 +120,14 @@ export default async function UsersPage() {
                           <input type="hidden" name="userId" value={user.id} />
                           <button type="submit" className="action-btn action-provision">
                             → AI
+                          </button>
+                        </form>
+                      )}
+                      {user.id !== session.userId && (
+                        <form action={deleteUser}>
+                          <input type="hidden" name="userId" value={user.id} />
+                          <button type="submit" className="action-btn action-delete">
+                            Delete
                           </button>
                         </form>
                       )}

@@ -592,6 +592,173 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
 .action-provision { border-color: rgba(99, 102, 241, 0.3); color: var(--accent-light); }
 .action-provision:hover { background: rgba(99, 102, 241, 0.1); }
 .action-you { color: var(--text-secondary); font-size: 0.75rem; font-style: italic; }
+.action-delete { border-color: rgba(239, 68, 68, 0.3); color: #f87171; }
+.action-delete:hover { background: rgba(239, 68, 68, 0.1); }
+.prov-pending {
+  background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+/* ─── Pricing Cards ─── */
+
+.lp-pricing-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+  max-width: 960px; margin: 0 auto;
+}
+.lp-pricing-card {
+  padding: 2rem 1.75rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex; flex-direction: column;
+}
+.lp-pricing-featured {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.06));
+}
+.lp-pricing-card h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem; }
+.lp-pricing-price {
+  font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 1.25rem;
+}
+.lp-pricing-price span { font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); }
+.lp-pricing-features {
+  list-style: none; flex: 1; margin-bottom: 1.5rem;
+  display: flex; flex-direction: column; gap: 0.55rem;
+}
+.lp-pricing-features li {
+  font-size: 0.88rem; color: var(--text-secondary);
+  padding-left: 1.2rem; position: relative;
+}
+.lp-pricing-features li::before {
+  content: '✓'; position: absolute; left: 0;
+  color: var(--success); font-weight: 700;
+}
+.lp-pricing-btn { text-align: center; display: block; }
+.lp-pricing-soon { opacity: 0.5; cursor: default; }
+
+/* ─── Nav link style ─── */
+.lp-nav-link {
+  color: var(--text-secondary); transition: color 0.2s;
+  font-size: 0.88rem;
+}
+.lp-nav-link:hover { color: var(--text); }
+
+/* ─── Portal Page ─── */
+
+.portal-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 0.85rem 0;
+  background: rgba(10, 10, 11, 0.8);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid var(--border);
+}
+.portal-nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  width: min(1100px, calc(100% - 3rem)); margin: 0 auto;
+}
+.portal-brand {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em;
+}
+.portal-brand svg { flex-shrink: 0; }
+.portal-nav-links {
+  display: flex; align-items: center; gap: 1.5rem; font-size: 0.88rem;
+}
+.portal-user {
+  color: var(--text-secondary); font-size: 0.82rem; font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+}
+.portal-logout {
+  background: none; border: 1px solid var(--border); border-radius: var(--radius-full);
+  color: var(--text-secondary); padding: 0.35rem 0.9rem;
+  font-size: 0.82rem; font-family: inherit; font-weight: 500;
+  cursor: pointer; transition: color 0.2s, border-color 0.2s;
+}
+.portal-logout:hover { color: var(--text); border-color: var(--border-strong); }
+
+.portal-main {
+  padding: 6rem 0 4rem;
+  min-height: calc(100vh - 4rem);
+}
+.portal-container { width: min(1100px, calc(100% - 3rem)); margin: 0 auto; }
+
+.portal-header { margin-bottom: 3rem; }
+.portal-greeting {
+  font-size: 2rem; font-weight: 800; letter-spacing: -0.03em;
+}
+.portal-sub {
+  color: var(--text-secondary); font-size: 1.05rem; margin-top: 0.35rem;
+}
+
+.portal-products { margin-bottom: 3rem; }
+.portal-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;
+}
+
+.portal-card {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 1.5rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.portal-card-live:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+}
+.portal-card-soon { opacity: 0.55; cursor: default; }
+.portal-card-icon { font-size: 2rem; }
+.portal-card-body h3 { font-size: 1rem; font-weight: 700; }
+.portal-card-body p {
+  color: var(--text-secondary); font-size: 0.84rem; line-height: 1.5;
+  margin-top: 0.25rem;
+}
+.portal-card-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: auto;
+}
+.portal-status {
+  padding: 0.15rem 0.55rem; border-radius: var(--radius-full);
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.portal-status-live {
+  background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.25);
+  color: var(--success);
+}
+.portal-status-soon {
+  background: rgba(139, 139, 148, 0.1); border: 1px solid rgba(139, 139, 148, 0.2);
+  color: var(--text-secondary);
+}
+.portal-arrow {
+  color: var(--accent-light); font-size: 1.1rem; font-weight: 600;
+  transition: transform 0.2s;
+}
+.portal-card-live:hover .portal-arrow { transform: translateX(3px); }
+
+.portal-account { margin-bottom: 3rem; }
+.portal-account h2 {
+  font-size: 1.3rem; font-weight: 700; margin-bottom: 1rem;
+  padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);
+}
+.portal-account-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.portal-account-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.85rem 1.5rem; border-bottom: 1px solid var(--border);
+}
+.portal-account-row:last-child { border-bottom: none; }
+.portal-account-label { color: var(--text-secondary); font-size: 0.88rem; }
+.portal-account-value { font-weight: 600; font-size: 0.88rem; }
+
+.portal-footer {
+  padding: 2rem 0; border-top: 1px solid var(--border);
+  text-align: center;
+}
+.portal-footer-copy { color: var(--text-secondary); font-size: 0.78rem; opacity: 0.6; }
 
 /* ─── Responsive ─── */
 
@@ -600,9 +767,13 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
   .service-grid { grid-template-columns: 1fr; }
   .nav-links { gap: 1rem; }
   .nav-user { display: none; }
+  .lp-pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
+  .portal-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 500px) {
   .stats-grid { grid-template-columns: 1fr; }
   .admin-header h1 { font-size: 1.8rem; }
+  .portal-grid { grid-template-columns: 1fr; }
+  .portal-greeting { font-size: 1.5rem; }
 }

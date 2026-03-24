@@ -27,6 +27,70 @@ export async function updateUserRole(formData: FormData) {
   revalidatePath('/admin');
 }
 
+export async function deleteUser(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== 'admin') return;
+
+  const userId = formData.get('userId') as string;
+  if (!userId) return;
+
+  // Prevent self-deletion
+  if (userId === session.userId) return;
+
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return;
+
+  // Delete from Open WebUI if provisioned
+  const baseUrl = process.env.OPEN_WEBUI_URL || 'https://ai.getouch.co';
+  const adminToken = process.env.OPEN_WEBUI_ADMIN_TOKEN;
+
+  if (adminToken) {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      };
+      if (baseUrl.includes('caddy')) {
+        headers['Host'] = 'ai.getouch.co';
+      }
+
+      // Find the Open WebUI user by email
+      const searchRes = await fetch(`${baseUrl}/api/v1/users/`, {
+        headers,
+      });
+      if (searchRes.ok) {
+        const allWebUIUsers = await searchRes.json();
+        const webUIUser = allWebUIUsers.find(
+          (u: { email: string }) => u.email === user.email,
+        );
+        if (webUIUser) {
+          await fetch(`${baseUrl}/api/v1/users/${webUIUser.id}`, {
+            method: 'DELETE',
+            headers,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Open WebUI user deletion error:', err);
+    }
+  }
+
+  // Delete from Supabase SSO
+  try {
+    const { getSupabaseAdmin } = await import('@/lib/supabase');
+    const supabase = getSupabaseAdmin();
+    await supabase.auth.admin.deleteUser(userId);
+  } catch (err) {
+    console.error('Supabase user deletion error:', err);
+  }
+
+  // Delete local user record (cascades to app_provisions and verification_tokens)
+  await db.delete(users).where(eq(users.id, userId));
+
+  revalidatePath('/admin/users');
+  revalidatePath('/admin');
+}
+
 export async function provisionToOpenWebUI(formData: FormData) {
   const session = await getSession();
   if (!session || session.role !== 'admin') return;

@@ -21,7 +21,7 @@ export default async function AdminLayout({
             <a href="/admin">Dashboard</a>
             <a href="/admin/users">Users</a>
             <a href="https://ai.getouch.co" className="nav-cta">
-              Open AI Chat
+              Try Getouch
             </a>
             <span className="nav-user">{session.name}</span>
             <form action={logout}>
