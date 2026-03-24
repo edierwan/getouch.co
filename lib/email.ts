@@ -1,8 +1,26 @@
-import { getSupabaseAdmin } from './supabase';
+import nodemailer from 'nodemailer';
 
-const FROM_EMAIL = 'admin@getouch.co';
-const FROM_NAME = 'Getouch';
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://auth.getouch.co';
+
+function getTransporter() {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587');
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const secure = process.env.SMTP_SECURE === 'true';
+
+  if (!host || !user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+  });
+}
 
 export async function sendVerificationEmail(
   to: string,
@@ -10,83 +28,29 @@ export async function sendVerificationEmail(
   token: string,
 ) {
   const verifyUrl = `${BASE_URL}/auth/verify?token=${encodeURIComponent(token)}`;
-
-  // Try Supabase Edge Function for email sending
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT || '587';
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-
-  if (smtpHost && smtpUser && smtpPass) {
-    // Use nodemailer-compatible SMTP via fetch to avoid extra dependency
-    // We'll use Supabase's built-in email or a simple HTTP-based approach
-    return await sendViaSMTP(to, name, verifyUrl, {
-      host: smtpHost,
-      port: parseInt(smtpPort),
-      user: smtpUser,
-      pass: smtpPass,
-    });
-  }
-
-  // Fallback: Use Supabase Auth's built-in email (if configured)
-  try {
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.auth.admin.inviteUserByEmail(to, {
-      data: { name, verification_url: verifyUrl },
-      redirectTo: verifyUrl,
-    });
-    if (error) {
-      console.error('Supabase email invite failed:', error.message);
-      // Log the verification URL for manual fallback
-      console.log(`[VERIFY] Manual verification link for ${to}: ${verifyUrl}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error('Email sending failed:', err);
-    console.log(`[VERIFY] Manual verification link for ${to}: ${verifyUrl}`);
-    return false;
-  }
-}
-
-async function sendViaSMTP(
-  to: string,
-  name: string,
-  verifyUrl: string,
-  smtp: { host: string; port: number; user: string; pass: string },
-) {
-  // Build email payload for SMTP relay
-  // Using a lightweight HTTP-to-SMTP bridge or direct SMTP
+  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'admin@getouch.co';
+  const fromName = process.env.SMTP_FROM_NAME || 'Getouch';
   const subject = 'Verify your Getouch account';
   const html = buildVerificationHtml(name, verifyUrl);
 
-  try {
-    // If we have a mail API endpoint (Resend, Mailgun, etc.)
-    const mailApiUrl = process.env.MAIL_API_URL;
-    const mailApiKey = process.env.MAIL_API_KEY;
-
-    if (mailApiUrl && mailApiKey) {
-      const res = await fetch(mailApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${mailApiKey}`,
-        },
-        body: JSON.stringify({
-          from: `${FROM_NAME} <${FROM_EMAIL}>`,
-          to,
-          subject,
-          html,
-        }),
-      });
-      return res.ok;
-    }
-
-    // Fallback: Log verification URL
-    console.log(`[VERIFY] Email for ${to}: ${verifyUrl}`);
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.error('[EMAIL] SMTP not configured (missing SMTP_HOST/SMTP_USER/SMTP_PASS)');
+    console.log(`[VERIFY] Manual verification link for ${to}: ${verifyUrl}`);
     return false;
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: `${fromName} <${fromEmail}>`,
+      to,
+      subject,
+      html,
+    });
+    console.log(`[EMAIL] Verification email sent to ${to}, messageId: ${info.messageId}`);
+    return true;
   } catch (err) {
-    console.error('SMTP send error:', err);
+    console.error('[EMAIL] Failed to send verification email:', err);
     console.log(`[VERIFY] Manual verification link for ${to}: ${verifyUrl}`);
     return false;
   }
