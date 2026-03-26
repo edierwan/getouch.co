@@ -115,6 +115,8 @@ services:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
     volumes:
       - /srv/apps/ai/ollama:/root/.ollama
       - /srv/apps/ai/models:/models
