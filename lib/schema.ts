@@ -7,6 +7,7 @@ import {
   boolean,
   pgEnum,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
 
 /* ─── Enums ─── */
@@ -20,6 +21,8 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: userRole('role').default('pending').notNull(),
   emailVerified: boolean('email_verified').default(false).notNull(),
+  phone: varchar('phone', { length: 20 }),
+  phoneVerified: boolean('phone_verified').default(false).notNull(),
   avatarUrl: text('avatar_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -35,6 +38,21 @@ export const verificationTokens = pgTable('verification_tokens', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/* ─── WhatsApp OTP tokens ─── */
+export const waOtpTokens = pgTable(
+  'wa_otp_tokens',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    phone: varchar('phone', { length: 20 }).notNull(),
+    otp: varchar('otp', { length: 6 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('wa_otp_tokens_phone_idx').on(table.phone),
+  ],
+);
 
 /* ─── Downstream app provisioning records ─── */
 export const appProvisions = pgTable(

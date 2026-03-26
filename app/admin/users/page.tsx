@@ -14,8 +14,10 @@ export default async function UsersPage() {
       id: users.id,
       name: users.name,
       email: users.email,
+      phone: users.phone,
       role: users.role,
       emailVerified: users.emailVerified,
+      phoneVerified: users.phoneVerified,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -46,6 +48,7 @@ export default async function UsersPage() {
                 <tr>
                   <th>Name</th>
                   <th>Email</th>
+                  <th>Phone</th>
                   <th>Role</th>
                   <th>Verified</th>
                   <th>AI Access</th>
@@ -58,17 +61,24 @@ export default async function UsersPage() {
                   <tr key={user.id}>
                     <td className="user-name">{user.name}</td>
                     <td className="user-email">{user.email}</td>
+                    <td className="user-email">{user.phone ?? '—'}</td>
                     <td>
                       <span className={`role-badge role-${user.role}`}>
                         {user.role}
                       </span>
                     </td>
                     <td>
-                      {user.emailVerified ? (
-                        <span className="prov-badge prov-yes">Yes</span>
-                      ) : (
-                        <span className="prov-badge prov-pending">No</span>
-                      )}
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        {user.emailVerified && (
+                          <span className="prov-badge prov-yes">Email</span>
+                        )}
+                        {user.phoneVerified && (
+                          <span className="prov-badge prov-yes">WA</span>
+                        )}
+                        {!user.emailVerified && !user.phoneVerified && (
+                          <span className="prov-badge prov-pending">No</span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       {provisionedIds.has(user.id) ? (
