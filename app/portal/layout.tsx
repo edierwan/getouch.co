@@ -24,6 +24,8 @@ export default async function PortalLayout({
             <span>Getouch</span>
           </a>
           <div className="portal-nav-links">
+            <a href="/portal" className="portal-nav-link">Services</a>
+            <a href="/portal/profile" className="portal-nav-link">Profile</a>
             <span className="portal-user">{session.name}</span>
             <form action={logout}>
               <button type="submit" className="portal-logout">Logout</button>
