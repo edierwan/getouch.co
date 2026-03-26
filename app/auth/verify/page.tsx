@@ -1,7 +1,8 @@
 import { db } from '@/lib/db';
 import { users, verificationTokens, appProvisions } from '@/lib/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import Link from 'next/link';
+import crypto from 'crypto';
 
 async function provisionUserToOpenWebUI(user: { id: string; name: string; email: string }) {
   const baseUrl = process.env.OPEN_WEBUI_URL || 'https://ai.getouch.co';
@@ -13,10 +14,6 @@ async function provisionUserToOpenWebUI(user: { id: string; name: string; email:
       'Content-Type': 'application/json',
       Authorization: `Bearer ${adminToken}`,
     };
-
-    if (baseUrl.includes('caddy')) {
-      headers['Host'] = 'ai.getouch.co';
-    }
 
     const res = await fetch(`${baseUrl}/api/v1/auths/signup`, {
       method: 'POST',
