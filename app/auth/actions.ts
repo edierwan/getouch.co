@@ -167,36 +167,45 @@ export async function register(_prev: unknown, formData: FormData) {
       error.message.includes('User already registered');
 
     if (isAlreadyExists) {
-      // Orphaned Supabase user (deleted from local DB but remains in SSO)
-      // Use admin API to delete the orphan and re-register
-      try {
-        const { getSupabaseAdmin } = await import('@/lib/supabase');
-        const adminClient = getSupabaseAdmin();
-        const { data: listData } = await adminClient.auth.admin.listUsers({
-          page: 1,
-          perPage: 1000,
-        });
-        const orphan = listData?.users?.find(
-          (u: { email?: string }) => u.email === email,
-        );
-        if (orphan) {
-          await adminClient.auth.admin.deleteUser(orphan.id);
-          // Now retry signup
-          const { data: retryData, error: retryError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: { data: { name } },
+      // First attempt to re-link using provided credentials.
+      // This handles the common orphan case where Supabase user exists
+      // but local user row was deleted.
+      const { data: loginData, error: loginError } =
+        await supabase.auth.signInWithPassword({ email, password });
+
+      if (!loginError && loginData.user) {
+        supabaseUserId = loginData.user.id;
+      } else {
+        // Fallback: cleanup orphan via admin API (if configured), then retry signup.
+        try {
+          const { getSupabaseAdmin } = await import('@/lib/supabase');
+          const adminClient = getSupabaseAdmin();
+          const { data: listData } = await adminClient.auth.admin.listUsers({
+            page: 1,
+            perPage: 1000,
           });
-          if (retryError || !retryData.user) {
-            return { error: 'Registration failed after cleanup. Please try again.' };
+          const orphan = listData?.users?.find(
+            (u: { email?: string }) => u.email === email,
+          );
+
+          if (orphan) {
+            await adminClient.auth.admin.deleteUser(orphan.id);
+            const { data: retryData, error: retryError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: { data: { name } },
+            });
+            if (retryError || !retryData.user) {
+              return { error: 'Registration failed after cleanup. Please try again.' };
+            }
+            supabaseUserId = retryData.user.id;
+          } else {
+            return { error: 'An account with this email already exists.' };
           }
-          supabaseUserId = retryData.user.id;
-        } else {
-          return { error: 'Registration failed. Please contact support.' };
+        } catch (cleanupErr) {
+          console.error('[REGISTER] Orphan cleanup failed:', cleanupErr);
+          return { error: 'An account with this email already exists.' };
         }
-      } catch (cleanupErr) {
-        console.error('[REGISTER] Orphan cleanup failed:', cleanupErr);
-        return { error: 'Registration failed. Please try again later.' };
       }
     } else {
       return { error: 'Registration failed. Please try again.' };
