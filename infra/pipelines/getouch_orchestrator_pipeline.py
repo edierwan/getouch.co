@@ -118,6 +118,7 @@ class Pipeline:
         CHUNK_OVERLAP: int = 150
         RETRIEVAL_TOP_K: int = 6
         WEB_IMAGE_LIMIT: int = 4
+        MAX_IMAGES_PER_TURN: int = 8
         ENABLE_STRUCTURED_LOGS: bool = True
 
     def __init__(self):
@@ -248,9 +249,10 @@ class Pipeline:
             web_image_urls = self._search_web_images(user_message, self.valves.WEB_IMAGE_LIMIT)
 
         stream_requested = bool(body.get("stream", False))
+        stream_supported = mode not in {"image_understanding", "mixed_multimodal"}
         options = (routed.get("options") or {}) if isinstance(routed.get("options"), dict) else {}
 
-        if stream_requested:
+        if stream_requested and stream_supported:
             return self._stream_ollama_chat(
                 target_model=target_model,
                 messages=ollama_messages,
@@ -890,7 +892,7 @@ class Pipeline:
             }
             if images and role == "user":
                 # Ollama expects base64 image data without data-uri prefix.
-                msg_obj["images"] = images[:4]
+                msg_obj["images"] = images[: max(1, int(self.valves.MAX_IMAGES_PER_TURN))]
             out.append(msg_obj)
         return out
 
