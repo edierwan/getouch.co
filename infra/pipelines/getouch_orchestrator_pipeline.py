@@ -18,8 +18,11 @@ import sqlite3
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+import imghdr
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 from urllib import request
+from urllib.error import HTTPError
 
 from pydantic import BaseModel
 
@@ -106,12 +109,15 @@ class Pipeline:
         VISION_MODEL: str = "qwen2.5vl:32b"
         FALLBACK_MODEL: str = "qwen2.5:14b"
         OLLAMA_BASE_URL: str = "http://ollama:11434"
+        SEARXNG_BASE_URL: str = "http://searxng:8080"
+        OPENWEBUI_BASE_URL: str = "http://open-webui:8080"
         EMBEDDING_MODEL: str = "all-minilm:latest"
         MAX_FILE_SIZE_MB: int = 25
         MAX_FILES_PER_TURN: int = 8
         CHUNK_SIZE: int = 1200
         CHUNK_OVERLAP: int = 150
         RETRIEVAL_TOP_K: int = 6
+        WEB_IMAGE_LIMIT: int = 4
         ENABLE_STRUCTURED_LOGS: bool = True
 
     def __init__(self):
@@ -180,9 +186,7 @@ class Pipeline:
 
         vision_context = ""
         if image_payloads and mode in {"image_understanding", "mixed_multimodal"}:
-            vision_context, vision_note = self._analyze_images(image_payloads, user_text)
-            if vision_note:
-                uncertainty_notes.append(vision_note)
+            vision_context = "Image attachments were provided. Prioritize visible evidence from the images in your answer."
 
         routed_system_prompt = self._compose_system_context(
             mode=mode,
@@ -225,35 +229,49 @@ class Pipeline:
 
     def pipe(
         self, user_message: str, model_id: str, messages: List[dict], body: dict
-    ) -> str:
+    ) -> Union[str, Iterator[str]]:
         started = time.time()
         req_body = dict(body or {})
         req_body["messages"] = messages or req_body.get("messages", [])
 
         routed = self._prepare_routed_body(req_body, req_body.get("user"))
         target_model = routed.get("model", self.valves.FALLBACK_MODEL)
+        route_meta = (routed.get("metadata") or {}).get("getouch_route") or {}
+        mode = str(route_meta.get("mode") or "fallback")
 
-        payload = dict(routed)
-        payload["model"] = target_model
-        payload["stream"] = False
-        payload.pop("chat_id", None)
-        payload.pop("title", None)
-        payload.pop("session_id", None)
-        payload.pop("user", None)
+        ollama_messages = self._to_ollama_messages(routed.get("messages", []))
+        if not ollama_messages:
+            ollama_messages = [{"role": "user", "content": user_message or "Help the user."}]
+
+        web_image_urls: List[str] = []
+        if self._should_search_web_images(user_message, mode):
+            web_image_urls = self._search_web_images(user_message, self.valves.WEB_IMAGE_LIMIT)
+
+        stream_requested = bool(body.get("stream", False))
+        options = (routed.get("options") or {}) if isinstance(routed.get("options"), dict) else {}
+
+        if stream_requested:
+            return self._stream_ollama_chat(
+                target_model=target_model,
+                messages=ollama_messages,
+                options=options,
+                web_image_urls=web_image_urls,
+            )
 
         try:
-            response = self._http_json(
-                f"{self.valves.OLLAMA_BASE_URL}/v1/chat/completions",
-                payload,
-                timeout=180,
-            )
-            content = (
-                response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
+            timeout_sec = 600 if mode in {"image_understanding", "mixed_multimodal"} else 240
+            content = self._complete_ollama_chat(
+                target_model=target_model,
+                messages=ollama_messages,
+                options=options,
+                timeout=timeout_sec,
             )
             if not isinstance(content, str) or not content.strip():
                 content = "I couldn't produce a grounded answer for this request. Please try a smaller file or narrower question."
+
+            if web_image_urls:
+                img_md = self._format_image_markdown(web_image_urls)
+                content = f"{img_md}\n\n{content}"
 
             self._log(
                 "model_latency",
@@ -676,10 +694,9 @@ class Pipeline:
         for img in images[:3]:
             if not isinstance(img, str):
                 continue
-            if img.startswith("data:image") and ";base64," in img:
-                valid.append(img.split(";base64,", 1)[1])
-            else:
-                valid.append(img)
+            b64 = self._image_ref_to_base64(img)
+            if b64:
+                valid.append(b64)
 
         if not valid:
             return "", "No valid image payload found"
@@ -715,10 +732,11 @@ class Pipeline:
             "You are Getouch Smart Assistant running in a routed orchestration mode.",
             f"Routing mode: {mode}",
             "Response format rules:",
-            "1) Give direct answer first.",
-            "2) Then give supporting references in 'Sources:' section.",
-            "3) Include uncertainty notes if extraction confidence is low.",
-            "4) Do not fabricate file content.",
+            "1) Start with a short section titled 'Ringkasan' (2-5 concise bullet points).",
+            "2) Then provide a detailed section titled 'Perincian'.",
+            "3) If documents are used, include supporting references in 'Sources:' section.",
+            "4) Include uncertainty notes if extraction confidence is low.",
+            "5) Do not fabricate file content.",
         ]
 
         if file_refs:
@@ -756,9 +774,191 @@ class Pipeline:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
+        try:
+            with request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read().decode("utf-8")
+        except HTTPError as exc:
+            err_body = ""
+            try:
+                err_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            detail = err_body[:500].strip()
+            if detail:
+                raise RuntimeError(f"HTTP {exc.code} from {url}: {detail}")
+            raise RuntimeError(f"HTTP {exc.code} from {url}")
         return json.loads(body)
+
+    def _complete_ollama_chat(
+        self,
+        target_model: str,
+        messages: List[Dict[str, Any]],
+        options: Dict[str, Any],
+        timeout: int = 240,
+    ) -> str:
+        payload = {
+            "model": target_model,
+            "messages": messages,
+            "stream": False,
+        }
+        if options:
+            payload["options"] = options
+        data = self._http_json(
+            f"{self.valves.OLLAMA_BASE_URL}/api/chat",
+            payload,
+            timeout=timeout,
+        )
+        return (data.get("message") or {}).get("content", "")
+
+    def _stream_ollama_chat(
+        self,
+        target_model: str,
+        messages: List[Dict[str, Any]],
+        options: Dict[str, Any],
+        web_image_urls: List[str],
+    ) -> Iterator[str]:
+        payload = {
+            "model": target_model,
+            "messages": messages,
+            "stream": True,
+        }
+        if options:
+            payload["options"] = options
+
+        raw = json.dumps(payload).encode("utf-8")
+        req = request.Request(
+            f"{self.valves.OLLAMA_BASE_URL}/api/chat",
+            data=raw,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        if web_image_urls:
+            yield self._format_image_markdown(web_image_urls) + "\n\n"
+
+        with request.urlopen(req, timeout=300) as resp:
+            for line in resp:
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line.decode("utf-8", errors="ignore").strip())
+                except Exception:
+                    continue
+                msg = (obj.get("message") or {}).get("content", "")
+                if msg:
+                    yield msg
+
+    def _to_ollama_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for m in messages:
+            role = str(m.get("role") or "user")
+            content = m.get("content")
+            text_parts: List[str] = []
+            images: List[str] = []
+
+            if isinstance(content, str):
+                text_parts.append(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    ptype = str(part.get("type") or "").lower()
+                    if ptype in {"text", "input_text"}:
+                        t = part.get("text") or part.get("content")
+                        if t:
+                            text_parts.append(str(t))
+                    elif ptype in {"image_url", "input_image", "image"}:
+                        img_ref = ""
+                        if isinstance(part.get("image_url"), dict):
+                            img_ref = str(part.get("image_url", {}).get("url") or "")
+                        elif part.get("image"):
+                            img_ref = str(part.get("image") or "")
+                        if img_ref:
+                            b64 = self._image_ref_to_base64(img_ref)
+                            if b64:
+                                images.append(b64)
+
+            for img in self._coerce_list(m.get("images")):
+                if isinstance(img, str):
+                    b64 = self._image_ref_to_base64(img)
+                    if b64:
+                        images.append(b64)
+
+            msg_obj: Dict[str, Any] = {
+                "role": role,
+                "content": "\n".join([p for p in text_parts if p]).strip() or " ",
+            }
+            if images and role == "user":
+                # Ollama expects base64 image data without data-uri prefix.
+                msg_obj["images"] = images[:4]
+            out.append(msg_obj)
+        return out
+
+    def _image_ref_to_base64(self, ref: str) -> str:
+        if not ref:
+            return ""
+        if ref.startswith("data:image") and ";base64," in ref:
+            return ref.split(";base64,", 1)[1]
+        if ref.startswith("/"):
+            ref = f"{self.valves.OPENWEBUI_BASE_URL.rstrip('/')}{ref}"
+        if ref.startswith("http://") or ref.startswith("https://"):
+            try:
+                req = request.Request(ref, headers={"User-Agent": "Mozilla/5.0"})
+                with request.urlopen(req, timeout=20) as resp:
+                    content_type = str(resp.headers.get("Content-Type") or "").lower()
+                    img_bytes = resp.read()
+                if content_type and not content_type.startswith("image/"):
+                    return ""
+                if imghdr.what(None, img_bytes) is None:
+                    return ""
+                return base64.b64encode(img_bytes).decode("utf-8")
+            except Exception:
+                return ""
+        # Not a supported image reference payload for direct model usage.
+        return ""
+
+    def _should_search_web_images(self, user_text: str, mode: str) -> bool:
+        if mode not in {"text_only", "tool_required"}:
+            return False
+        q = (user_text or "").lower()
+        return bool(
+            re.search(
+                r"\b(itinerary|travel|trip|tempat|chengdu|china|guide|plan|visit|sightseeing)\b",
+                q,
+            )
+        )
+
+    def _search_web_images(self, query: str, limit: int) -> List[str]:
+        try:
+            q = quote_plus(query[:180])
+            url = (
+                f"{self.valves.SEARXNG_BASE_URL}/search?format=json&categories=images"
+                f"&language=ms&q={q}"
+            )
+            req = request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            raw = request.urlopen(req, timeout=20).read().decode("utf-8", errors="ignore")
+            data = json.loads(raw)
+            results = data.get("results") or []
+            urls: List[str] = []
+            for r in results:
+                if not isinstance(r, dict):
+                    continue
+                cand = r.get("img_src") or r.get("thumbnail") or r.get("url")
+                if isinstance(cand, str) and cand.startswith("http"):
+                    urls.append(cand)
+                if len(urls) >= max(1, limit):
+                    break
+            return urls
+        except Exception:
+            return []
+
+    def _format_image_markdown(self, urls: List[str]) -> str:
+        if not urls:
+            return ""
+        lines = ["Visual references:"]
+        for idx, u in enumerate(urls, start=1):
+            lines.append(f"![reference-{idx}]({u})")
+        return "\n".join(lines)
 
     def _keyword_overlap(self, query: str, text: str) -> float:
         q_tokens = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
