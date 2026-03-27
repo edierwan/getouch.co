@@ -1,0 +1,826 @@
+"""
+title: Getouch Multimodal Orchestrator Pipeline
+author: Getouch
+description: Routed execution for text, documents, image understanding, and mixed multimodal requests.
+version: 1.0.0
+requirements: pydantic,pypdf,python-docx,pandas,openpyxl,python-pptx
+"""
+
+import base64
+import csv
+import hashlib
+import io
+import json
+import math
+import os
+import re
+import sqlite3
+import threading
+import time
+import traceback
+from typing import Any, Dict, List, Optional, Tuple
+from urllib import request
+
+from pydantic import BaseModel
+
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
+
+try:
+    import docx
+except Exception:
+    docx = None
+
+try:
+    import openpyxl
+except Exception:
+    openpyxl = None
+
+try:
+    from pptx import Presentation
+except Exception:
+    Presentation = None
+
+
+SUPPORTED_DOC_MIME = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+SUPPORTED_IMAGE_MIME = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+}
+
+MIME_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+
+class NormalizedFile:
+    def __init__(
+        self,
+        file_id: str,
+        name: str,
+        mime: str,
+        size: int,
+        content: bytes,
+        source_hint: str,
+    ):
+        self.file_id = file_id
+        self.name = name
+        self.mime = mime
+        self.size = size
+        self.content = content
+        self.source_hint = source_hint
+
+
+class Pipeline:
+    class Valves(BaseModel):
+        TEXT_MODEL: str = "qwen2.5:14b"
+        DOC_MODEL: str = "qwen2.5:14b"
+        VISION_MODEL: str = "qwen2.5vl:32b"
+        FALLBACK_MODEL: str = "qwen2.5:14b"
+        OLLAMA_BASE_URL: str = "http://ollama:11434"
+        EMBEDDING_MODEL: str = "all-minilm:latest"
+        MAX_FILE_SIZE_MB: int = 25
+        MAX_FILES_PER_TURN: int = 8
+        CHUNK_SIZE: int = 1200
+        CHUNK_OVERLAP: int = 150
+        RETRIEVAL_TOP_K: int = 6
+        ENABLE_STRUCTURED_LOGS: bool = True
+
+    def __init__(self):
+        self.type = "manifold"
+        self.name = "Getouch Orchestrator"
+        self.pipelines = [
+            {"id": "assistant", "name": "Getouch Smart Assistant"}
+        ]
+        self.valves = self.Valves(
+            **{k: os.getenv(k, v.default) for k, v in self.Valves.model_fields.items()}
+        )
+        self.db_path = "/app/pipelines/getouch_orchestrator.db"
+        self.lock = threading.Lock()
+        self._ensure_db()
+
+    async def on_startup(self):
+        self._log("startup", {"pipeline": self.name})
+
+    async def on_shutdown(self):
+        self._log("shutdown", {"pipeline": self.name})
+
+    async def on_valves_updated(self):
+        self._log("valves_updated", self.valves.model_dump())
+
+    def _prepare_routed_body(self, body: dict, user: Optional[dict] = None) -> dict:
+        started = time.time()
+        body = body or {}
+        messages = body.get("messages", [])
+        user_text = self._last_user_text(messages)
+
+        attachments = self._extract_attachments(body, messages)
+        normalized_docs, parse_notes = self._normalize_document_files(attachments.get("files", []))
+        image_payloads = attachments.get("images", [])
+
+        mode = self._classify_mode(user_text, normalized_docs, image_payloads)
+        if mode == "tool_required":
+            target_model = self.valves.TEXT_MODEL
+        elif mode == "text_only":
+            target_model = self.valves.TEXT_MODEL
+        elif mode == "text_with_documents":
+            target_model = self.valves.DOC_MODEL
+        elif mode in {"image_understanding", "mixed_multimodal"}:
+            target_model = self.valves.VISION_MODEL
+        else:
+            target_model = self.valves.FALLBACK_MODEL
+
+        file_refs: List[str] = []
+        retrieval_context = ""
+        uncertainty_notes: List[str] = []
+
+        if normalized_docs:
+            for doc in normalized_docs:
+                status, note = self._ingest_document(doc)
+                file_refs.append(f"{doc.name} ({status})")
+                if note:
+                    uncertainty_notes.append(note)
+
+            hits = self._retrieve_context(user_text, top_k=self.valves.RETRIEVAL_TOP_K)
+            if hits:
+                lines = []
+                for h in hits:
+                    lines.append(
+                        f"- [{h['source']}] {h['text'][:550].replace(chr(10), ' ')}"
+                    )
+                retrieval_context = "\n".join(lines)
+
+        vision_context = ""
+        if image_payloads and mode in {"image_understanding", "mixed_multimodal"}:
+            vision_context, vision_note = self._analyze_images(image_payloads, user_text)
+            if vision_note:
+                uncertainty_notes.append(vision_note)
+
+        routed_system_prompt = self._compose_system_context(
+            mode=mode,
+            retrieval_context=retrieval_context,
+            vision_context=vision_context,
+            file_refs=file_refs,
+            parse_notes=parse_notes,
+            uncertainty_notes=uncertainty_notes,
+        )
+
+        body.setdefault("messages", [])
+        body["messages"] = [{"role": "system", "content": routed_system_prompt}] + body["messages"]
+        body["model"] = target_model
+
+        meta = body.get("metadata") or {}
+        meta["getouch_route"] = {
+            "mode": mode,
+            "target_model": target_model,
+            "doc_count": len(normalized_docs),
+            "image_count": len(image_payloads),
+        }
+        body["metadata"] = meta
+
+        self._log(
+            "routing_decision",
+            {
+                "mode": mode,
+                "target_model": target_model,
+                "doc_count": len(normalized_docs),
+                "image_count": len(image_payloads),
+                "latency_ms": int((time.time() - started) * 1000),
+                "user_id": (user or {}).get("id"),
+            },
+        )
+        return body
+
+    async def inlet(self, body: dict, user: Optional[dict] = None) -> dict:
+        # Kept for compatibility when this pipeline is attached as a filter.
+        return self._prepare_routed_body(body, user)
+
+    def pipe(
+        self, user_message: str, model_id: str, messages: List[dict], body: dict
+    ) -> str:
+        started = time.time()
+        req_body = dict(body or {})
+        req_body["messages"] = messages or req_body.get("messages", [])
+
+        routed = self._prepare_routed_body(req_body, req_body.get("user"))
+        target_model = routed.get("model", self.valves.FALLBACK_MODEL)
+
+        payload = dict(routed)
+        payload["model"] = target_model
+        payload["stream"] = False
+        payload.pop("chat_id", None)
+        payload.pop("title", None)
+        payload.pop("session_id", None)
+        payload.pop("user", None)
+
+        try:
+            response = self._http_json(
+                f"{self.valves.OLLAMA_BASE_URL}/v1/chat/completions",
+                payload,
+                timeout=180,
+            )
+            content = (
+                response.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            if not isinstance(content, str) or not content.strip():
+                content = "I couldn't produce a grounded answer for this request. Please try a smaller file or narrower question."
+
+            self._log(
+                "model_latency",
+                {
+                    "target_model": target_model,
+                    "latency_ms": int((time.time() - started) * 1000),
+                },
+            )
+            return content
+        except Exception as exc:
+            self._log(
+                "failure",
+                {
+                    "reason": str(exc),
+                    "target_model": target_model,
+                },
+            )
+            return (
+                "I hit a routing/runtime error while processing this request. "
+                "Please retry. If this continues, reduce file size or attachment count."
+            )
+
+    async def outlet(self, body: dict, user: Optional[dict] = None) -> dict:
+        return body
+
+    def _ensure_db(self):
+        with self.lock:
+            con = sqlite3.connect(self.db_path)
+            cur = con.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS files (
+                    file_hash TEXT PRIMARY KEY,
+                    file_id TEXT,
+                    name TEXT,
+                    mime TEXT,
+                    size INTEGER,
+                    extracted_text TEXT,
+                    extraction_status TEXT,
+                    confidence REAL,
+                    parser_notes TEXT,
+                    created_at INTEGER,
+                    updated_at INTEGER
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chunks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_hash TEXT,
+                    source_ref TEXT,
+                    chunk_index INTEGER,
+                    chunk_text TEXT,
+                    embedding_json TEXT,
+                    confidence REAL,
+                    created_at INTEGER
+                )
+                """
+            )
+            con.commit()
+            con.close()
+
+    def _extract_attachments(self, body: Dict[str, Any], messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        files: List[Dict[str, Any]] = []
+        images: List[str] = []
+
+        files.extend(self._coerce_list(body.get("files")))
+        files.extend(self._coerce_list(body.get("attachments")))
+
+        for message in messages:
+            if message.get("role") != "user":
+                continue
+            files.extend(self._coerce_list(message.get("files")))
+            files.extend(self._coerce_list(message.get("attachments")))
+            images.extend(self._coerce_list(message.get("images")))
+
+            content = message.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    ptype = str(part.get("type", "")).lower()
+                    if ptype in {"image_url", "input_image", "image"}:
+                        img_url = (
+                            part.get("image_url", {}).get("url")
+                            if isinstance(part.get("image_url"), dict)
+                            else part.get("image")
+                        )
+                        if img_url:
+                            images.append(img_url)
+                    if ptype in {"file", "input_file"}:
+                        files.append(part)
+        return {"files": files, "images": images}
+
+    def _normalize_document_files(
+        self, raw_files: List[Dict[str, Any]]
+    ) -> Tuple[List[NormalizedFile], List[str]]:
+        notes: List[str] = []
+        normalized: List[NormalizedFile] = []
+        max_bytes = self.valves.MAX_FILE_SIZE_MB * 1024 * 1024
+
+        for idx, raw in enumerate(raw_files[: self.valves.MAX_FILES_PER_TURN]):
+            try:
+                item = raw if isinstance(raw, dict) else {"name": f"file-{idx}", "content": str(raw)}
+                name = str(item.get("name") or item.get("filename") or f"file-{idx}")
+                ext = os.path.splitext(name)[1].lower()
+                mime = str(item.get("mime_type") or item.get("type") or MIME_BY_EXT.get(ext, ""))
+
+                content = self._extract_file_bytes(item)
+                size = len(content)
+                if size == 0:
+                    notes.append(f"Skipped {name}: empty or inaccessible content.")
+                    continue
+                if size > max_bytes:
+                    notes.append(
+                        f"Skipped {name}: exceeds max size {self.valves.MAX_FILE_SIZE_MB}MB."
+                    )
+                    continue
+                if mime and mime not in SUPPORTED_DOC_MIME:
+                    continue
+                if ext and MIME_BY_EXT.get(ext) and MIME_BY_EXT[ext] not in SUPPORTED_DOC_MIME:
+                    continue
+
+                file_id = str(item.get("id") or item.get("file_id") or hashlib.sha1((name + str(size)).encode()).hexdigest())
+                normalized.append(
+                    NormalizedFile(
+                        file_id=file_id,
+                        name=name,
+                        mime=mime or MIME_BY_EXT.get(ext, "application/octet-stream"),
+                        size=size,
+                        content=content,
+                        source_hint=str(item.get("source") or "chat_attachment"),
+                    )
+                )
+            except Exception as exc:
+                notes.append(f"Failed to normalize attachment {idx}: {exc}")
+        return normalized, notes
+
+    def _extract_file_bytes(self, item: Dict[str, Any]) -> bytes:
+        if isinstance(item.get("content"), str):
+            c = item["content"]
+            if c.startswith("data:") and ";base64," in c:
+                return base64.b64decode(c.split(";base64,", 1)[1])
+            return c.encode("utf-8", errors="ignore")
+
+        if isinstance(item.get("data"), str):
+            d = item["data"]
+            if d.startswith("data:") and ";base64," in d:
+                d = d.split(";base64,", 1)[1]
+            try:
+                return base64.b64decode(d)
+            except Exception:
+                return d.encode("utf-8", errors="ignore")
+
+        if isinstance(item.get("bytes"), (bytes, bytearray)):
+            return bytes(item.get("bytes"))
+
+        if isinstance(item.get("path"), str) and os.path.exists(item["path"]):
+            with open(item["path"], "rb") as f:
+                return f.read()
+
+        if isinstance(item.get("url"), str):
+            try:
+                req = request.Request(item["url"], headers={"User-Agent": "Mozilla/5.0"})
+                return request.urlopen(req, timeout=20).read()
+            except Exception:
+                return b""
+        return b""
+
+    def _classify_mode(
+        self, user_text: str, docs: List[NormalizedFile], images: List[str]
+    ) -> str:
+        has_docs = len(docs) > 0
+        has_images = len(images) > 0
+
+        tool_kw = re.search(
+            r"\b(search|latest|current|real[- ]?time|browse|web|price|weather|stock)\b",
+            user_text.lower(),
+        )
+
+        if has_docs and has_images:
+            return "mixed_multimodal"
+        if has_images:
+            return "image_understanding"
+        if has_docs:
+            return "text_with_documents"
+        if tool_kw:
+            return "tool_required"
+        if not user_text.strip():
+            return "fallback"
+        return "text_only"
+
+    def _ingest_document(self, doc: NormalizedFile) -> Tuple[str, str]:
+        file_hash = hashlib.sha1(doc.content).hexdigest()
+        now = int(time.time())
+
+        existing = self._db_fetchone(
+            "SELECT extraction_status, parser_notes FROM files WHERE file_hash = ?",
+            (file_hash,),
+        )
+        if existing and existing[0] == "ready":
+            return "indexed", ""
+
+        text, refs, confidence, parser_note = self._parse_document(doc)
+
+        if not text.strip():
+            status = "low_confidence"
+            parser_note = (parser_note + " | No text extracted; vision/OCR fallback recommended.").strip(" |")
+            confidence = min(confidence, 0.2)
+        else:
+            status = "ready"
+
+        self._db_execute(
+            """
+            INSERT OR REPLACE INTO files
+            (file_hash, file_id, name, mime, size, extracted_text, extraction_status, confidence, parser_notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM files WHERE file_hash = ?), ?), ?)
+            """,
+            (
+                file_hash,
+                doc.file_id,
+                doc.name,
+                doc.mime,
+                doc.size,
+                text,
+                status,
+                confidence,
+                parser_note,
+                file_hash,
+                now,
+                now,
+            ),
+        )
+
+        self._db_execute("DELETE FROM chunks WHERE file_hash = ?", (file_hash,))
+
+        if text.strip():
+            chunks = self._chunk_text(text, self.valves.CHUNK_SIZE, self.valves.CHUNK_OVERLAP)
+            for idx, chunk in enumerate(chunks):
+                source_ref = refs.get(idx, refs.get(-1, doc.name))
+                emb = self._embed_text(chunk)
+                self._db_execute(
+                    """
+                    INSERT INTO chunks (file_hash, source_ref, chunk_index, chunk_text, embedding_json, confidence, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        file_hash,
+                        source_ref,
+                        idx,
+                        chunk,
+                        json.dumps(emb) if emb else "[]",
+                        confidence,
+                        now,
+                    ),
+                )
+        return status, parser_note
+
+    def _parse_document(
+        self, doc: NormalizedFile
+    ) -> Tuple[str, Dict[int, str], float, str]:
+        name_lower = doc.name.lower()
+        refs: Dict[int, str] = {-1: doc.name}
+        note = ""
+        confidence = 0.85
+
+        try:
+            if name_lower.endswith(".pdf") or doc.mime == "application/pdf":
+                if PdfReader is None:
+                    return "", refs, 0.1, "pypdf unavailable"
+                reader = PdfReader(io.BytesIO(doc.content))
+                parts = []
+                chunk_idx = 0
+                for i, page in enumerate(reader.pages, start=1):
+                    page_text = (page.extract_text() or "").strip()
+                    if page_text:
+                        parts.append(page_text)
+                        refs[chunk_idx] = f"{doc.name} p.{i}"
+                        chunk_idx += 1
+                if not parts:
+                    confidence = 0.25
+                    note = "PDF appears scanned/image-only"
+                return "\n\n".join(parts), refs, confidence, note
+
+            if name_lower.endswith(".docx") or "wordprocessingml" in doc.mime:
+                if docx is None:
+                    return "", refs, 0.1, "python-docx unavailable"
+                d = docx.Document(io.BytesIO(doc.content))
+                lines = []
+                for p in d.paragraphs:
+                    t = p.text.strip()
+                    if t:
+                        lines.append(t)
+                for ti, table in enumerate(d.tables, start=1):
+                    rows = []
+                    for row in table.rows[:30]:
+                        rows.append(" | ".join(cell.text.strip() for cell in row.cells))
+                    if rows:
+                        lines.append(f"[Table {ti}]\n" + "\n".join(rows))
+                return "\n".join(lines), refs, confidence, note
+
+            if name_lower.endswith(".txt") or name_lower.endswith(".md") or doc.mime in {"text/plain", "text/markdown"}:
+                return doc.content.decode("utf-8", errors="ignore"), refs, confidence, note
+
+            if name_lower.endswith(".csv") or "csv" in doc.mime:
+                decoded = doc.content.decode("utf-8", errors="ignore")
+                rdr = csv.reader(io.StringIO(decoded))
+                rows = [row for _, row in zip(range(120), rdr)]
+                if not rows:
+                    return "", refs, 0.2, "CSV has no readable rows"
+                headers = rows[0]
+                preview = rows[1:21]
+                summary = [
+                    f"CSV file: {doc.name}",
+                    f"Headers: {', '.join(headers[:40])}",
+                    f"Preview rows: {len(preview)}",
+                ]
+                formatted = [", ".join(r[:40]) for r in preview]
+                return "\n".join(summary + ["Rows:"] + formatted), refs, confidence, note
+
+            if name_lower.endswith(".xlsx") or "spreadsheetml" in doc.mime or name_lower.endswith(".xls"):
+                if openpyxl is None:
+                    return "", refs, 0.1, "openpyxl unavailable"
+                wb = openpyxl.load_workbook(io.BytesIO(doc.content), data_only=True, read_only=True)
+                lines = [f"Workbook: {doc.name}"]
+                for ws in wb.worksheets[:10]:
+                    lines.append(f"Sheet: {ws.title}")
+                    sample_rows = []
+                    for ridx, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=True), start=1):
+                        vals = ["" if v is None else str(v) for v in row[:20]]
+                        sample_rows.append(f"R{ridx}: " + " | ".join(vals))
+                    lines.extend(sample_rows)
+                return "\n".join(lines), refs, confidence, note
+
+            if name_lower.endswith(".pptx") or "presentationml" in doc.mime or name_lower.endswith(".ppt"):
+                if Presentation is None:
+                    return "", refs, 0.1, "python-pptx unavailable"
+                prs = Presentation(io.BytesIO(doc.content))
+                lines = [f"Presentation: {doc.name}"]
+                for idx, slide in enumerate(prs.slides, start=1):
+                    texts = []
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text:
+                            texts.append(shape.text.strip())
+                    if hasattr(slide, "notes_slide") and slide.notes_slide and slide.notes_slide.notes_text_frame:
+                        nt = slide.notes_slide.notes_text_frame.text.strip()
+                        if nt:
+                            texts.append(f"Notes: {nt}")
+                    lines.append(f"Slide {idx}: " + " | ".join([t for t in texts if t]))
+                    refs[idx - 1] = f"{doc.name} slide {idx}"
+                return "\n".join(lines), refs, confidence, note
+
+            return "", refs, 0.15, "Unsupported document format"
+        except Exception as exc:
+            return "", refs, 0.1, f"Parser error: {exc}"
+
+    def _chunk_text(self, text: str, size: int, overlap: int) -> List[str]:
+        clean = re.sub(r"\s+", " ", text).strip()
+        if not clean:
+            return []
+        chunks = []
+        start = 0
+        while start < len(clean):
+            end = min(len(clean), start + size)
+            chunk = clean[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            if end >= len(clean):
+                break
+            start = max(0, end - overlap)
+        return chunks
+
+    def _embed_text(self, text: str) -> List[float]:
+        payload = {
+            "model": self.valves.EMBEDDING_MODEL,
+            "prompt": text[:6000],
+        }
+        try:
+            data = self._http_json(
+                f"{self.valves.OLLAMA_BASE_URL}/api/embeddings", payload, timeout=20
+            )
+            emb = data.get("embedding") or []
+            return emb if isinstance(emb, list) else []
+        except Exception:
+            return []
+
+    def _retrieve_context(self, query: str, top_k: int = 6) -> List[Dict[str, Any]]:
+        if not query.strip():
+            return []
+        q_emb = self._embed_text(query)
+        rows = self._db_fetchall(
+            "SELECT source_ref, chunk_text, embedding_json, confidence FROM chunks ORDER BY created_at DESC LIMIT 500",
+            (),
+        )
+
+        scored = []
+        for source_ref, chunk_text, emb_json, conf in rows:
+            score = 0.0
+            if q_emb:
+                try:
+                    c_emb = json.loads(emb_json or "[]")
+                    score = self._cosine(q_emb, c_emb)
+                except Exception:
+                    score = 0.0
+            if score <= 0.0:
+                score = self._keyword_overlap(query, chunk_text)
+            score = score * float(conf or 0.5)
+            if score > 0.01:
+                scored.append((score, source_ref, chunk_text))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [
+            {"score": s, "source": src, "text": txt}
+            for s, src, txt in scored[:top_k]
+        ]
+
+    def _analyze_images(self, images: List[str], user_text: str) -> Tuple[str, str]:
+        valid = []
+        for img in images[:3]:
+            if not isinstance(img, str):
+                continue
+            if img.startswith("data:image") and ";base64," in img:
+                valid.append(img.split(";base64,", 1)[1])
+            else:
+                valid.append(img)
+
+        if not valid:
+            return "", "No valid image payload found"
+
+        prompt = (
+            "Analyze this image carefully for visible UI states, errors, key text, and actionable facts. "
+            "Respond with short bullet points. User question: " + (user_text or "")
+        )
+        payload = {
+            "model": self.valves.VISION_MODEL,
+            "messages": [{"role": "user", "content": prompt, "images": valid}],
+            "stream": False,
+        }
+        try:
+            data = self._http_json(
+                f"{self.valves.OLLAMA_BASE_URL}/api/chat", payload, timeout=120
+            )
+            msg = (data.get("message") or {}).get("content", "").strip()
+            return msg, ""
+        except Exception as exc:
+            return "", f"Vision analysis failed: {exc}"
+
+    def _compose_system_context(
+        self,
+        mode: str,
+        retrieval_context: str,
+        vision_context: str,
+        file_refs: List[str],
+        parse_notes: List[str],
+        uncertainty_notes: List[str],
+    ) -> str:
+        sections = [
+            "You are Getouch Smart Assistant running in a routed orchestration mode.",
+            f"Routing mode: {mode}",
+            "Response format rules:",
+            "1) Give direct answer first.",
+            "2) Then give supporting references in 'Sources:' section.",
+            "3) Include uncertainty notes if extraction confidence is low.",
+            "4) Do not fabricate file content.",
+        ]
+
+        if file_refs:
+            sections.append("Files used: " + ", ".join(file_refs))
+        if retrieval_context:
+            sections.append("Retrieved context:\n" + retrieval_context)
+        if vision_context:
+            sections.append("Vision analysis notes:\n" + vision_context)
+        if parse_notes:
+            sections.append("Parser notes:\n- " + "\n- ".join(parse_notes))
+        if uncertainty_notes:
+            sections.append("Uncertainty:\n- " + "\n- ".join(uncertainty_notes))
+        return "\n\n".join(sections)
+
+    def _last_user_text(self, messages: List[Dict[str, Any]]) -> str:
+        for m in reversed(messages):
+            if m.get("role") != "user":
+                continue
+            content = m.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts = []
+                for p in content:
+                    if isinstance(p, dict) and p.get("type") in {"text", "input_text"}:
+                        parts.append(str(p.get("text") or p.get("content") or ""))
+                return "\n".join(parts)
+        return ""
+
+    def _http_json(self, url: str, payload: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
+        raw = json.dumps(payload).encode("utf-8")
+        req = request.Request(
+            url,
+            data=raw,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+        return json.loads(body)
+
+    def _keyword_overlap(self, query: str, text: str) -> float:
+        q_tokens = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
+        t_tokens = {t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 2}
+        if not q_tokens or not t_tokens:
+            return 0.0
+        inter = len(q_tokens.intersection(t_tokens))
+        return inter / max(len(q_tokens), 1)
+
+    def _cosine(self, a: List[float], b: List[float]) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        if na == 0 or nb == 0:
+            return 0.0
+        return dot / (na * nb)
+
+    def _coerce_list(self, v: Any) -> List[Any]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        return [v]
+
+    def _db_execute(self, sql: str, params: Tuple[Any, ...]):
+        with self.lock:
+            con = sqlite3.connect(self.db_path)
+            cur = con.cursor()
+            cur.execute(sql, params)
+            con.commit()
+            con.close()
+
+    def _db_fetchone(self, sql: str, params: Tuple[Any, ...]):
+        with self.lock:
+            con = sqlite3.connect(self.db_path)
+            cur = con.cursor()
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            con.close()
+            return row
+
+    def _db_fetchall(self, sql: str, params: Tuple[Any, ...]):
+        with self.lock:
+            con = sqlite3.connect(self.db_path)
+            cur = con.cursor()
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            con.close()
+            return rows
+
+    def _log(self, event: str, payload: Dict[str, Any]):
+        if not self.valves.ENABLE_STRUCTURED_LOGS:
+            return
+        line = {
+            "ts": int(time.time()),
+            "event": event,
+            "payload": payload,
+        }
+        try:
+            print(json.dumps(line, ensure_ascii=True))
+        except Exception:
+            print(f"{event}: {payload}")
+            print(traceback.format_exc())
