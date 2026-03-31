@@ -1,8 +1,8 @@
 """
 title: Getouch Multimodal Orchestrator Pipeline
 author: Getouch
-description: Routed execution for text, documents, image understanding, and mixed multimodal requests.
-version: 1.0.0
+description: Routed execution for text, documents, image understanding, and mixed multimodal requests. Includes travel/place image cards.
+version: 1.1.0
 requirements: pydantic,pypdf,python-docx,pandas,openpyxl,python-pptx
 """
 
@@ -18,7 +18,23 @@ import sqlite3
 import threading
 import time
 import traceback
-import imghdr
+try:
+    import imghdr
+except ModuleNotFoundError:
+    # imghdr removed in Python 3.13+; provide minimal fallback
+    class _ImghdrShim:
+        _SIGS = {b'\x89PNG': 'png', b'\xff\xd8\xff': 'jpeg', b'GIF8': 'gif', b'RIFF': 'webp', b'BM': 'bmp'}
+        @staticmethod
+        def what(filename, h=None):
+            data = h or b''
+            if filename and not data:
+                with open(filename, 'rb') as f:
+                    data = f.read(32)
+            for sig, fmt in _ImghdrShim._SIGS.items():
+                if data[:len(sig)] == sig:
+                    return fmt
+            return None
+    imghdr = _ImghdrShim()
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 from urllib import request
@@ -118,6 +134,7 @@ class Pipeline:
         CHUNK_OVERLAP: int = 150
         RETRIEVAL_TOP_K: int = 6
         WEB_IMAGE_LIMIT: int = 4
+        PLACE_IMAGE_LIMIT: int = 6
         MAX_IMAGES_PER_TURN: int = 8
         ENABLE_STRUCTURED_LOGS: bool = True
 
@@ -244,8 +261,11 @@ class Pipeline:
         if not ollama_messages:
             ollama_messages = [{"role": "user", "content": user_message or "Help the user."}]
 
+        place_cards: List[Dict[str, str]] = []
         web_image_urls: List[str] = []
-        if self._should_search_web_images(user_message, mode):
+        if self._should_search_place_images(user_message, mode):
+            place_cards = self._build_place_cards(user_message)
+        elif self._should_search_web_images(user_message, mode):
             web_image_urls = self._search_web_images(user_message, self.valves.WEB_IMAGE_LIMIT)
 
         stream_requested = bool(body.get("stream", False))
@@ -258,6 +278,7 @@ class Pipeline:
                 messages=ollama_messages,
                 options=options,
                 web_image_urls=web_image_urls,
+                place_cards=place_cards,
             )
 
         try:
@@ -271,7 +292,10 @@ class Pipeline:
             if not isinstance(content, str) or not content.strip():
                 content = "I couldn't produce a grounded answer for this request. Please try a smaller file or narrower question."
 
-            if web_image_urls:
+            if place_cards:
+                img_md = self._format_place_cards(place_cards)
+                content = f"{img_md}\n\n{content}"
+            elif web_image_urls:
                 img_md = self._format_image_markdown(web_image_urls)
                 content = f"{img_md}\n\n{content}"
 
@@ -818,6 +842,7 @@ class Pipeline:
         messages: List[Dict[str, Any]],
         options: Dict[str, Any],
         web_image_urls: List[str],
+        place_cards: Optional[List[Dict[str, str]]] = None,
     ) -> Iterator[str]:
         payload = {
             "model": target_model,
@@ -835,7 +860,9 @@ class Pipeline:
             method="POST",
         )
 
-        if web_image_urls:
+        if place_cards:
+            yield self._format_place_cards(place_cards) + "\n\n"
+        elif web_image_urls:
             yield self._format_image_markdown(web_image_urls) + "\n\n"
 
         with request.urlopen(req, timeout=300) as resp:
@@ -919,16 +946,112 @@ class Pipeline:
         # Not a supported image reference payload for direct model usage.
         return ""
 
+    def _should_search_place_images(self, user_text: str, mode: str) -> bool:
+        """Detect queries that benefit from per-place image cards (travel, recommendations, itineraries)."""
+        if mode not in {"text_only", "tool_required"}:
+            return False
+        q = (user_text or "").lower()
+        return bool(
+            re.search(
+                r"\b(itinerar[iy]|iternary|travel|trip|tempat|lawat|melawat|jalan[- ]?jalan"
+                r"|guide|plan|visit|sightseeing|holiday|vacation|percutian|cuti"
+                r"|recommend|cadang|saran|suggest|best\s+place|top\s+\d+"
+                r"|things?\s+to\s+do|what\s+to\s+see|where\s+to\s+go"
+                r"|makan\s+sedap|restoran|restaurant|cafe|hotel|resort"
+                r"|destinasi|pelancongan|backpack|roadtrip|staycation)\b",
+                q,
+            )
+        )
+
     def _should_search_web_images(self, user_text: str, mode: str) -> bool:
         if mode not in {"text_only", "tool_required"}:
             return False
         q = (user_text or "").lower()
         return bool(
             re.search(
-                r"\b(itinerary|travel|trip|tempat|chengdu|china|guide|plan|visit|sightseeing)\b",
+                r"\b(itinerary|travel|trip|tempat|guide|plan|visit|sightseeing)\b",
                 q,
             )
         )
+
+    def _extract_place_names(self, user_text: str) -> List[str]:
+        """Quick LLM call to extract recommended place names from the user query."""
+        prompt = (
+            "Based on this travel/recommendation query, list 4-6 specific famous place names "
+            "that would be recommended. Reply ONLY with place names, one per line, no numbering, "
+            "no descriptions. Example:\nPetronas Twin Towers\nBatu Caves\nCentral Market\n\n"
+            f"Query: {user_text[:500]}"
+        )
+        try:
+            content = self._complete_ollama_chat(
+                target_model=self.valves.TEXT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0.3, "num_predict": 200},
+                timeout=30,
+            )
+            places = []
+            for line in content.strip().split("\n"):
+                name = line.strip().strip("0123456789.-) ")
+                if name and len(name) > 2 and len(name) < 80:
+                    places.append(name)
+            return places[:int(self.valves.PLACE_IMAGE_LIMIT)]
+        except Exception as exc:
+            self._log("place_extract_error", {"error": str(exc)})
+            return []
+
+    def _search_place_image(self, place_name: str) -> Optional[str]:
+        """Search SearXNG images for a single place and return the best image URL."""
+        try:
+            q = quote_plus(f"{place_name} landmark photo")
+            url = (
+                f"{self.valves.SEARXNG_BASE_URL}/search?format=json&categories=images"
+                f"&language=en&q={q}"
+            )
+            req = request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            raw = request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore")
+            data = json.loads(raw)
+            results = data.get("results") or []
+            for r in results:
+                if not isinstance(r, dict):
+                    continue
+                cand = r.get("img_src") or r.get("thumbnail")
+                if isinstance(cand, str) and cand.startswith("http"):
+                    return cand
+        except Exception:
+            pass
+        return None
+
+    def _build_place_cards(self, user_text: str) -> List[Dict[str, str]]:
+        """Extract places and find an image for each, returning [{name, image_url}]."""
+        places = self._extract_place_names(user_text)
+        if not places:
+            return []
+
+        cards: List[Dict[str, str]] = []
+        for name in places:
+            img_url = self._search_place_image(name)
+            if img_url:
+                cards.append({"name": name, "image_url": img_url})
+
+        self._log("place_cards", {"requested": len(places), "found": len(cards)})
+        return cards
+
+    def _format_place_cards(self, cards: List[Dict[str, str]]) -> str:
+        """Render place cards as a markdown table with images."""
+        if not cards:
+            return ""
+        # Build a markdown table row of images + captions
+        img_row = "|"
+        caption_row = "|"
+        align_row = "|"
+        for card in cards:
+            name = card["name"]
+            url = card["image_url"]
+            img_row += f" ![{name}]({url}) |"
+            caption_row += f" **{name}** |"
+            align_row += ":---:|"
+
+        return f"{img_row}\n{align_row}\n{caption_row}\n"
 
     def _search_web_images(self, query: str, limit: int) -> List[str]:
         try:
