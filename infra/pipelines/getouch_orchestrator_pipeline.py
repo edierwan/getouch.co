@@ -2,7 +2,7 @@
 title: Getouch Multimodal Orchestrator Pipeline
 author: Getouch
 description: Routed execution for text, documents, image understanding, and mixed multimodal requests. Includes travel/place image cards.
-version: 1.1.0
+version: 1.2.0
 requirements: pydantic,pypdf,python-docx,pandas,openpyxl,python-pptx
 """
 
@@ -271,6 +271,10 @@ class Pipeline:
         stream_requested = bool(body.get("stream", False))
         stream_supported = mode not in {"image_understanding", "mixed_multimodal"}
         options = (routed.get("options") or {}) if isinstance(routed.get("options"), dict) else {}
+
+        # For document modes, add num_predict to avoid infinite generation
+        if mode == "text_with_documents" and "num_predict" not in options:
+            options["num_predict"] = 4096
 
         if stream_requested and stream_supported:
             return self._stream_ollama_chat(
@@ -977,21 +981,19 @@ class Pipeline:
     def _extract_place_names(self, user_text: str) -> List[str]:
         """Quick LLM call to extract recommended place names from the user query."""
         prompt = (
-            "Based on this travel/recommendation query, list 4-6 specific famous place names "
-            "that would be recommended. Reply ONLY with place names, one per line, no numbering, "
-            "no descriptions. Example:\nPetronas Twin Towers\nBatu Caves\nCentral Market\n\n"
-            f"Query: {user_text[:500]}"
+            "List 4-6 famous places for this query. ONLY place names, one per line:\n"
+            f"{user_text[:300]}"
         )
         try:
             content = self._complete_ollama_chat(
                 target_model=self.valves.TEXT_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0.3, "num_predict": 200},
-                timeout=30,
+                options={"temperature": 0.3, "num_predict": 120},
+                timeout=20,
             )
             places = []
             for line in content.strip().split("\n"):
-                name = line.strip().strip("0123456789.-) ")
+                name = line.strip().strip("0123456789.-) *")
                 if name and len(name) > 2 and len(name) < 80:
                     places.append(name)
             return places[:int(self.valves.PLACE_IMAGE_LIMIT)]
@@ -1037,21 +1039,34 @@ class Pipeline:
         return cards
 
     def _format_place_cards(self, cards: List[Dict[str, str]]) -> str:
-        """Render place cards as a markdown table with images."""
+        """Render place cards as responsive HTML grid with uniform sizing."""
         if not cards:
             return ""
-        # Build a markdown table row of images + captions
-        img_row = "|"
-        caption_row = "|"
-        align_row = "|"
+        fallback_html = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#888;font-size:28px">\U0001f4cd</div>'
+        card_html_parts = []
         for card in cards:
-            name = card["name"]
+            name = card["name"].replace('"', '&quot;').replace('<', '&lt;')
             url = card["image_url"]
-            img_row += f" ![{name}]({url}) |"
-            caption_row += f" **{name}** |"
-            align_row += ":---:|"
+            onerror = "this.style.display='none';this.parentElement.innerHTML='" + fallback_html.replace("'", "\\'") + "'"
+            card_html_parts.append(
+                '<div style="flex:0 0 160px;max-width:180px;text-align:center">'
+                '<div style="width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:#1a1a2e">'
+                '<img src="' + url + '" alt="' + name + '" '
+                'style="width:100%;height:100%;object-fit:cover" '
+                'onerror="' + onerror.replace('"', '&quot;') + '" />'
+                '</div>'
+                '<div style="margin-top:6px;font-size:13px;font-weight:600;line-height:1.3;'
+                'min-height:34px;display:flex;align-items:center;justify-content:center">'
+                + name + '</div></div>'
+            )
 
-        return f"{img_row}\n{align_row}\n{caption_row}\n"
+        grid = (
+            '<div style="display:flex;gap:12px;overflow-x:auto;padding:8px 0 12px;'
+            'scrollbar-width:thin">'
+            + "".join(card_html_parts)
+            + "</div>"
+        )
+        return grid
 
     def _search_web_images(self, query: str, limit: int) -> List[str]:
         try:
