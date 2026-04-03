@@ -100,3 +100,30 @@ def test_format_place_cards_renders_table():
     assert "|" in result  # table format
     assert ":---:" in result  # center alignment
     assert "**Petronas Twin Towers**" in result  # bold names
+
+
+def test_score_image_candidate_positive():
+    """Candidate with matching city/country scores high."""
+    m, p = _make_pipeline()
+    poi = {"display_name": "A Famosa", "canonical_name": "A Famosa Fort, Melaka, Malaysia", "city": "Melaka", "country": "Malaysia"}
+    candidate = {"title": "A Famosa Fort in Melaka, Malaysia", "content": "historic fort", "img_src": "https://example.com/famosa.jpg"}
+    score = p._score_image_candidate(poi, candidate)
+    assert score > 0.5, f"Expected high score, got {score}"
+
+
+def test_score_image_candidate_wrong_landmark():
+    """Candidate mentioning Taj Mahal is rejected for Melaka itinerary."""
+    m, p = _make_pipeline()
+    poi = {"display_name": "A Famosa", "canonical_name": "A Famosa Fort, Melaka, Malaysia", "city": "Melaka", "country": "Malaysia"}
+    candidate = {"title": "Taj Mahal at sunset, India", "content": "beautiful monument in Agra India", "img_src": "https://example.com/tajmahal.jpg"}
+    score = p._score_image_candidate(poi, candidate)
+    assert score < 0.0, f"Expected negative score for wrong landmark, got {score}"
+
+
+def test_score_image_candidate_no_context():
+    """Candidate with no destination context scores low."""
+    m, p = _make_pipeline()
+    poi = {"display_name": "Christ Church", "canonical_name": "Christ Church, Melaka, Malaysia", "city": "Melaka", "country": "Malaysia"}
+    candidate = {"title": "random building photo", "content": "", "img_src": "https://example.com/random.jpg"}
+    score = p._score_image_candidate(poi, candidate)
+    assert score < 0.15, f"Expected low score for context-less candidate, got {score}"

@@ -979,34 +979,137 @@ class Pipeline:
             )
         )
 
-    def _extract_place_names(self, user_text: str) -> List[str]:
-        """Quick LLM call to extract recommended place names from the user query."""
+    def _extract_place_names(self, user_text: str) -> List[Dict[str, str]]:
+        """Quick LLM call to extract destination + POIs with canonical names.
+
+        Returns list of dicts: {display_name, canonical_name, city, country}
+        """
         prompt = (
-            "The user wants to visit a destination. Extract the destination, then list 4-6 famous tourist attractions or landmarks AT that destination.\n"
-            "ONLY place names, one per line. No numbering, no descriptions.\n"
+            "You are a travel data extractor. From the user query, extract:\n"
+            "1. The destination city and country\n"
+            "2. 4-6 famous tourist attractions AT that destination\n\n"
+            "Output EXACTLY in this format, one per line:\n"
+            "DESTINATION: <City>, <Country>\n"
+            "POI: <Display Name> | <Full Canonical Name including city and country>\n\n"
+            "Rules:\n"
+            "- Normalize misspellings (malaka→Melaka, kunning→Kunming)\n"
+            "- Canonical name MUST include city and country\n"
+            "- Include landmark type when useful (fort, temple, lake, church)\n\n"
+            "Example for 'buat itinerary ke malaka 3 hari':\n"
+            "DESTINATION: Melaka, Malaysia\n"
+            "POI: A Famosa | A Famosa Fort, Melaka, Malaysia\n"
+            "POI: Christ Church | Christ Church, Melaka, Malaysia\n"
+            "POI: Jonker Walk | Jonker Street, Melaka, Malaysia\n"
+            "POI: Stadthuys | The Stadthuys, Melaka, Malaysia\n\n"
             f"User query: {user_text[:300]}"
         )
         try:
             content = self._complete_ollama_chat(
                 target_model=self.valves.TEXT_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0.3, "num_predict": 120},
-                timeout=20,
+                options={"temperature": 0.2, "num_predict": 250},
+                timeout=25,
             )
-            places = []
+            destination = ""
+            pois: List[Dict[str, str]] = []
             for line in content.strip().split("\n"):
-                name = line.strip().strip("0123456789.-) *")
-                if name and len(name) > 2 and len(name) < 80:
-                    places.append(name)
-            return places[:int(self.valves.PLACE_IMAGE_LIMIT)]
+                line = line.strip()
+                if line.upper().startswith("DESTINATION:"):
+                    dest_raw = line.split(":", 1)[1].strip()
+                    parts = [p.strip() for p in dest_raw.split(",")]
+                    destination = dest_raw
+                    city = parts[0] if parts else ""
+                    country = parts[1] if len(parts) > 1 else ""
+                elif line.upper().startswith("POI:"):
+                    poi_raw = line.split(":", 1)[1].strip()
+                    if "|" in poi_raw:
+                        display, canonical = [p.strip() for p in poi_raw.split("|", 1)]
+                    else:
+                        display = poi_raw.strip().strip("0123456789.-) *")
+                        canonical = f"{display}, {destination}" if destination else display
+                    if display and len(display) > 2:
+                        # Ensure canonical always has destination context
+                        canonical_lower = canonical.lower()
+                        if destination:
+                            dest_parts = [p.strip().lower() for p in destination.split(",")]
+                            if not any(dp in canonical_lower for dp in dest_parts if dp):
+                                canonical = f"{canonical}, {destination}"
+                        pois.append({
+                            "display_name": display,
+                            "canonical_name": canonical,
+                            "city": city if 'city' in dir() else "",
+                            "country": country if 'country' in dir() else "",
+                        })
+            self._log("place_extract", {
+                "destination": destination,
+                "pois": [p["display_name"] for p in pois],
+                "canonical": [p["canonical_name"] for p in pois],
+            })
+            return pois[:int(self.valves.PLACE_IMAGE_LIMIT)]
         except Exception as exc:
             self._log("place_extract_error", {"error": str(exc)})
             return []
 
-    def _search_place_image(self, place_name: str) -> Optional[str]:
-        """Search SearXNG images for a single place and return the best image URL."""
+    def _score_image_candidate(
+        self, poi: Dict[str, str], candidate: Dict[str, Any]
+    ) -> float:
+        """Score an image candidate based on metadata relevance to the POI.
+
+        Returns a score from -1.0 to 1.0.  Higher = more relevant.
+        """
+        title = str(candidate.get("title") or "").lower()
+        snippet = str(candidate.get("content") or "").lower()
+        src_url = str(candidate.get("img_src") or candidate.get("url") or "").lower()
+        meta = f"{title} {snippet} {src_url}"
+
+        canonical = poi.get("canonical_name", "").lower()
+        display = poi.get("display_name", "").lower()
+        city = poi.get("city", "").lower()
+        country = poi.get("country", "").lower()
+
+        score = 0.0
+
+        # Positive signals: destination context in metadata
+        if city and city in meta:
+            score += 0.35
+        if country and country in meta:
+            score += 0.20
+        # Match display or canonical name tokens
+        display_tokens = [t for t in display.split() if len(t) > 2]
+        match_count = sum(1 for t in display_tokens if t in meta)
+        if display_tokens:
+            score += 0.30 * (match_count / len(display_tokens))
+
+        # Negative signals: obviously wrong landmarks
+        wrong_landmarks = [
+            "taj mahal", "eiffel tower", "colosseum", "statue of liberty",
+            "big ben", "sydney opera", "great wall", "machu picchu",
+            "pyramids", "petra jordan", "angkor wat", "christ the redeemer",
+        ]
+        for wl in wrong_landmarks:
+            if wl in meta and wl not in canonical:
+                score -= 0.80
+
+        # Negative: wrong country in metadata
+        wrong_countries = [
+            "india", "france", "italy", "usa", "united states", "england",
+            "australia", "peru", "egypt", "jordan", "brazil", "cambodia",
+        ]
+        if country:
+            for wc in wrong_countries:
+                if wc in meta and wc != country:
+                    score -= 0.40
+
+        return max(-1.0, min(1.0, score))
+
+    def _search_place_image(self, poi: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """Search SearXNG images for a POI using its canonical name.
+
+        Returns {image_url, score, source_title} or None.
+        """
+        canonical = poi.get("canonical_name", poi.get("display_name", ""))
         try:
-            q = quote_plus(f"{place_name} landmark photo")
+            q = quote_plus(f"{canonical} landmark photo")
             url = (
                 f"{self.valves.SEARXNG_BASE_URL}/search?format=json&categories=images"
                 f"&language=en&q={q}"
@@ -1015,29 +1118,59 @@ class Pipeline:
             raw = request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore")
             data = json.loads(raw)
             results = data.get("results") or []
-            for r in results:
+
+            best_url: Optional[str] = None
+            best_score = -1.0
+            best_title = ""
+            candidates_checked = 0
+
+            for r in results[:12]:
                 if not isinstance(r, dict):
                     continue
-                cand = r.get("img_src") or r.get("thumbnail")
-                if isinstance(cand, str) and cand.startswith("http"):
-                    return cand
-        except Exception:
-            pass
+                img_url = r.get("img_src") or r.get("thumbnail")
+                if not isinstance(img_url, str) or not img_url.startswith("http"):
+                    continue
+                candidates_checked += 1
+                sc = self._score_image_candidate(poi, r)
+                if sc > best_score:
+                    best_score = sc
+                    best_url = img_url
+                    best_title = str(r.get("title") or "")
+
+            min_threshold = 0.15
+            self._log("image_search", {
+                "poi": poi.get("display_name"),
+                "canonical": canonical,
+                "query": f"{canonical} landmark photo",
+                "candidates_checked": candidates_checked,
+                "best_score": round(best_score, 3),
+                "best_title": best_title[:80],
+                "passed": best_score >= min_threshold,
+            })
+
+            if best_url and best_score >= min_threshold:
+                return {"image_url": best_url, "score": best_score, "source_title": best_title}
+        except Exception as exc:
+            self._log("image_search_error", {"poi": poi.get("display_name"), "error": str(exc)})
         return None
 
     def _build_place_cards(self, user_text: str) -> List[Dict[str, str]]:
-        """Extract places and find an image for each, returning [{name, image_url}]."""
-        places = self._extract_place_names(user_text)
-        if not places:
+        """Extract places and find a validated image for each."""
+        pois = self._extract_place_names(user_text)
+        if not pois:
             return []
 
         cards: List[Dict[str, str]] = []
-        for name in places:
-            img_url = self._search_place_image(name)
-            if img_url:
-                cards.append({"name": name, "image_url": img_url})
+        for poi in pois:
+            result = self._search_place_image(poi)
+            if result:
+                cards.append({
+                    "name": poi["display_name"],
+                    "image_url": result["image_url"],
+                })
+            # Skip POIs with no confident image match
 
-        self._log("place_cards", {"requested": len(places), "found": len(cards)})
+        self._log("place_cards", {"requested": len(pois), "found": len(cards)})
         return cards
 
     def _format_place_cards(self, cards: List[Dict[str, str]]) -> str:
