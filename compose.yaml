@@ -173,7 +173,61 @@ services:
       - -c
       - |
         if [ -f /app/build/index.html ] && ! grep -q 'getouch-custom-css' /app/build/index.html; then
-          sed -i 's|</head>|<style id="getouch-custom-css">.assistant-message-profile-image{width:1.5rem!important;height:1.5rem!important}[id=response-message-model-name]{display:none!important}form img[src^="data:image"],form img[src*="/api/v1/files/"],form img[src*="/api/v1/attachments/"]{max-width:min(50vw,420px)!important;max-height:240px!important;width:auto!important;height:auto!important;object-fit:contain!important;border-radius:12px!important;border:1px solid rgba(255,255,255,.12)!important}form [class*="attachment"],form [class*="upload"],form [class*="image"]{min-height:88px}form [class*="attachment"]:has(img),form [class*="upload"]:has(img){display:flex!important;align-items:flex-start!important;gap:8px!important;flex-wrap:wrap!important}.prose table:has(th img){border:none!important;display:block!important;overflow-x:auto!important;width:100%!important;scrollbar-width:thin!important;padding:8px 0 4px!important}.prose table:has(th img) thead,.prose table:has(th img) tbody{display:contents!important}.prose table:has(th img) tr{display:flex!important;gap:16px!important}.prose table:has(th img) th,.prose table:has(th img) td{border:none!important;padding:0!important;flex:0 0 200px!important;width:200px!important;min-width:200px!important;max-width:200px!important;background:transparent!important;box-sizing:border-box!important}.prose table:has(th img) th{height:150px!important;min-height:150px!important;max-height:150px!important;position:relative!important;overflow:hidden!important;border-radius:14px!important;background:#1a1a2e!important;cursor:pointer!important;transition:box-shadow .3s ease!important}.prose table:has(th img) th:hover{box-shadow:0 4px 20px rgba(255,255,255,.1)!important}.prose table:has(th img) th img{position:absolute!important;top:0!important;left:0!important;display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover!important;border-radius:0!important;margin:0!important;transition:transform .3s ease!important}.prose table:has(th img) th:hover img{transform:scale(1.05)!important}.prose table:has(th img) td{display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important;font-size:13px!important;font-weight:600!important;line-height:1.3!important;min-height:48px!important;padding-top:8px!important;color:#e0e0e0!important;text-align:center!important}</style></head>|' /app/build/index.html
+          sed -i 's|</head>|<style id="getouch-custom-css">.assistant-message-profile-image{width:1.5rem!important;height:1.5rem!important}[id=response-message-model-name]{display:none!important}form img[src^="data:image"],form img[src*="/api/v1/files/"],form img[src*="/api/v1/attachments/"]{max-width:min(50vw,420px)!important;max-height:240px!important;width:auto!important;height:auto!important;object-fit:contain!important;border-radius:12px!important;border:1px solid rgba(255,255,255,.12)!important}form [class*="attachment"],form [class*="upload"],form [class*="image"]{min-height:88px}form [class*="attachment"]:has(img),form [class*="upload"]:has(img){display:flex!important;align-items:flex-start!important;gap:8px!important;flex-wrap:wrap!important}.prose table:has(th img){border:none!important;display:block!important;overflow-x:auto!important;width:100%!important;scrollbar-width:thin!important;padding:8px 0 4px!important}.prose table:has(th img) thead,.prose table:has(th img) tbody{display:contents!important}.prose table:has(th img) tr{display:flex!important;gap:16px!important}.prose table:has(th img) th,.prose table:has(th img) td{border:none!important;padding:0!important;flex:0 0 200px!important;width:200px!important;min-width:200px!important;max-width:200px!important;background:transparent!important;box-sizing:border-box!important}.prose table:has(th img) th{height:150px!important;min-height:150px!important;max-height:150px!important;position:relative!important;overflow:hidden!important;border-radius:14px!important;background:#1a1a2e!important;cursor:pointer!important;transition:box-shadow .3s ease!important}.prose table:has(th img) th:hover{box-shadow:0 4px 20px rgba(255,255,255,.1)!important}.prose table:has(th img) th img{position:absolute!important;top:0!important;left:0!important;display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover!important;border-radius:0!important;margin:0!important;transition:transform .3s ease!important}.prose table:has(th img) th:hover img{transform:scale(1.05)!important}.prose table:has(th img) td{display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important;font-size:13px!important;font-weight:600!important;line-height:1.3!important;min-height:48px!important;padding-top:8px!important;color:#e0e0e0!important;text-align:center!important}pre:has(code.language-getouch-sources){display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important}blockquote:has(a[href="#getouch-sources"]){border:none!important;padding:0!important;margin:4px 0 12px!important;background:transparent!important}blockquote:has(a[href="#getouch-sources"]) p{margin:0!important}blockquote:has(a[href="#getouch-sources"]) a{display:inline-flex!important;align-items:center!important;gap:6px!important;padding:6px 14px!important;border-radius:20px!important;background:rgba(255,255,255,.08)!important;color:#a0c4ff!important;font-size:13px!important;font-weight:500!important;text-decoration:none!important;cursor:pointer!important;transition:background .2s!important;border:1px solid rgba(255,255,255,.12)!important}blockquote:has(a[href="#getouch-sources"]) a:hover{background:rgba(255,255,255,.14)!important}.gtch-sd-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9998;opacity:0;pointer-events:none;transition:opacity .3s}.gtch-sd-ov.open{opacity:1;pointer-events:auto}.gtch-sd{position:fixed;top:0;right:0;width:380px;max-width:90vw;height:100vh;background:#1e1e2e;border-left:1px solid rgba(255,255,255,.1);z-index:9999;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);overflow-y:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)}.gtch-sd.open{transform:translateX(0)}.gtch-sd-h{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;background:#1e1e2e;z-index:1}.gtch-sd-h b{font-size:15px;color:#e0e0e0}.gtch-sd-x{background:none;border:none;color:#999;font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px}.gtch-sd-x:hover{background:rgba(255,255,255,.1);color:#fff}.gtch-si{border-bottom:1px solid rgba(255,255,255,.06)}.gtch-si a{display:flex;gap:12px;padding:14px 20px;text-decoration:none;color:inherit;align-items:flex-start}.gtch-si:hover{background:rgba(255,255,255,.04)}.gtch-sn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(160,196,255,.15);color:#a0c4ff;font-size:11px;font-weight:600;flex-shrink:0;margin-top:2px}.gtch-st{font-size:14px;font-weight:500;color:#e0e0e0;line-height:1.4;margin-bottom:3px}.gtch-sm{font-size:12px;color:#888;margin-bottom:5px}.gtch-ss{font-size:12px;color:#aaa;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}@media(max-width:640px){.gtch-sd{width:100vw;max-width:100vw}}</style></head>|' /app/build/index.html
+        fi
+        if [ -f /app/build/index.html ] && ! grep -q 'getouch-custom-js' /app/build/index.html; then
+          cat > /tmp/getouch-drawer.html << 'ENDSCRIPT'
+        <script id="getouch-custom-js">
+        (function(){
+          var d,o;
+          function C(){if(d)d.classList.remove('open');if(o)o.classList.remove('open')}
+          function O(s){
+            if(!d){
+              o=document.createElement('div');o.className='gtch-sd-ov';o.onclick=C;document.body.appendChild(o);
+              d=document.createElement('div');d.className='gtch-sd';
+              var hd=document.createElement('div');hd.className='gtch-sd-h';
+              var hb=document.createElement('b');hb.textContent='Search results';
+              var hx=document.createElement('button');hx.className='gtch-sd-x';hx.textContent='\u00d7';hx.onclick=C;
+              hd.appendChild(hb);hd.appendChild(hx);d.appendChild(hd);
+              var bd=document.createElement('div');bd.className='gtch-sd-b';d.appendChild(bd);
+              document.body.appendChild(d);
+              document.addEventListener('keydown',function(e){if(e.key==='Escape')C()});
+            }
+            var b=d.querySelector('.gtch-sd-b');b.innerHTML='';
+            s.forEach(function(x,i){
+              var v=document.createElement('div');v.className='gtch-si';
+              var a=document.createElement('a');
+              var h=String(x.url||'');
+              if(/^https?:\/\//i.test(h))a.href=h;else a.href='#';
+              a.target='_blank';a.rel='noopener noreferrer';
+              var sn=document.createElement('span');sn.className='gtch-sn';sn.textContent=String(i+1);a.appendChild(sn);
+              var dv=document.createElement('div');
+              var tt=document.createElement('div');tt.className='gtch-st';tt.textContent=x.title||x.domain||'Source';dv.appendChild(tt);
+              var dm=document.createElement('div');dm.className='gtch-sm';dm.textContent=x.domain||'';dv.appendChild(dm);
+              if(x.snippet){var sp=document.createElement('div');sp.className='gtch-ss';sp.textContent=x.snippet;dv.appendChild(sp)}
+              a.appendChild(dv);v.appendChild(a);b.appendChild(v);
+            });
+            requestAnimationFrame(function(){d.classList.add('open');o.classList.add('open')});
+          }
+          function P(){
+            document.querySelectorAll('code.language-getouch-sources').forEach(function(c){
+              var p=c.closest('pre');if(p)p.style.display='none';
+              try{
+                var S=JSON.parse(c.textContent);if(!Array.isArray(S))return;
+                var msg=c.closest('.prose');if(!msg&&c.parentElement)msg=c.parentElement.parentElement;if(!msg)return;
+                msg.querySelectorAll('a[href="#getouch-sources"]').forEach(function(a){
+                  if(a.dataset.b)return;a.dataset.b='1';
+                  a.addEventListener('click',function(e){e.preventDefault();O(S)});
+                });
+              }catch(e){}
+            });
+          }
+          new MutationObserver(function(){P()}).observe(document.body,{childList:true,subtree:true});
+          setTimeout(P,800);
+        })();
+        </script>
+        ENDSCRIPT
+          sed -i '/<\/body>/r /tmp/getouch-drawer.html' /app/build/index.html
         fi
         exec bash start.sh
     volumes:

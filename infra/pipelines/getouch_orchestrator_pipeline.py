@@ -881,7 +881,7 @@ class Pipeline:
             yield self._format_image_markdown(web_image_urls) + "\n\n"
 
         if sources:
-            yield f"> \U0001f50d Searched {len(sources)} web sources\n\n"
+            yield f"\n> [\U0001f50d Read {len(sources)} web sources](#getouch-sources)\n\n"
 
         with request.urlopen(req, timeout=300) as resp:
             for line in resp:
@@ -896,7 +896,8 @@ class Pipeline:
                     yield msg
 
         if sources:
-            yield "\n\n" + self._format_sources_section(sources)
+            safe = json.dumps(sources, ensure_ascii=False)
+            yield f"\n\n```getouch-sources\n{safe}\n```\n"
 
     def _to_ollama_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -1245,11 +1246,16 @@ class Pipeline:
             )
             if not isinstance(content, str) or not content.strip():
                 content = "Unable to generate travel itinerary. Please try again."
+            parts = []
             if place_cards:
-                content = self._format_place_cards(place_cards) + "\n\n" + content
+                parts.append(self._format_place_cards(place_cards))
             if web_sources:
-                content += "\n\n" + self._format_sources_section(web_sources)
-            return content
+                parts.append(f"> [\U0001f50d Read {len(web_sources)} web sources](#getouch-sources)")
+            parts.append(content)
+            if web_sources:
+                safe = json.dumps(web_sources, ensure_ascii=False)
+                parts.append(f"```getouch-sources\n{safe}\n```")
+            return "\n\n".join(parts)
         except Exception as exc:
             self._log("travel_planner_error", {"error": str(exc)})
             return "Travel planner encountered an error. Please try again."
