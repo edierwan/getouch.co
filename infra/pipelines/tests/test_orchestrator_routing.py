@@ -69,6 +69,9 @@ def test_should_search_place_images_travel():
     assert p._should_search_place_images("suggest best place for holiday", "tool_required")
     assert p._should_search_place_images("top 5 destinasi pelancongan malaysia", "text_only")
     assert p._should_search_place_images("cadangkan restoran di KL", "text_only")
+    assert p._should_search_place_images("buat ilternary tuk ke kunning china tuk 7 hari", "text_only")
+    assert p._should_search_place_images("can do iternary to ghauzhau china for 5 night", "text_only")
+    assert p._should_search_place_images("buat perancangan 3 malam ke langkawi", "text_only")
 
 
 def test_should_search_place_images_non_travel():
