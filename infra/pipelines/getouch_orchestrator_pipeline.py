@@ -36,7 +36,7 @@ except ModuleNotFoundError:
             return None
     imghdr = _ImghdrShim()
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from urllib import request
 from urllib.error import HTTPError
 
@@ -260,6 +260,16 @@ class Pipeline:
         ollama_messages = self._to_ollama_messages(routed.get("messages", []))
         if not ollama_messages:
             ollama_messages = [{"role": "user", "content": user_message or "Help the user."}]
+
+        # ── Travel itinerary planner (enhanced flow) ────────────
+        if self._is_travel_itinerary(user_message) and mode in {"text_only", "tool_required"}:
+            return self._handle_travel_itinerary(
+                user_message=user_message,
+                target_model=target_model,
+                ollama_messages=ollama_messages,
+                body=body,
+                started=started,
+            )
 
         place_cards: List[Dict[str, str]] = []
         web_image_urls: List[str] = []
@@ -847,6 +857,7 @@ class Pipeline:
         options: Dict[str, Any],
         web_image_urls: List[str],
         place_cards: Optional[List[Dict[str, str]]] = None,
+        sources: Optional[List[Dict[str, str]]] = None,
     ) -> Iterator[str]:
         payload = {
             "model": target_model,
@@ -869,6 +880,9 @@ class Pipeline:
         elif web_image_urls:
             yield self._format_image_markdown(web_image_urls) + "\n\n"
 
+        if sources:
+            yield f"> \U0001f50d Searched {len(sources)} web sources\n\n"
+
         with request.urlopen(req, timeout=300) as resp:
             for line in resp:
                 if not line:
@@ -880,6 +894,9 @@ class Pipeline:
                 msg = (obj.get("message") or {}).get("content", "")
                 if msg:
                     yield msg
+
+        if sources:
+            yield "\n\n" + self._format_sources_section(sources)
 
     def _to_ollama_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -978,6 +995,279 @@ class Pipeline:
                 q,
             )
         )
+
+    # ── Travel itinerary planner ─────────────────────────────
+
+    def _is_travel_itinerary(self, user_text: str) -> bool:
+        """Detect queries that specifically request a travel itinerary or trip plan."""
+        q = (user_text or "").lower()
+        if re.search(
+            r"\b(i[lt]*[ie]n?[ae]?rar[iy]|i[lt]+ernary|rencana\s+perjalanan"
+            r"|perancangan\s+(?:perjalanan|trip|cuti|percutian))\b",
+            q,
+        ):
+            return True
+        if re.search(r"\b(?:buat|buatkan|create|make|plan|tolong)\b", q) and re.search(
+            r"\b(?:perjalanan|trip|travel|holiday|vacation|percutian|cuti)\b", q
+        ):
+            return True
+        if re.search(r"\d+\s*(?:hari|days?|malam|nights?|mlm)\b", q) and re.search(
+            r"\b(?:ke|to|in|at)\s+\w", q
+        ):
+            return True
+        return False
+
+    def _parse_trip_request(self, user_text: str) -> Dict[str, Any]:
+        """Extract trip duration from user query."""
+        q = (user_text or "").lower()
+        m = re.search(r"(\d+)\s*(?:hari|days?|malam|nights?|mlm)", q)
+        days = int(m.group(1)) if m else 3
+        is_nights = bool(m and re.search(r"malam|nights?|mlm", m.group(0))) if m else False
+        if is_nights:
+            days += 1
+        days = max(1, min(days, 14))
+        return {"days": days, "nights": max(1, days - 1)}
+
+    def _search_web_sources(
+        self, destination: str, trip_info: Dict[str, Any]
+    ) -> List[Dict[str, str]]:
+        """Search SearXNG for text sources about a travel destination."""
+        days = trip_info.get("days", 3)
+        queries = [
+            f"{destination} travel itinerary {days} days guide",
+            f"{destination} attractions food transport tips",
+        ]
+        sources: List[Dict[str, str]] = []
+        seen_domains: set = set()
+        for query in queries:
+            try:
+                q = quote_plus(query[:200])
+                url = (
+                    f"{self.valves.SEARXNG_BASE_URL}/search?format=json"
+                    f"&categories=general&language=en&q={q}"
+                )
+                req_obj = request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                raw = request.urlopen(req_obj, timeout=15).read().decode(
+                    "utf-8", errors="ignore"
+                )
+                data = json.loads(raw)
+                for r in (data.get("results") or [])[:10]:
+                    if not isinstance(r, dict):
+                        continue
+                    page_url = r.get("url", "")
+                    if not page_url:
+                        continue
+                    domain = self._extract_domain(page_url)
+                    if domain in seen_domains:
+                        continue
+                    seen_domains.add(domain)
+                    snippet = (r.get("content") or "")[:300].strip()
+                    if not snippet:
+                        continue
+                    sources.append({
+                        "id": f"src_{len(sources) + 1}",
+                        "title": (r.get("title") or domain)[:120],
+                        "url": page_url,
+                        "domain": domain,
+                        "snippet": snippet,
+                    })
+                    if len(sources) >= 8:
+                        break
+            except Exception as exc:
+                self._log("web_source_error", {"query": query[:80], "error": str(exc)})
+            if len(sources) >= 8:
+                break
+        self._log("web_sources", {"destination": destination, "found": len(sources)})
+        return sources
+
+    @staticmethod
+    def _extract_domain(url: str) -> str:
+        try:
+            host = urlparse(url).netloc
+            return host[4:] if host.startswith("www.") else host
+        except Exception:
+            return ""
+
+    def _compose_travel_planner_prompt(
+        self,
+        user_message: str,
+        trip_info: Dict[str, Any],
+        pois: List[Dict[str, str]],
+        web_sources: List[Dict[str, str]],
+    ) -> str:
+        """Build a comprehensive travel planner system prompt."""
+        days = trip_info["days"]
+        nights = trip_info["nights"]
+        destination = ""
+        if pois:
+            city = pois[0].get("city", "")
+            country = pois[0].get("country", "")
+            destination = f"{city}, {country}".strip(", ")
+        poi_names = ", ".join(p["display_name"] for p in pois) if pois else "use your knowledge"
+
+        source_ctx = ""
+        if web_sources:
+            parts = []
+            for i, s in enumerate(web_sources, 1):
+                parts.append(f"[{i}] {s['title']} ({s['domain']})\n{s['snippet']}")
+            source_ctx = (
+                "\nWEB RESEARCH CONTEXT (cite with [N] inline where relevant):\n"
+                + "\n\n".join(parts)
+                + "\n"
+            )
+
+        return (
+            "You are an expert travel planner AI. Produce a comprehensive, well-researched "
+            "travel itinerary that feels like a professional travel guide.\n\n"
+            f"DESTINATION: {destination or 'as stated by user'}\n"
+            f"TRIP LENGTH: {days} days / {nights} nights\n"
+            f"KNOWN ATTRACTIONS: {poi_names}\n"
+            f"{source_ctx}\n"
+            "RESPONSE LANGUAGE: Match the user's language. If the user wrote in Malay, "
+            "respond primarily in Malay/Bahasa.\n\n"
+            "YOUR ANSWER MUST INCLUDE ALL SECTIONS BELOW IN THIS EXACT ORDER:\n\n"
+            f"## \U0001f5fa\ufe0f Rencana Perjalanan {destination} {days} Hari\n\n"
+            "Write 2-3 engaging intro sentences about the destination and trip.\n\n"
+            "### \U0001f4cb Ringkasan Perjalanan\n\n"
+            "| Hari | Tema | Aktiviti Utama |\n"
+            "|------|------|----------------|\n"
+            f"(one row per day for all {days} days)\n\n"
+            "### \U0001f4c5 Hari 1: [Theme]\n\n"
+            "**\U0001f305 Pagi**\n"
+            "- Specific activity with place name and practical detail\n\n"
+            "**\U0001f324\ufe0f Tengah Hari / Petang**\n"
+            "- Afternoon activities\n\n"
+            "**\U0001f319 Malam**\n"
+            "- Evening plan with dinner suggestion\n\n"
+            "> \U0001f4a1 **Tip:** Practical tip for this day\n\n"
+            f"(Repeat for ALL {days} days. Day 1 = arrival, Day {days} = departure.)\n\n"
+            "### \U0001f35c Cadangan Makanan\n\n"
+            "5-8 must-try local foods:\n"
+            "- **Food name** \u2014 description, where to try (area/street)\n\n"
+            "### \U0001f697 Tips Pengangkutan\n\n"
+            "How to reach destination, local transport, parking, walkability.\n\n"
+            "### \U0001f3e8 Kawasan Penginapan\n\n"
+            "2-3 areas:\n"
+            "- **Area** \u2014 why, proximity, budget level\n\n"
+            "### \U0001f4b0 Anggaran Perbelanjaan\n\n"
+            "| Item | Anggaran (per orang/hari) |\n"
+            "|------|---------------------------|\n"
+            "| Penginapan | ... |\n"
+            "| Makanan | ... |\n"
+            "| Pengangkutan | ... |\n"
+            "| Tiket/Aktiviti | ... |\n"
+            "| **Jumlah** | **...** |\n\n"
+            "### \U0001f4dd Tips Praktikal\n\n"
+            "5-8 tips: weather, timing, clothing, booking, cultural etiquette, safety.\n\n"
+            "CRITICAL RULES:\n"
+            "- Group attractions by area to minimize backtracking\n"
+            f"- Day 1 lighter (arrival), Day {days} lighter (departure)\n"
+            "- Mix: heritage, food, scenic, shopping, local exploration\n"
+            "- Be SPECIFIC: real place names, street names, local food names\n"
+            "- Do NOT invent fake museums, districts, or transport systems\n"
+            "- When uncertain, use softer wording\n"
+            "- Avoid generic filler \u2014 give actionable details\n"
+            "- Do NOT include a Sources/Sumber section \u2014 added automatically\n"
+            "- Cite web research inline as [1], [2] where applicable"
+        )
+
+    def _handle_travel_itinerary(
+        self,
+        user_message: str,
+        target_model: str,
+        ollama_messages: List[Dict[str, Any]],
+        body: dict,
+        started: float,
+    ) -> Union[str, Iterator[str]]:
+        """Enhanced travel itinerary flow with web enrichment and structured output."""
+        trip_info = self._parse_trip_request(user_message)
+
+        pois = self._extract_place_names(user_message)
+        destination = ""
+        if pois:
+            city = pois[0].get("city", "")
+            country = pois[0].get("country", "")
+            destination = f"{city}, {country}".strip(", ")
+
+        web_sources = self._search_web_sources(
+            destination or user_message[:60], trip_info
+        )
+
+        place_cards: List[Dict[str, str]] = []
+        for poi in pois:
+            result = self._search_place_image(poi)
+            if result:
+                place_cards.append({
+                    "name": poi["display_name"],
+                    "image_url": result["image_url"],
+                })
+
+        travel_prompt = self._compose_travel_planner_prompt(
+            user_message=user_message,
+            trip_info=trip_info,
+            pois=pois,
+            web_sources=web_sources,
+        )
+
+        if ollama_messages and ollama_messages[0].get("role") == "system":
+            ollama_messages[0]["content"] = travel_prompt
+        else:
+            ollama_messages.insert(0, {"role": "system", "content": travel_prompt})
+
+        options = {"temperature": 0.7, "num_predict": 8192}
+        stream_requested = bool(body.get("stream", False))
+
+        self._log("travel_planner", {
+            "destination": destination,
+            "days": trip_info["days"],
+            "pois": len(pois),
+            "sources": len(web_sources),
+            "cards": len(place_cards),
+            "latency_ms": int((time.time() - started) * 1000),
+        })
+
+        if stream_requested:
+            return self._stream_ollama_chat(
+                target_model=target_model,
+                messages=ollama_messages,
+                options=options,
+                web_image_urls=[],
+                place_cards=place_cards,
+                sources=web_sources,
+            )
+
+        try:
+            content = self._complete_ollama_chat(
+                target_model=target_model,
+                messages=ollama_messages,
+                options=options,
+                timeout=300,
+            )
+            if not isinstance(content, str) or not content.strip():
+                content = "Unable to generate travel itinerary. Please try again."
+            if place_cards:
+                content = self._format_place_cards(place_cards) + "\n\n" + content
+            if web_sources:
+                content += "\n\n" + self._format_sources_section(web_sources)
+            return content
+        except Exception as exc:
+            self._log("travel_planner_error", {"error": str(exc)})
+            return "Travel planner encountered an error. Please try again."
+
+    def _format_sources_section(self, sources: List[Dict[str, str]]) -> str:
+        """Render sources as a markdown footer with clickable links."""
+        if not sources:
+            return ""
+        lines = ["---", "", "### \U0001f4da Sumber", ""]
+        for i, s in enumerate(sources, 1):
+            title = s.get("title", s.get("domain", "Source"))
+            url = s.get("url", "")
+            domain = s.get("domain", "")
+            if url:
+                lines.append(f"{i}. [{title}]({url}) \u2014 *{domain}*")
+            else:
+                lines.append(f"{i}. {title}")
+        return "\n".join(lines)
 
     def _extract_place_names(self, user_text: str) -> List[Dict[str, str]]:
         """Quick LLM call to extract destination + POIs with canonical names.
