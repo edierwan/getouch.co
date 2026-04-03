@@ -92,8 +92,8 @@ def test_format_place_cards_renders_table():
     result = p._format_place_cards(cards)
     assert "Petronas Twin Towers" in result
     assert "Batu Caves" in result
-    assert "<img" in result
-    assert "object-fit:cover" in result
-    assert "aspect-ratio:4/3" in result
-    assert "onerror" in result  # fallback handler
-    assert "display:flex" in result  # flexbox grid
+    assert "![Petronas Twin Towers]" in result
+    assert "![Batu Caves]" in result
+    assert "|" in result  # table format
+    assert ":---:" in result  # center alignment
+    assert "**Petronas Twin Towers**" in result  # bold names

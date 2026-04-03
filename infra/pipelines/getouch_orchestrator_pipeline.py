@@ -1039,34 +1039,20 @@ class Pipeline:
         return cards
 
     def _format_place_cards(self, cards: List[Dict[str, str]]) -> str:
-        """Render place cards as responsive HTML grid with uniform sizing."""
+        """Render place cards as a markdown image table."""
         if not cards:
             return ""
-        fallback_html = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#888;font-size:28px">\U0001f4cd</div>'
-        card_html_parts = []
-        for card in cards:
-            name = card["name"].replace('"', '&quot;').replace('<', '&lt;')
-            url = card["image_url"]
-            onerror = "this.style.display='none';this.parentElement.innerHTML='" + fallback_html.replace("'", "\\'") + "'"
-            card_html_parts.append(
-                '<div style="flex:0 0 160px;max-width:180px;text-align:center">'
-                '<div style="width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:#1a1a2e">'
-                '<img src="' + url + '" alt="' + name + '" '
-                'style="width:100%;height:100%;object-fit:cover" '
-                'onerror="' + onerror.replace('"', '&quot;') + '" />'
-                '</div>'
-                '<div style="margin-top:6px;font-size:13px;font-weight:600;line-height:1.3;'
-                'min-height:34px;display:flex;align-items:center;justify-content:center">'
-                + name + '</div></div>'
-            )
-
-        grid = (
-            '<div style="display:flex;gap:12px;overflow-x:auto;padding:8px 0 12px;'
-            'scrollbar-width:thin">'
-            + "".join(card_html_parts)
-            + "</div>"
-        )
-        return grid
+        img_cells = []
+        name_cells = []
+        for c in cards:
+            name = c["name"].replace("|", "\\|")
+            url = c["image_url"].replace("(", "%28").replace(")", "%29")
+            img_cells.append(f"![{name}]({url})")
+            name_cells.append(f"**{name}**")
+        img_row = "| " + " | ".join(img_cells) + " |"
+        sep_row = "| " + " | ".join(":---:" for _ in cards) + " |"
+        name_row = "| " + " | ".join(name_cells) + " |"
+        return f"{img_row}\n{sep_row}\n{name_row}"
 
     def _search_web_images(self, query: str, limit: int) -> List[str]:
         try:
