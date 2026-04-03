@@ -957,12 +957,13 @@ class Pipeline:
         q = (user_text or "").lower()
         return bool(
             re.search(
-                r"\b(itinerar[iy]|iternary|travel|trip|tempat|lawat|melawat|jalan[- ]?jalan"
+                r"\b(i[lt]*[ie]n?[ae]?rar[iy]|i[lt]+ernary|travel|trip|tempat|lawat|melawat|jalan[- ]?jalan"
                 r"|guide|plan|visit|sightseeing|holiday|vacation|percutian|cuti"
                 r"|recommend|cadang|saran|suggest|best\s+place|top\s+\d+"
                 r"|things?\s+to\s+do|what\s+to\s+see|where\s+to\s+go"
                 r"|makan\s+sedap|restoran|restaurant|cafe|hotel|resort"
-                r"|destinasi|pelancongan|backpack|roadtrip|staycation)\b",
+                r"|destinasi|pelancongan|backpack|roadtrip|staycation"
+                r"|\d+\s*(?:hari|malam|night|day))",
                 q,
             )
         )
@@ -981,8 +982,9 @@ class Pipeline:
     def _extract_place_names(self, user_text: str) -> List[str]:
         """Quick LLM call to extract recommended place names from the user query."""
         prompt = (
-            "List 4-6 famous places for this query. ONLY place names, one per line:\n"
-            f"{user_text[:300]}"
+            "The user wants to visit a destination. Extract the destination, then list 4-6 famous tourist attractions or landmarks AT that destination.\n"
+            "ONLY place names, one per line. No numbering, no descriptions.\n"
+            f"User query: {user_text[:300]}"
         )
         try:
             content = self._complete_ollama_chat(
