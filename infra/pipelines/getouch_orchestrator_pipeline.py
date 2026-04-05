@@ -36,7 +36,7 @@ except ModuleNotFoundError:
             return None
     imghdr = _ImghdrShim()
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from urllib import request
 from urllib.error import HTTPError
 
@@ -260,6 +260,16 @@ class Pipeline:
         ollama_messages = self._to_ollama_messages(routed.get("messages", []))
         if not ollama_messages:
             ollama_messages = [{"role": "user", "content": user_message or "Help the user."}]
+
+        # ── Travel itinerary planner (enhanced flow) ────────────
+        if self._is_travel_itinerary(user_message) and mode in {"text_only", "tool_required"}:
+            return self._handle_travel_itinerary(
+                user_message=user_message,
+                target_model=target_model,
+                ollama_messages=ollama_messages,
+                body=body,
+                started=started,
+            )
 
         place_cards: List[Dict[str, str]] = []
         web_image_urls: List[str] = []
@@ -847,6 +857,7 @@ class Pipeline:
         options: Dict[str, Any],
         web_image_urls: List[str],
         place_cards: Optional[List[Dict[str, str]]] = None,
+        sources: Optional[List[Dict[str, str]]] = None,
     ) -> Iterator[str]:
         payload = {
             "model": target_model,
@@ -869,6 +880,9 @@ class Pipeline:
         elif web_image_urls:
             yield self._format_image_markdown(web_image_urls) + "\n\n"
 
+        if sources:
+            yield f"\n> [\U0001f50d Read {len(sources)} web sources](#getouch-sources)\n\n"
+
         with request.urlopen(req, timeout=300) as resp:
             for line in resp:
                 if not line:
@@ -880,6 +894,10 @@ class Pipeline:
                 msg = (obj.get("message") or {}).get("content", "")
                 if msg:
                     yield msg
+
+        if sources:
+            safe = json.dumps(sources, ensure_ascii=False)
+            yield f"\n\n```getouch-sources\n{safe}\n```\n"
 
     def _to_ollama_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -979,34 +997,415 @@ class Pipeline:
             )
         )
 
-    def _extract_place_names(self, user_text: str) -> List[str]:
-        """Quick LLM call to extract recommended place names from the user query."""
+    # ── Travel itinerary planner ─────────────────────────────
+
+    def _is_travel_itinerary(self, user_text: str) -> bool:
+        """Detect queries that specifically request a travel itinerary or trip plan."""
+        q = (user_text or "").lower()
+        if re.search(
+            r"\b(i[lt]*[ie]n?[ae]?rar[iy]|i[lt]+ernary|rencana\s+perjalanan"
+            r"|perancangan\s+(?:perjalanan|trip|cuti|percutian))\b",
+            q,
+        ):
+            return True
+        if re.search(r"\b(?:buat|buatkan|create|make|plan|tolong)\b", q) and re.search(
+            r"\b(?:perjalanan|trip|travel|holiday|vacation|percutian|cuti)\b", q
+        ):
+            return True
+        if re.search(r"\d+\s*(?:hari|days?|malam|nights?|mlm)\b", q) and re.search(
+            r"\b(?:ke|to|in|at)\s+\w", q
+        ):
+            return True
+        return False
+
+    def _parse_trip_request(self, user_text: str) -> Dict[str, Any]:
+        """Extract trip duration from user query."""
+        q = (user_text or "").lower()
+        m = re.search(r"(\d+)\s*(?:hari|days?|malam|nights?|mlm)", q)
+        days = int(m.group(1)) if m else 3
+        is_nights = bool(m and re.search(r"malam|nights?|mlm", m.group(0))) if m else False
+        if is_nights:
+            days += 1
+        days = max(1, min(days, 14))
+        return {"days": days, "nights": max(1, days - 1)}
+
+    def _search_web_sources(
+        self, destination: str, trip_info: Dict[str, Any]
+    ) -> List[Dict[str, str]]:
+        """Search SearXNG for text sources about a travel destination."""
+        days = trip_info.get("days", 3)
+        queries = [
+            f"{destination} travel itinerary {days} days guide",
+            f"{destination} attractions food transport tips",
+        ]
+        sources: List[Dict[str, str]] = []
+        seen_domains: set = set()
+        for query in queries:
+            try:
+                q = quote_plus(query[:200])
+                url = (
+                    f"{self.valves.SEARXNG_BASE_URL}/search?format=json"
+                    f"&categories=general&language=en&q={q}"
+                )
+                req_obj = request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                raw = request.urlopen(req_obj, timeout=15).read().decode(
+                    "utf-8", errors="ignore"
+                )
+                data = json.loads(raw)
+                for r in (data.get("results") or [])[:10]:
+                    if not isinstance(r, dict):
+                        continue
+                    page_url = r.get("url", "")
+                    if not page_url:
+                        continue
+                    domain = self._extract_domain(page_url)
+                    if domain in seen_domains:
+                        continue
+                    seen_domains.add(domain)
+                    snippet = (r.get("content") or "")[:300].strip()
+                    if not snippet:
+                        continue
+                    sources.append({
+                        "id": f"src_{len(sources) + 1}",
+                        "title": (r.get("title") or domain)[:120],
+                        "url": page_url,
+                        "domain": domain,
+                        "snippet": snippet,
+                    })
+                    if len(sources) >= 8:
+                        break
+            except Exception as exc:
+                self._log("web_source_error", {"query": query[:80], "error": str(exc)})
+            if len(sources) >= 8:
+                break
+        self._log("web_sources", {"destination": destination, "found": len(sources)})
+        return sources
+
+    @staticmethod
+    def _extract_domain(url: str) -> str:
+        try:
+            host = urlparse(url).netloc
+            return host[4:] if host.startswith("www.") else host
+        except Exception:
+            return ""
+
+    def _compose_travel_planner_prompt(
+        self,
+        user_message: str,
+        trip_info: Dict[str, Any],
+        pois: List[Dict[str, str]],
+        web_sources: List[Dict[str, str]],
+    ) -> str:
+        """Build a comprehensive travel planner system prompt."""
+        days = trip_info["days"]
+        nights = trip_info["nights"]
+        destination = ""
+        if pois:
+            city = pois[0].get("city", "")
+            country = pois[0].get("country", "")
+            destination = f"{city}, {country}".strip(", ")
+        poi_names = ", ".join(p["display_name"] for p in pois) if pois else "use your knowledge"
+
+        source_ctx = ""
+        if web_sources:
+            parts = []
+            for i, s in enumerate(web_sources, 1):
+                parts.append(f"[{i}] {s['title']} ({s['domain']})\n{s['snippet']}")
+            source_ctx = (
+                "\nWEB RESEARCH CONTEXT (cite with [N] inline where relevant):\n"
+                + "\n\n".join(parts)
+                + "\n"
+            )
+
+        return (
+            "You are an expert travel planner AI. Produce a comprehensive, well-researched "
+            "travel itinerary that feels like a professional travel guide.\n\n"
+            f"DESTINATION: {destination or 'as stated by user'}\n"
+            f"TRIP LENGTH: {days} days / {nights} nights\n"
+            f"KNOWN ATTRACTIONS: {poi_names}\n"
+            f"{source_ctx}\n"
+            "RESPONSE LANGUAGE: Match the user's language. If the user wrote in Malay, "
+            "respond primarily in Malay/Bahasa.\n\n"
+            "YOUR ANSWER MUST INCLUDE ALL SECTIONS BELOW IN THIS EXACT ORDER:\n\n"
+            f"## \U0001f5fa\ufe0f Rencana Perjalanan {destination} {days} Hari\n\n"
+            "Write 2-3 engaging intro sentences about the destination and trip.\n\n"
+            "### \U0001f4cb Ringkasan Perjalanan\n\n"
+            "| Hari | Tema | Aktiviti Utama |\n"
+            "|------|------|----------------|\n"
+            f"(one row per day for all {days} days)\n\n"
+            "### \U0001f4c5 Hari 1: [Theme]\n\n"
+            "**\U0001f305 Pagi**\n"
+            "- Specific activity with place name and practical detail\n\n"
+            "**\U0001f324\ufe0f Tengah Hari / Petang**\n"
+            "- Afternoon activities\n\n"
+            "**\U0001f319 Malam**\n"
+            "- Evening plan with dinner suggestion\n\n"
+            "> \U0001f4a1 **Tip:** Practical tip for this day\n\n"
+            f"(Repeat for ALL {days} days. Day 1 = arrival, Day {days} = departure.)\n\n"
+            "### \U0001f35c Cadangan Makanan\n\n"
+            "5-8 must-try local foods:\n"
+            "- **Food name** \u2014 description, where to try (area/street)\n\n"
+            "### \U0001f697 Tips Pengangkutan\n\n"
+            "How to reach destination, local transport, parking, walkability.\n\n"
+            "### \U0001f3e8 Kawasan Penginapan\n\n"
+            "2-3 areas:\n"
+            "- **Area** \u2014 why, proximity, budget level\n\n"
+            "### \U0001f4b0 Anggaran Perbelanjaan\n\n"
+            "| Item | Anggaran (per orang/hari) |\n"
+            "|------|---------------------------|\n"
+            "| Penginapan | ... |\n"
+            "| Makanan | ... |\n"
+            "| Pengangkutan | ... |\n"
+            "| Tiket/Aktiviti | ... |\n"
+            "| **Jumlah** | **...** |\n\n"
+            "### \U0001f4dd Tips Praktikal\n\n"
+            "5-8 tips: weather, timing, clothing, booking, cultural etiquette, safety.\n\n"
+            "CRITICAL RULES:\n"
+            "- Group attractions by area to minimize backtracking\n"
+            f"- Day 1 lighter (arrival), Day {days} lighter (departure)\n"
+            "- Mix: heritage, food, scenic, shopping, local exploration\n"
+            "- Be SPECIFIC: real place names, street names, local food names\n"
+            "- Do NOT invent fake museums, districts, or transport systems\n"
+            "- When uncertain, use softer wording\n"
+            "- Avoid generic filler \u2014 give actionable details\n"
+            "- Do NOT include a Sources/Sumber section \u2014 added automatically\n"
+            "- Cite web research inline as [1], [2] where applicable"
+        )
+
+    def _handle_travel_itinerary(
+        self,
+        user_message: str,
+        target_model: str,
+        ollama_messages: List[Dict[str, Any]],
+        body: dict,
+        started: float,
+    ) -> Union[str, Iterator[str]]:
+        """Enhanced travel itinerary flow with web enrichment and structured output."""
+        trip_info = self._parse_trip_request(user_message)
+
+        pois = self._extract_place_names(user_message)
+        destination = ""
+        if pois:
+            city = pois[0].get("city", "")
+            country = pois[0].get("country", "")
+            destination = f"{city}, {country}".strip(", ")
+
+        web_sources = self._search_web_sources(
+            destination or user_message[:60], trip_info
+        )
+
+        place_cards: List[Dict[str, str]] = []
+        for poi in pois:
+            result = self._search_place_image(poi)
+            if result:
+                place_cards.append({
+                    "name": poi["display_name"],
+                    "image_url": result["image_url"],
+                })
+
+        travel_prompt = self._compose_travel_planner_prompt(
+            user_message=user_message,
+            trip_info=trip_info,
+            pois=pois,
+            web_sources=web_sources,
+        )
+
+        if ollama_messages and ollama_messages[0].get("role") == "system":
+            ollama_messages[0]["content"] = travel_prompt
+        else:
+            ollama_messages.insert(0, {"role": "system", "content": travel_prompt})
+
+        options = {"temperature": 0.7, "num_predict": 8192}
+        stream_requested = bool(body.get("stream", False))
+
+        self._log("travel_planner", {
+            "destination": destination,
+            "days": trip_info["days"],
+            "pois": len(pois),
+            "sources": len(web_sources),
+            "cards": len(place_cards),
+            "latency_ms": int((time.time() - started) * 1000),
+        })
+
+        if stream_requested:
+            return self._stream_ollama_chat(
+                target_model=target_model,
+                messages=ollama_messages,
+                options=options,
+                web_image_urls=[],
+                place_cards=place_cards,
+                sources=web_sources,
+            )
+
+        try:
+            content = self._complete_ollama_chat(
+                target_model=target_model,
+                messages=ollama_messages,
+                options=options,
+                timeout=300,
+            )
+            if not isinstance(content, str) or not content.strip():
+                content = "Unable to generate travel itinerary. Please try again."
+            parts = []
+            if place_cards:
+                parts.append(self._format_place_cards(place_cards))
+            if web_sources:
+                parts.append(f"> [\U0001f50d Read {len(web_sources)} web sources](#getouch-sources)")
+            parts.append(content)
+            if web_sources:
+                safe = json.dumps(web_sources, ensure_ascii=False)
+                parts.append(f"```getouch-sources\n{safe}\n```")
+            return "\n\n".join(parts)
+        except Exception as exc:
+            self._log("travel_planner_error", {"error": str(exc)})
+            return "Travel planner encountered an error. Please try again."
+
+    def _format_sources_section(self, sources: List[Dict[str, str]]) -> str:
+        """Render sources as a markdown footer with clickable links."""
+        if not sources:
+            return ""
+        lines = ["---", "", "### \U0001f4da Sumber", ""]
+        for i, s in enumerate(sources, 1):
+            title = s.get("title", s.get("domain", "Source"))
+            url = s.get("url", "")
+            domain = s.get("domain", "")
+            if url:
+                lines.append(f"{i}. [{title}]({url}) \u2014 *{domain}*")
+            else:
+                lines.append(f"{i}. {title}")
+        return "\n".join(lines)
+
+    def _extract_place_names(self, user_text: str) -> List[Dict[str, str]]:
+        """Quick LLM call to extract destination + POIs with canonical names.
+
+        Returns list of dicts: {display_name, canonical_name, city, country}
+        """
         prompt = (
-            "The user wants to visit a destination. Extract the destination, then list 4-6 famous tourist attractions or landmarks AT that destination.\n"
-            "ONLY place names, one per line. No numbering, no descriptions.\n"
+            "You are a travel data extractor. From the user query, extract:\n"
+            "1. The destination city and country\n"
+            "2. 4-6 famous tourist attractions AT that destination\n\n"
+            "Output EXACTLY in this format, one per line:\n"
+            "DESTINATION: <City>, <Country>\n"
+            "POI: <Display Name> | <Full Canonical Name including city and country>\n\n"
+            "Rules:\n"
+            "- Normalize misspellings (malaka→Melaka, kunning→Kunming)\n"
+            "- Canonical name MUST include city and country\n"
+            "- Include landmark type when useful (fort, temple, lake, church)\n\n"
+            "Example for 'buat itinerary ke malaka 3 hari':\n"
+            "DESTINATION: Melaka, Malaysia\n"
+            "POI: A Famosa | A Famosa Fort, Melaka, Malaysia\n"
+            "POI: Christ Church | Christ Church, Melaka, Malaysia\n"
+            "POI: Jonker Walk | Jonker Street, Melaka, Malaysia\n"
+            "POI: Stadthuys | The Stadthuys, Melaka, Malaysia\n\n"
             f"User query: {user_text[:300]}"
         )
         try:
             content = self._complete_ollama_chat(
                 target_model=self.valves.TEXT_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0.3, "num_predict": 120},
-                timeout=20,
+                options={"temperature": 0.2, "num_predict": 250},
+                timeout=25,
             )
-            places = []
+            destination = ""
+            pois: List[Dict[str, str]] = []
             for line in content.strip().split("\n"):
-                name = line.strip().strip("0123456789.-) *")
-                if name and len(name) > 2 and len(name) < 80:
-                    places.append(name)
-            return places[:int(self.valves.PLACE_IMAGE_LIMIT)]
+                line = line.strip()
+                if line.upper().startswith("DESTINATION:"):
+                    dest_raw = line.split(":", 1)[1].strip()
+                    parts = [p.strip() for p in dest_raw.split(",")]
+                    destination = dest_raw
+                    city = parts[0] if parts else ""
+                    country = parts[1] if len(parts) > 1 else ""
+                elif line.upper().startswith("POI:"):
+                    poi_raw = line.split(":", 1)[1].strip()
+                    if "|" in poi_raw:
+                        display, canonical = [p.strip() for p in poi_raw.split("|", 1)]
+                    else:
+                        display = poi_raw.strip().strip("0123456789.-) *")
+                        canonical = f"{display}, {destination}" if destination else display
+                    if display and len(display) > 2:
+                        # Ensure canonical always has destination context
+                        canonical_lower = canonical.lower()
+                        if destination:
+                            dest_parts = [p.strip().lower() for p in destination.split(",")]
+                            if not any(dp in canonical_lower for dp in dest_parts if dp):
+                                canonical = f"{canonical}, {destination}"
+                        pois.append({
+                            "display_name": display,
+                            "canonical_name": canonical,
+                            "city": city if 'city' in dir() else "",
+                            "country": country if 'country' in dir() else "",
+                        })
+            self._log("place_extract", {
+                "destination": destination,
+                "pois": [p["display_name"] for p in pois],
+                "canonical": [p["canonical_name"] for p in pois],
+            })
+            return pois[:int(self.valves.PLACE_IMAGE_LIMIT)]
         except Exception as exc:
             self._log("place_extract_error", {"error": str(exc)})
             return []
 
-    def _search_place_image(self, place_name: str) -> Optional[str]:
-        """Search SearXNG images for a single place and return the best image URL."""
+    def _score_image_candidate(
+        self, poi: Dict[str, str], candidate: Dict[str, Any]
+    ) -> float:
+        """Score an image candidate based on metadata relevance to the POI.
+
+        Returns a score from -1.0 to 1.0.  Higher = more relevant.
+        """
+        title = str(candidate.get("title") or "").lower()
+        snippet = str(candidate.get("content") or "").lower()
+        src_url = str(candidate.get("img_src") or candidate.get("url") or "").lower()
+        meta = f"{title} {snippet} {src_url}"
+
+        canonical = poi.get("canonical_name", "").lower()
+        display = poi.get("display_name", "").lower()
+        city = poi.get("city", "").lower()
+        country = poi.get("country", "").lower()
+
+        score = 0.0
+
+        # Positive signals: destination context in metadata
+        if city and city in meta:
+            score += 0.35
+        if country and country in meta:
+            score += 0.20
+        # Match display or canonical name tokens
+        display_tokens = [t for t in display.split() if len(t) > 2]
+        match_count = sum(1 for t in display_tokens if t in meta)
+        if display_tokens:
+            score += 0.30 * (match_count / len(display_tokens))
+
+        # Negative signals: obviously wrong landmarks
+        wrong_landmarks = [
+            "taj mahal", "eiffel tower", "colosseum", "statue of liberty",
+            "big ben", "sydney opera", "great wall", "machu picchu",
+            "pyramids", "petra jordan", "angkor wat", "christ the redeemer",
+        ]
+        for wl in wrong_landmarks:
+            if wl in meta and wl not in canonical:
+                score -= 0.80
+
+        # Negative: wrong country in metadata
+        wrong_countries = [
+            "india", "france", "italy", "usa", "united states", "england",
+            "australia", "peru", "egypt", "jordan", "brazil", "cambodia",
+        ]
+        if country:
+            for wc in wrong_countries:
+                if wc in meta and wc != country:
+                    score -= 0.40
+
+        return max(-1.0, min(1.0, score))
+
+    def _search_place_image(self, poi: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """Search SearXNG images for a POI using its canonical name.
+
+        Returns {image_url, score, source_title} or None.
+        """
+        canonical = poi.get("canonical_name", poi.get("display_name", ""))
         try:
-            q = quote_plus(f"{place_name} landmark photo")
+            q = quote_plus(f"{canonical} landmark photo")
             url = (
                 f"{self.valves.SEARXNG_BASE_URL}/search?format=json&categories=images"
                 f"&language=en&q={q}"
@@ -1015,29 +1414,59 @@ class Pipeline:
             raw = request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore")
             data = json.loads(raw)
             results = data.get("results") or []
-            for r in results:
+
+            best_url: Optional[str] = None
+            best_score = -1.0
+            best_title = ""
+            candidates_checked = 0
+
+            for r in results[:12]:
                 if not isinstance(r, dict):
                     continue
-                cand = r.get("img_src") or r.get("thumbnail")
-                if isinstance(cand, str) and cand.startswith("http"):
-                    return cand
-        except Exception:
-            pass
+                img_url = r.get("img_src") or r.get("thumbnail")
+                if not isinstance(img_url, str) or not img_url.startswith("http"):
+                    continue
+                candidates_checked += 1
+                sc = self._score_image_candidate(poi, r)
+                if sc > best_score:
+                    best_score = sc
+                    best_url = img_url
+                    best_title = str(r.get("title") or "")
+
+            min_threshold = 0.15
+            self._log("image_search", {
+                "poi": poi.get("display_name"),
+                "canonical": canonical,
+                "query": f"{canonical} landmark photo",
+                "candidates_checked": candidates_checked,
+                "best_score": round(best_score, 3),
+                "best_title": best_title[:80],
+                "passed": best_score >= min_threshold,
+            })
+
+            if best_url and best_score >= min_threshold:
+                return {"image_url": best_url, "score": best_score, "source_title": best_title}
+        except Exception as exc:
+            self._log("image_search_error", {"poi": poi.get("display_name"), "error": str(exc)})
         return None
 
     def _build_place_cards(self, user_text: str) -> List[Dict[str, str]]:
-        """Extract places and find an image for each, returning [{name, image_url}]."""
-        places = self._extract_place_names(user_text)
-        if not places:
+        """Extract places and find a validated image for each."""
+        pois = self._extract_place_names(user_text)
+        if not pois:
             return []
 
         cards: List[Dict[str, str]] = []
-        for name in places:
-            img_url = self._search_place_image(name)
-            if img_url:
-                cards.append({"name": name, "image_url": img_url})
+        for poi in pois:
+            result = self._search_place_image(poi)
+            if result:
+                cards.append({
+                    "name": poi["display_name"],
+                    "image_url": result["image_url"],
+                })
+            # Skip POIs with no confident image match
 
-        self._log("place_cards", {"requested": len(places), "found": len(cards)})
+        self._log("place_cards", {"requested": len(pois), "found": len(cards)})
         return cards
 
     def _format_place_cards(self, cards: List[Dict[str, str]]) -> str:

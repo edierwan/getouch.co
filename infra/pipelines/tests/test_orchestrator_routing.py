@@ -100,3 +100,141 @@ def test_format_place_cards_renders_table():
     assert "|" in result  # table format
     assert ":---:" in result  # center alignment
     assert "**Petronas Twin Towers**" in result  # bold names
+
+
+def test_score_image_candidate_positive():
+    """Candidate with matching city/country scores high."""
+    m, p = _make_pipeline()
+    poi = {"display_name": "A Famosa", "canonical_name": "A Famosa Fort, Melaka, Malaysia", "city": "Melaka", "country": "Malaysia"}
+    candidate = {"title": "A Famosa Fort in Melaka, Malaysia", "content": "historic fort", "img_src": "https://example.com/famosa.jpg"}
+    score = p._score_image_candidate(poi, candidate)
+    assert score > 0.5, f"Expected high score, got {score}"
+
+
+def test_score_image_candidate_wrong_landmark():
+    """Candidate mentioning Taj Mahal is rejected for Melaka itinerary."""
+    m, p = _make_pipeline()
+    poi = {"display_name": "A Famosa", "canonical_name": "A Famosa Fort, Melaka, Malaysia", "city": "Melaka", "country": "Malaysia"}
+    candidate = {"title": "Taj Mahal at sunset, India", "content": "beautiful monument in Agra India", "img_src": "https://example.com/tajmahal.jpg"}
+    score = p._score_image_candidate(poi, candidate)
+    assert score < 0.0, f"Expected negative score for wrong landmark, got {score}"
+
+
+def test_score_image_candidate_no_context():
+    """Candidate with no destination context scores low."""
+    m, p = _make_pipeline()
+    poi = {"display_name": "Christ Church", "canonical_name": "Christ Church, Melaka, Malaysia", "city": "Melaka", "country": "Malaysia"}
+    candidate = {"title": "random building photo", "content": "", "img_src": "https://example.com/random.jpg"}
+    score = p._score_image_candidate(poi, candidate)
+    assert score < 0.15, f"Expected low score for context-less candidate, got {score}"
+
+
+# ── Travel itinerary planner tests ──────────────────────────
+
+
+def test_is_travel_itinerary_positive():
+    """Travel itinerary queries are detected correctly."""
+    m, p = _make_pipeline()
+    assert p._is_travel_itinerary("buat itinerary tuk ke melaka tuk 5 hari")
+    assert p._is_travel_itinerary("buat ilternary tuk ke kunning china tuk 7 hari")
+    assert p._is_travel_itinerary("create a travel plan for Tokyo")
+    assert p._is_travel_itinerary("plan my trip to Bali for 3 days")
+    assert p._is_travel_itinerary("5 hari ke langkawi")
+    assert p._is_travel_itinerary("buatkan rencana perjalanan ke jogja")
+    assert p._is_travel_itinerary("perancangan cuti 4 malam ke sabah")
+
+
+def test_is_travel_itinerary_negative():
+    """Non-itinerary queries are correctly rejected."""
+    m, p = _make_pipeline()
+    assert not p._is_travel_itinerary("what is the best restaurant in KL")
+    assert not p._is_travel_itinerary("explain how airplanes work")
+    assert not p._is_travel_itinerary("help me with python code")
+    assert not p._is_travel_itinerary("translate this to english")
+
+
+def test_parse_trip_request_days():
+    m, p = _make_pipeline()
+    info = p._parse_trip_request("buat itinerary tuk ke melaka tuk 5 hari")
+    assert info["days"] == 5
+    assert info["nights"] == 4
+
+
+def test_parse_trip_request_nights():
+    m, p = _make_pipeline()
+    info = p._parse_trip_request("plan trip to bali for 3 nights")
+    assert info["days"] == 4  # 3 nights = 4 days
+    assert info["nights"] == 3
+
+
+def test_parse_trip_request_default():
+    m, p = _make_pipeline()
+    info = p._parse_trip_request("buat itinerary ke melaka")
+    assert info["days"] == 3  # default
+    assert info["nights"] == 2
+
+
+def test_parse_trip_request_clamped():
+    m, p = _make_pipeline()
+    info = p._parse_trip_request("30 hari ke europe")
+    assert info["days"] == 14  # capped at 14
+
+
+def test_compose_travel_planner_prompt_structure():
+    """Travel planner prompt includes all required sections."""
+    m, p = _make_pipeline()
+    pois = [
+        {"display_name": "A Famosa", "canonical_name": "A Famosa Fort, Melaka, Malaysia",
+         "city": "Melaka", "country": "Malaysia"},
+    ]
+    sources = [
+        {"id": "src_1", "title": "Melaka Guide", "url": "https://example.com",
+         "domain": "example.com", "snippet": "Top things to do in Melaka."},
+    ]
+    prompt = p._compose_travel_planner_prompt(
+        user_message="buat itinerary ke melaka 5 hari",
+        trip_info={"days": 5, "nights": 4},
+        pois=pois,
+        web_sources=sources,
+    )
+    assert "Melaka" in prompt
+    assert "5 days" in prompt or "5 Hari" in prompt
+    assert "A Famosa" in prompt
+    assert "Ringkasan Perjalanan" in prompt
+    assert "Cadangan Makanan" in prompt
+    assert "Tips Pengangkutan" in prompt
+    assert "Kawasan Penginapan" in prompt
+    assert "Anggaran Perbelanjaan" in prompt
+    assert "Tips Praktikal" in prompt
+    assert "[1]" in prompt  # source citation
+    assert "example.com" in prompt
+    assert "Do NOT include a Sources" in prompt
+
+
+def test_format_sources_section():
+    m, p = _make_pipeline()
+    sources = [
+        {"id": "src_1", "title": "Melaka Guide", "url": "https://example.com/melaka",
+         "domain": "example.com", "snippet": "stuff"},
+        {"id": "src_2", "title": "Travel Tips", "url": "https://travel.com/tips",
+         "domain": "travel.com", "snippet": "tips"},
+    ]
+    result = p._format_sources_section(sources)
+    assert "---" in result
+    assert "Sumber" in result
+    assert "[Melaka Guide](https://example.com/melaka)" in result
+    assert "[Travel Tips](https://travel.com/tips)" in result
+    assert "example.com" in result
+    assert "travel.com" in result
+
+
+def test_format_sources_section_empty():
+    m, p = _make_pipeline()
+    assert p._format_sources_section([]) == ""
+
+
+def test_extract_domain():
+    m, p = _make_pipeline()
+    assert p._extract_domain("https://www.example.com/page") == "example.com"
+    assert p._extract_domain("https://travel.guide.co/tips") == "travel.guide.co"
+    assert p._extract_domain("") == ""
