@@ -138,3 +138,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 news/.env
+
+# Getouch-specific
+*.bak*
+*.backup*
+infra/pgadmin/pgpass
+/data/
+services/wa/data/
+.DS_Store
+__pycache__/
+*.pyc

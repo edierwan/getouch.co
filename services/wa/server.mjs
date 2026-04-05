@@ -10,12 +10,14 @@ import {
 } from 'baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
+import { initDb, isDbReady, logMessage, logEvent, getMessages, getStats, getPersistedEvents } from './db.mjs';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 const PORT = Number(process.env.PORT || 3001);
 const API_KEY = process.env.WA_API_KEY || '';
+const ADMIN_KEY = process.env.WA_ADMIN_KEY || API_KEY; // Falls back to API_KEY if not set
 const AUTH_DIR = process.env.WA_AUTH_DIR || '/app/data/auth';
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
@@ -33,6 +35,8 @@ const events = [];
 function addEvent(type, detail) {
   events.unshift({ ts: new Date().toISOString(), type, detail });
   if (events.length > MAX_EVENTS) events.length = MAX_EVENTS;
+  // Persist to DB (non-blocking)
+  logEvent(logger, type, detail);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +205,8 @@ async function startWhatsApp() {
             '';
           addEvent('message_in', `From ${sender}: ${text.slice(0, 80)}`);
           logger.info({ sender, text: text.slice(0, 100) }, 'Incoming message');
+          const phone = sender ? sender.split('@')[0] : null;
+          logMessage(logger, { direction: 'in', phone, jid: sender, messageType: 'text', content: text, messageId: msg.key.id });
         }
       }
     });
@@ -210,6 +216,7 @@ async function startWhatsApp() {
 }
 
 // Start on boot
+initDb(logger).catch(() => {});
 startWhatsApp().catch((err) => {
   addEvent('error', `Failed to start: ${err.message}`);
   logger.error(err, 'Failed to start WhatsApp');
@@ -254,6 +261,20 @@ function requireAuth(req, res) {
   const provided = req.headers['x-api-key'];
   if (!provided || provided !== API_KEY) {
     json(res, 401, { error: 'Unauthorized — invalid or missing X-API-Key' });
+    return false;
+  }
+  return true;
+}
+
+function requireAdmin(req, res) {
+  const key = ADMIN_KEY || API_KEY;
+  if (!key) {
+    json(res, 500, { error: 'Admin key not configured' });
+    return false;
+  }
+  const provided = req.headers['x-api-key'] || req.headers['x-admin-key'];
+  if (!provided || provided !== key) {
+    json(res, 401, { error: 'Unauthorized — invalid or missing admin key' });
     return false;
   }
   return true;
@@ -566,6 +587,10 @@ a:hover{text-decoration:underline}
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/logout</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Logout &amp; clear session</td></tr>
         <tr><td><span class="mtag mtag-post">POST</span></td><td><code>/api/reset</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Force-reset session &amp; reconnect</td></tr>
         <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/api/events</code></td><td><span class="auth-tag auth-key">X-API-Key</span></td><td>Recent service events/logs</td></tr>
+        <tr><td colspan="4" style="padding:.7rem .65rem .3rem;color:var(--text3);font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Admin Endpoints</td></tr>
+        <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/admin/messages?phone=&amp;direction=&amp;limit=&amp;offset=</code></td><td><span class="auth-tag auth-key">Admin Key</span></td><td>Message history with pagination</td></tr>
+        <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/admin/stats?days=7</code></td><td><span class="auth-tag auth-key">Admin Key</span></td><td>Message statistics &amp; daily breakdown</td></tr>
+        <tr><td><span class="mtag mtag-get">GET</span></td><td><code>/admin/events?limit=100</code></td><td><span class="auth-tag auth-key">Admin Key</span></td><td>Persisted event history from DB</td></tr>
       </tbody>
     </table>
 
@@ -603,7 +628,54 @@ a:hover{text-decoration:underline}
     </div>
   </div>
 
-  <div class="ft">Getouch WhatsApp Console &middot; Powered by Getouch</div>
+  <!-- Message History (DB-powered) -->
+  <div class="panel" id="msg-panel">
+    <h2><span class="pi">💬</span> Message History</h2>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;align-items:end">
+      <div class="field" style="margin:0;flex:1;min-width:8rem">
+        <label for="msg-phone">Phone filter</label>
+        <input type="text" id="msg-phone" placeholder="e.g. 60192…" style="padding:.4rem .65rem;font-size:.82rem"/>
+      </div>
+      <div class="field" style="margin:0">
+        <label for="msg-dir">Direction</label>
+        <select id="msg-dir" style="padding:.4rem .65rem;font-size:.82rem;background:var(--bg);border:1px solid var(--border);border-radius:.5rem;color:var(--text)">
+          <option value="">All</option>
+          <option value="in">Incoming</option>
+          <option value="out">Outgoing</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="loadMessages(0)">Search</button>
+    </div>
+    <div id="msg-list" style="max-height:20rem;overflow-y:auto">
+      <div style="color:var(--text3);font-size:.82rem;padding:.5rem 0">Click Search to load messages</div>
+    </div>
+    <div id="msg-pager" style="display:flex;gap:.5rem;margin-top:.5rem;justify-content:center"></div>
+  </div>
+
+  <!-- Stats (DB-powered) -->
+  <div class="panel" id="stats-panel">
+    <h2><span class="pi">📊</span> Message Stats</h2>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem">
+      <label style="font-size:.82rem;color:var(--text2)">Last</label>
+      <select id="stats-days" style="padding:.35rem .5rem;font-size:.82rem;background:var(--bg);border:1px solid var(--border);border-radius:.5rem;color:var(--text)">
+        <option value="7">7 days</option>
+        <option value="14">14 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="loadStats()">Refresh</button>
+    </div>
+    <div class="summary" id="stats-cards" style="margin-bottom:.75rem">
+      <div class="scard"><div class="scard-label">Sent</div><div class="scard-val" id="stat-sent">—</div></div>
+      <div class="scard"><div class="scard-label">Received</div><div class="scard-val" id="stat-recv">—</div></div>
+      <div class="scard"><div class="scard-label">Total</div><div class="scard-val" id="stat-total">—</div></div>
+      <div class="scard"><div class="scard-label">Unique Contacts</div><div class="scard-val" id="stat-contacts">—</div></div>
+    </div>
+    <div id="stats-daily" style="font-size:.82rem;color:var(--text2)">
+      <div style="padding:.5rem 0">Click Refresh to load stats</div>
+    </div>
+  </div>
+
+  <div class="ft">Getouch WhatsApp Console &middot; Powered by Getouch${isDbReady() ? ' &middot; <span style="color:var(--green)">DB Connected</span>' : ''}</div>
 </div>
 
 <script>
@@ -812,6 +884,67 @@ async function doSend(){
   $('send-btn').disabled=false;$('send-btn').textContent='Send Message';
   refreshEvents();
 }
+
+// ── Messages (DB) ───────────────────────────────────
+let msgOffset=0;
+const MSG_LIMIT=30;
+async function loadMessages(offset){
+  msgOffset=offset||0;
+  const key=savedKey();
+  const list=$('msg-list');
+  const pager=$('msg-pager');
+  if(!key){list.innerHTML='<div style="color:var(--red);font-size:.82rem;padding:.5rem 0">Enter API key first</div>';return}
+  const phone=$('msg-phone').value.trim();
+  const dir=$('msg-dir').value;
+  const qs=new URLSearchParams({limit:MSG_LIMIT,offset:msgOffset});
+  if(phone)qs.set('phone',phone);
+  if(dir)qs.set('direction',dir);
+  try{
+    const r=await fetch('/admin/messages?'+qs,{headers:{'X-API-Key':key}});
+    if(!r.ok){list.innerHTML='<div style="color:var(--red);font-size:.82rem;padding:.5rem 0">'+r.status+' error</div>';return}
+    const d=await r.json();
+    if(!d.rows||!d.rows.length){list.innerHTML='<div style="color:var(--text3);font-size:.82rem;padding:.5rem 0">No messages found</div>';pager.innerHTML='';return}
+    list.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:.8rem"><thead><tr style="color:var(--text3);text-transform:uppercase;font-size:.7rem"><th style="text-align:left;padding:.4rem">Time</th><th style="text-align:left;padding:.4rem">Dir</th><th style="text-align:left;padding:.4rem">Phone</th><th style="text-align:left;padding:.4rem">Type</th><th style="text-align:left;padding:.4rem;min-width:12rem">Content</th></tr></thead><tbody>'+
+      d.rows.map(m=>{
+        const t=new Date(m.created_at).toLocaleString();
+        const dirC=m.direction==='out'?'var(--green)':'var(--blue)';
+        const dirL=m.direction==='out'?'OUT':'IN';
+        return '<tr style="border-bottom:1px solid rgba(30,45,74,.4)"><td style="padding:.4rem;color:var(--text3);white-space:nowrap">'+t+'</td><td style="padding:.4rem;font-weight:700;color:'+dirC+'">'+dirL+'</td><td style="padding:.4rem;font-family:var(--mono)">'+esc(m.phone||'')+'</td><td style="padding:.4rem">'+esc(m.message_type)+'</td><td style="padding:.4rem;color:var(--text2);word-break:break-all">'+esc((m.content||'').slice(0,120))+'</td></tr>';
+      }).join('')+'</tbody></table>';
+    // Pager
+    const pages=Math.ceil(d.total/MSG_LIMIT);
+    const cur=Math.floor(msgOffset/MSG_LIMIT);
+    let ph='';
+    if(cur>0)ph+='<button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" onclick="loadMessages('+(msgOffset-MSG_LIMIT)+')">← Prev</button>';
+    ph+='<span style="font-size:.78rem;color:var(--text3);padding:.4rem">Page '+(cur+1)+' of '+pages+' ('+d.total+' messages)</span>';
+    if(cur<pages-1)ph+='<button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" onclick="loadMessages('+(msgOffset+MSG_LIMIT)+')">Next →</button>';
+    pager.innerHTML=ph;
+  }catch(e){list.innerHTML='<div style="color:var(--red);font-size:.82rem;padding:.5rem 0">'+e.message+'</div>'}
+}
+
+// ── Stats (DB) ──────────────────────────────────────
+async function loadStats(){
+  const key=savedKey();
+  if(!key){$('stats-daily').innerHTML='<div style="color:var(--red);font-size:.82rem;padding:.5rem 0">Enter API key first</div>';return}
+  const days=$('stats-days').value;
+  try{
+    const r=await fetch('/admin/stats?days='+days,{headers:{'X-API-Key':key}});
+    if(!r.ok){$('stats-daily').innerHTML='<div style="color:var(--red);font-size:.82rem">'+r.status+' error</div>';return}
+    const d=await r.json();
+    if(d.summary){
+      $('stat-sent').textContent=d.summary.sent||0;
+      $('stat-recv').textContent=d.summary.received||0;
+      $('stat-total').textContent=d.summary.total||0;
+      $('stat-contacts').textContent=d.summary.unique_contacts||0;
+    }
+    if(d.daily&&d.daily.length){
+      $('stats-daily').innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="color:var(--text3);text-transform:uppercase;font-size:.7rem"><th style="text-align:left;padding:.35rem">Date</th><th style="text-align:right;padding:.35rem">Sent</th><th style="text-align:right;padding:.35rem">Received</th></tr></thead><tbody>'+
+        d.daily.map(r=>'<tr style="border-bottom:1px solid rgba(30,45,74,.4)"><td style="padding:.35rem">'+r.day+'</td><td style="padding:.35rem;text-align:right;color:var(--green)">'+r.sent+'</td><td style="padding:.35rem;text-align:right;color:var(--blue)">'+r.received+'</td></tr>').join('')+'</tbody></table>';
+    }else{
+      $('stats-daily').innerHTML='<div style="color:var(--text3);font-size:.82rem;padding:.5rem 0">No data for this period</div>';
+    }
+  }catch(e){$('stats-daily').innerHTML='<div style="color:var(--red);font-size:.82rem">'+e.message+'</div>'}
+}
 </script>
 </body>
 </html>`;
@@ -940,6 +1073,7 @@ const server = http.createServer(async (req, res) => {
       const result = await sock.sendMessage(jid, { text });
       addEvent('message_out', `Text to ${jid}: ${text.slice(0, 60)}`);
       logger.info({ to: jid }, 'Text message sent');
+      logMessage(logger, { direction: 'out', phone: normalizePhone(to), jid, messageType: 'text', content: text, messageId: result.key.id });
       return json(res, 200, { success: true, messageId: result.key.id, to: jid });
     }
 
@@ -958,6 +1092,7 @@ const server = http.createServer(async (req, res) => {
       const result = await sock.sendMessage(jid, msg);
       addEvent('message_out', `Image to ${jid}`);
       logger.info({ to: jid }, 'Image message sent');
+      logMessage(logger, { direction: 'out', phone: normalizePhone(to), jid, messageType: 'image', content: caption || null, messageId: result.key.id, metadata: { imageUrl } });
       return json(res, 200, { success: true, messageId: result.key.id, to: jid });
     }
 
@@ -976,6 +1111,7 @@ const server = http.createServer(async (req, res) => {
       const result = await sock.sendMessage(jid, msg);
       addEvent('message_out', `Document "${fileName}" to ${jid}`);
       logger.info({ to: jid, fileName }, 'Document message sent');
+      logMessage(logger, { direction: 'out', phone: normalizePhone(to), jid, messageType: 'document', content: caption || fileName, messageId: result.key.id, metadata: { fileUrl, fileName } });
       return json(res, 200, { success: true, messageId: result.key.id, to: jid });
     }
 
@@ -1006,6 +1142,38 @@ const server = http.createServer(async (req, res) => {
       logger.info('Session force-reset');
       reconnectTimer = setTimeout(() => startWhatsApp(), 500);
       return json(res, 200, { success: true, message: 'Session reset — reconnecting' });
+    }
+
+    // ── Admin API ─────────────────────────────────────
+
+    // GET /admin/messages — message history with pagination and filters
+    if (path === '/admin/messages' && method === 'GET') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const direction = parsed.searchParams.get('direction') || undefined;
+      const phone = parsed.searchParams.get('phone') || undefined;
+      const limit = Math.min(parseInt(parsed.searchParams.get('limit') || '50', 10), 200);
+      const offset = Math.max(parseInt(parsed.searchParams.get('offset') || '0', 10), 0);
+      const data = await getMessages({ direction, phone, limit, offset });
+      return json(res, 200, data);
+    }
+
+    // GET /admin/stats — message stats for last N days
+    if (path === '/admin/stats' && method === 'GET') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const days = Math.min(parseInt(parsed.searchParams.get('days') || '7', 10), 90);
+      const data = await getStats(days);
+      return json(res, 200, data);
+    }
+
+    // GET /admin/events — persisted events from DB
+    if (path === '/admin/events' && method === 'GET') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const limit = Math.min(parseInt(parsed.searchParams.get('limit') || '100', 10), 500);
+      const data = await getPersistedEvents(limit);
+      return json(res, 200, data);
     }
 
     // 404

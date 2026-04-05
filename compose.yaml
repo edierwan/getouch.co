@@ -48,10 +48,15 @@ services:
       dockerfile: Dockerfile
     container_name: getouch-wa
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       PORT: ${WA_PORT:-3001}
       WA_API_KEY: ${WA_API_KEY}
       WA_AUTH_DIR: /app/data/auth
+      WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch}
       LOG_LEVEL: ${WA_LOG_LEVEL:-info}
     volumes:
       - /data/getouch/wa:/app/data
