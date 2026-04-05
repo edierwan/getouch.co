@@ -1001,7 +1001,7 @@ async function loadApps() {
     }
     $('apps-empty').style.display = 'none';
     $('apps-list').innerHTML = apps.map(a => {
-      const isActive = a.status === 'active';
+      const isActive = a.status === 'active' && !!a.key_prefix;
       const dotClass = isActive ? 'dot-active' : 'dot-inactive';
       const keyInfo = a.key_prefix ? esc(a.key_prefix)+'... <span style="font-size:.68rem;color:var(--text3)">('+esc(a.key_status||'')+')</span>' : '<span class="empty-val">No key assigned</span>';
       const wh = a.webhook_url ? '<span style="font-family:var(--mono);font-size:.72rem;word-break:break-all">'+esc(a.webhook_url)+'</span>' : '<span class="empty-val">None</span>';

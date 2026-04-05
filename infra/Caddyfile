@@ -262,12 +262,20 @@ http://portal.getouch.co {
   }
 }
 
+http://grafana.getouch.co {
+  import common_headers
+  reverse_proxy grafana:3000
+}
+
+http://analytics.getouch.co {
+  import common_headers
+  reverse_proxy umami:3000
+}
+
 http://bot.getouch.co,
 http://api.getouch.co,
-http://grafana.getouch.co,
 http://metrics.getouch.co,
 http://sms.getouch.co,
-http://analytics.getouch.co,
 http://billing.getouch.co,
 http://admin.getouch.co {
   import common_headers

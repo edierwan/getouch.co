@@ -47,15 +47,15 @@ const serviceCategories = [
     services: [
       { name: 'Coolify', desc: 'Deployment & container management', url: 'https://coolify.getouch.co', icon: '🚀' },
       { name: 'SearXNG', desc: 'Private meta search engine', url: 'https://search.getouch.co', icon: '🔍' },
+      { name: 'Grafana', desc: 'Metrics & observability', url: 'https://grafana.getouch.co', icon: '📊' },
+      { name: 'Analytics', desc: 'Self-hosted web analytics', url: 'https://analytics.getouch.co', icon: '📉' },
     ],
   },
 ];
 
 const plannedServices = [
-  { name: 'Grafana', desc: 'Metrics & observability', icon: '📊' },
   { name: 'Bot Service', desc: 'Chatbot orchestration engine', icon: '🤖' },
   { name: 'API Gateway', desc: 'Central REST/GraphQL API', icon: '⚡' },
-  { name: 'Analytics', desc: 'Self-hosted web analytics', icon: '📉' },
 ];
 
 const infraSpecs = [
@@ -165,6 +165,16 @@ export default function Dashboard({ sessionName, stats, recentUsers }: Props) {
                 <a href="https://s3.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
                   <span className="quick-icon">📦</span>
                   <div><h3>S3 Storage</h3><p>Browse &amp; manage files in S3 buckets</p></div>
+                  <span className="quick-arrow">→</span>
+                </a>
+                <a href="https://grafana.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
+                  <span className="quick-icon">📊</span>
+                  <div><h3>Grafana</h3><p>Metrics, dashboards &amp; observability</p></div>
+                  <span className="quick-arrow">→</span>
+                </a>
+                <a href="https://analytics.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
+                  <span className="quick-icon">📉</span>
+                  <div><h3>Analytics</h3><p>Self-hosted web analytics (Umami)</p></div>
                   <span className="quick-arrow">→</span>
                 </a>
               </div>

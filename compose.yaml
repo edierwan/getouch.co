@@ -9,6 +9,8 @@ services:
       - pgadmin
       - open-webui
       - searxng
+      - grafana
+      - umami
     environment:
       ADMIN_AUTH_USER: ${ADMIN_AUTH_USER:-getouchadmin}
       ADMIN_AUTH_HASH: ${ADMIN_AUTH_HASH}
@@ -380,6 +382,64 @@ services:
       - /data/getouch/filestash:/app/data/state
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8334/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # Grafana — Metrics & observability dashboard
+  # ────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SERVER_ROOT_URL: https://grafana.getouch.co
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-getouch2026}
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_NAME: grafana
+      GF_DATABASE_USER: ${APP_DB_USER:-getouch}
+      GF_DATABASE_PASSWORD: ${APP_DB_PASSWORD}
+      GF_DATABASE_SSL_MODE: disable
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - /data/getouch/grafana:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # Umami — Self-hosted web analytics
+  # ────────────────────────────────────────────────────────
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    container_name: umami
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:-getouch-umami-secret-2026}
+      TRACKER_SCRIPT_NAME: gtag.js
+      COLLECT_API_ENDPOINT: /api/collect
+      DISABLE_TELEMETRY: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/heartbeat || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
