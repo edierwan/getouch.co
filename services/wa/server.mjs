@@ -260,17 +260,28 @@ function readBody(req) {
   });
 }
 
-function requireAuth(req, res) {
-  if (!API_KEY) {
-    json(res, 500, { error: 'API key not configured on server' });
-    return false;
-  }
+async function requireAuth(req, res) {
   const provided = req.headers['x-api-key'];
-  if (!provided || provided !== API_KEY) {
-    json(res, 401, { error: 'Unauthorized — invalid or missing X-API-Key' });
+  if (!provided) {
+    json(res, 401, { error: 'Unauthorized — missing X-API-Key header' });
     return false;
   }
-  return true;
+  // 1. Accept static env-var API key
+  if (API_KEY && provided === API_KEY) return true;
+  // 2. Accept admin key (so admin console Send Test, QR, events etc. work)
+  if (ADMIN_KEY && provided === ADMIN_KEY) return true;
+  // 3. Validate against database-managed API keys
+  if (isDbReady()) {
+    try {
+      const dbKey = await validateApiKey(provided);
+      if (dbKey) {
+        recordKeyUsage(hashApiKey(provided)).catch(() => {});
+        return true;
+      }
+    } catch {}
+  }
+  json(res, 401, { error: 'Unauthorized — invalid or missing X-API-Key' });
+  return false;
 }
 
 function requireAdmin(req, res) {
@@ -349,7 +360,7 @@ const server = http.createServer(async (req, res) => {
 
     // GET /api/status
     if (path === '/api/status' && method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       return json(res, 200, {
         state: connectionState,
         authenticated: connectionState === 'open',
@@ -364,13 +375,13 @@ const server = http.createServer(async (req, res) => {
 
     // GET /api/events — recent in-memory events
     if (path === '/api/events' && method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       return json(res, 200, events);
     }
 
     // GET /api/qr-code — current QR code as data URL
     if (path === '/api/qr-code' && method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       if (connectionState === 'open') {
         return json(res, 400, { error: 'Already connected — logout first to re-pair', available: false });
       }
@@ -382,7 +393,7 @@ const server = http.createServer(async (req, res) => {
 
     // GET /api/pairing-code?phone=6012xxxxxxx
     if (path === '/api/pairing-code' && method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       const rawPhone = parsed.searchParams.get('phone');
       const digits = normalizePhone(rawPhone);
       if (!digits) {
@@ -428,7 +439,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/send-text
     if (path === '/api/send-text' && method === 'POST') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       if (!requireConnected(res)) return;
       const body = await readBody(req);
       const { to, text } = body;
@@ -445,7 +456,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/send-image
     if (path === '/api/send-image' && method === 'POST') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       if (!requireConnected(res)) return;
       const body = await readBody(req);
       const { to, imageUrl, caption } = body;
@@ -464,7 +475,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/send-document
     if (path === '/api/send-document' && method === 'POST') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       if (!requireConnected(res)) return;
       const body = await readBody(req);
       const { to, fileUrl, fileName, caption } = body;
@@ -483,7 +494,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/logout
     if (path === '/api/logout' && method === 'POST') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       try {
         if (sock) await sock.logout().catch(() => {});
       } catch {}
@@ -499,7 +510,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/reset — force-clear auth and restart (no WA logout call)
     if (path === '/api/reset' && method === 'POST') {
-      if (!requireAuth(req, res)) return;
+      if (!(await requireAuth(req, res))) return;
       destroySocket();
       connectionState = 'disconnected';
       pairedPhone = null;

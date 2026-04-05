@@ -493,11 +493,11 @@ button{font-family:var(--font)}
     <h3 id="app-modal-title">Register App</h3>
     <input type="hidden" id="app-edit-id"/>
     <div class="field"><label>App Name</label><input type="text" id="app-name" placeholder="e.g. Serapod2U Staging"/><div class="hint">A recognizable name for this client application</div></div>
-    <div class="field"><label>Domain</label><input type="text" id="app-domain" placeholder="e.g. stg.serapod2u.com"/><div class="hint">The domain where this app runs</div></div>
+    <div class="field"><label>Domain</label><input type="text" id="app-domain" placeholder="e.g. stg.serapod2u.com" oninput="onDomainChange()"/><div class="hint">The domain where this app runs. Protocol (https://) and trailing slashes are removed automatically.</div></div>
     <div class="field"><label>Description</label><textarea id="app-desc" rows="2" placeholder="Optional &mdash; describe what this app does"></textarea></div>
-    <div class="field"><label>Webhook URL <span style="color:var(--text3);font-weight:400">(optional)</span></label><input type="text" id="app-webhook" placeholder="https://your-domain.com/api/whatsapp/webhook"/>
-      <div class="hint">Used if this app wants to receive inbound WhatsApp events or delivery callbacks. Leave empty for apps that only send outbound messages.</div>
-      <div class="hint" style="margin-top:.15rem;color:var(--text3)">Example: https://stg.serapod2u.com/api/whatsapp/webhook</div>
+    <div class="field"><label>Webhook URL <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <div style="display:flex;gap:.35rem;align-items:center"><input type="text" id="app-webhook" placeholder="https://your-domain.com/api/whatsapp/webhook" oninput="_webhookManual=true" style="flex:1"/><button class="btn btn-ghost btn-sm" type="button" onclick="resetWebhook()" title="Reset to default">&#x21BA; Reset</button></div>
+      <div class="hint" id="app-webhook-hint">Auto-generated from domain. You can override it if needed.</div>
     </div>
     <div class="field"><label>Assign API Key <span style="color:var(--text3);font-weight:400">(optional)</span></label><select id="app-key"><option value="">None &mdash; assign later</option></select>
       <div class="hint">Choose an existing API key, or create the app first and assign a key later</div>
@@ -771,15 +771,17 @@ async function loadOverview() {
   // Events
   try {
     const r = await fetch('/api/events', { headers: hdr() });
-    if (!r.ok) return;
+    if (!r.ok) { $('ov-events').innerHTML = '<div style="color:var(--text3);font-size:.82rem">No events available</div>'; return }
     const evts = await r.json();
     if (evts.length) {
       $('ov-events').innerHTML = evts.slice(0,8).map(e => {
         const ts = new Date(e.ts).toLocaleTimeString();
         return '<div class="log-item"><span class="log-ts">'+ts+'</span><span class="log-type t-'+esc(e.type)+'">'+esc(e.type)+'</span><span class="log-detail">'+esc(e.detail||'')+'</span></div>';
       }).join('');
+    } else {
+      $('ov-events').innerHTML = '<div style="color:var(--text3);font-size:.82rem">No events yet</div>';
     }
-  } catch(e) {}
+  } catch(e) { $('ov-events').innerHTML = '<div style="color:var(--text3);font-size:.82rem">No events available</div>' }
 }
 function initDashboard() {
   loadOverview();
@@ -1005,7 +1007,34 @@ async function loadApps() {
   } catch(e) { toast(e.message,'err') }
 }
 
+// ── Domain → Webhook auto-populate ───────────────────
+var _webhookManual = false;
+
+function normalizeDomain(input) {
+  var d = (input || '').trim();
+  d = d.replace(new RegExp('^https?://', 'i'), '');
+  d = d.replace(new RegExp('/+$'), '');
+  d = d.split('/')[0]; // take only host part
+  return d.toLowerCase();
+}
+function buildDefaultWebhookUrl(domain) {
+  if (!domain) return '';
+  return 'https://' + domain + '/api/whatsapp/webhook';
+}
+function onDomainChange() {
+  if (_webhookManual) return;
+  var d = normalizeDomain($('app-domain').value);
+  $('app-webhook').value = buildDefaultWebhookUrl(d);
+}
+function resetWebhook() {
+  _webhookManual = false;
+  var d = normalizeDomain($('app-domain').value);
+  $('app-webhook').value = buildDefaultWebhookUrl(d);
+  toast('Webhook URL reset to default', 'info');
+}
+
 async function openAppModal(editId) {
+  _webhookManual = false;
   $('app-edit-id').value = '';
   $('app-name').value = '';
   $('app-domain').value = '';
@@ -1036,15 +1065,20 @@ async function editApp(id) {
       $('app-webhook').value = a.webhook_url || '';
       $('app-key').value = a.api_key_id || '';
       $('app-modal-title').textContent = 'Edit App';
+      // If existing webhook differs from default, mark as manually customized
+      var defaultWh = buildDefaultWebhookUrl(normalizeDomain(a.domain || ''));
+      if (a.webhook_url && a.webhook_url !== defaultWh) _webhookManual = true;
     }
   } catch(e) {}
 }
 
 async function saveApp() {
   const id = $('app-edit-id').value;
+  const rawDomain = $('app-domain').value.trim();
+  const domain = normalizeDomain(rawDomain);
   const body = {
     name: $('app-name').value.trim(),
-    domain: $('app-domain').value.trim(),
+    domain: domain,
     description: $('app-desc').value.trim(),
     webhook_url: $('app-webhook').value.trim(),
     api_key_id: $('app-key').value ? parseInt($('app-key').value) : null,
@@ -1093,9 +1127,9 @@ function copyAppConfig(id) {
     '<div style="margin-bottom:.5rem"><strong>API Key:</strong> <span style="font-family:var(--mono)">'+esc(keyInfo)+'</span></div>' +
     '<div style="margin-bottom:.75rem"><strong>Gateway URL:</strong> <span style="font-family:var(--mono)">https://wa.getouch.co</span></div>' +
     '<div style="font-weight:700;font-size:.82rem;margin-bottom:.25rem">Environment Variables (.env)</div>' +
-    '<div class="config-block" id="cfg-env">'+esc(envBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\\'cfg-env\\')">Copy</button></div>' +
+    '<div class="config-block" id="cfg-env">'+esc(envBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock('+SQ+'cfg-env'+SQ+')">Copy</button></div>' +
     '<div style="font-weight:700;font-size:.82rem;margin-bottom:.25rem;margin-top:.75rem">cURL Example</div>' +
-    '<div class="config-block" id="cfg-curl">'+esc(curlBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\\'cfg-curl\\')">Copy</button></div>';
+    '<div class="config-block" id="cfg-curl">'+esc(curlBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock('+SQ+'cfg-curl'+SQ+')">Copy</button></div>';
   openModal('config-modal');
 }
 function cpBlock(id) {
