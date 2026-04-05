@@ -722,7 +722,8 @@ async function loadKeys() {
     if (!keys.length) { $('keys-body').innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:1.5rem">No API keys yet. Click + Create Key.</td></tr>'; return }
     $('keys-body').innerHTML = keys.map(k => {
       const st = k.status === 'active';
-      return '<tr><td style="font-family:var(--mono);font-size:.78rem">'+esc(k.key_prefix)+'...</td><td>'+esc(k.label)+'</td><td style="font-size:.78rem">'+esc(JSON.parse(k.scopes||'[]').join(', '))+'</td><td><span class="status-dot '+(st?'dot-active':'dot-revoked')+'"></span>'+esc(k.status)+'</td><td style="font-size:.78rem;color:var(--text3)">'+(k.last_used_at?new Date(k.last_used_at).toLocaleString():'Never')+'</td><td>'+k.usage_count+'</td><td style="font-size:.78rem;color:var(--text3)">'+new Date(k.created_at).toLocaleDateString()+'</td><td>'+(st?'<button class="btn-icon" title="Revoke" onclick="revokeKey('+k.id+')">&#x1F6AB;</button>':'')+'</td></tr>';
+      const sc = (typeof k.scopes==='string'?JSON.parse(k.scopes):k.scopes||[]).join(', ');
+      return '<tr><td style="font-family:var(--mono);font-size:.78rem">'+esc(k.key_prefix)+'...</td><td>'+esc(k.label)+'</td><td style="font-size:.78rem">'+esc(sc)+'</td><td><span class="status-dot '+(st?'dot-active':'dot-revoked')+'"></span>'+esc(k.status)+'</td><td style="font-size:.78rem;color:var(--text3)">'+(k.last_used_at?new Date(k.last_used_at).toLocaleString():'Never')+'</td><td>'+k.usage_count+'</td><td style="font-size:.78rem;color:var(--text3)">'+new Date(k.created_at).toLocaleDateString()+'</td><td>'+(st?'<button class="btn-icon" title="Revoke" onclick="revokeKey('+k.id+')">&#x1F6AB;</button>':'')+'</td></tr>';
     }).join('');
   } catch(e) { toast(e.message,'err') }
 }
