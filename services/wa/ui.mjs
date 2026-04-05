@@ -349,32 +349,51 @@ button{font-family:var(--font)}
 
 <!-- ════════════ MESSAGES ════════════ -->
 <div class="page" id="p-messages">
-  <div class="panel">
-    <div class="panel-hdr"><h3>&#x1F4AC; Message History</h3></div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;align-items:end">
-      <div class="field" style="margin:0;flex:1;min-width:8rem"><label>Phone filter</label><input type="text" id="msg-phone" placeholder="e.g. 60192..."/></div>
-      <div class="field" style="margin:0"><label>Direction</label><select id="msg-dir"><option value="">All</option><option value="in">Incoming</option><option value="out">Outgoing</option></select></div>
-      <button class="btn btn-primary btn-sm" onclick="loadMessages(0)">Search</button>
-    </div>
-    <div id="msg-list" style="max-height:28rem;overflow-y:auto"><div style="color:var(--text3);font-size:.82rem;padding:1rem;text-align:center">Click Search to load messages</div></div>
-    <div class="pager" id="msg-pager"></div>
+  <!-- Stats cards row -->
+  <div class="cards" id="msg-stat-cards">
+    <div class="card"><div class="card-label">Sent</div><div class="card-val" style="color:var(--green)" id="st-sent">&#x2014;</div><div class="card-sub" id="st-sent-sub"></div></div>
+    <div class="card"><div class="card-label">Received</div><div class="card-val" style="color:var(--blue)" id="st-recv">&#x2014;</div><div class="card-sub" id="st-recv-sub"></div></div>
+    <div class="card"><div class="card-label">Total Messages</div><div class="card-val" id="st-total">&#x2014;</div><div class="card-sub" id="st-total-sub"></div></div>
+    <div class="card"><div class="card-label">Unique Contacts</div><div class="card-val" id="st-contacts">&#x2014;</div><div class="card-sub" id="st-contacts-sub"></div></div>
   </div>
-  <div class="panel">
-    <div class="panel-hdr"><h3>&#x1F4CA; Message Stats</h3></div>
-    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem">
-      <label style="font-size:.82rem;color:var(--text2)">Period</label>
-      <select id="stats-days" style="padding:.35rem .5rem;font-size:.82rem;background:var(--bg);border:1px solid var(--border);border-radius:.5rem;color:var(--text)">
-        <option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option>
-      </select>
-      <button class="btn btn-primary btn-sm" onclick="loadStats()">Refresh</button>
+  <!-- Filters bar -->
+  <div class="panel" style="padding:.75rem 1rem">
+    <div style="display:flex;gap:.65rem;flex-wrap:wrap;align-items:end">
+      <div class="field" style="margin:0;min-width:7rem"><label>Period</label>
+        <select id="stats-days" style="padding:.4rem .5rem;font-size:.82rem;background:var(--bg);border:1px solid var(--border);border-radius:.5rem;color:var(--text)">
+          <option value="1">Today</option><option value="7" selected>7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="90">90 days</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0;min-width:8rem"><label>App / Domain</label>
+        <select id="msg-app" style="padding:.4rem .5rem;font-size:.82rem;background:var(--bg);border:1px solid var(--border);border-radius:.5rem;color:var(--text)">
+          <option value="">All Apps</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0;min-width:6rem"><label>Direction</label>
+        <select id="msg-dir" style="padding:.4rem .5rem;font-size:.82rem;background:var(--bg);border:1px solid var(--border);border-radius:.5rem;color:var(--text)">
+          <option value="">All</option><option value="out">Sent</option><option value="in">Received</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0;flex:1;min-width:8rem"><label>Phone</label><input type="text" id="msg-phone" placeholder="e.g. 60192..." style="padding:.4rem .5rem"/></div>
+      <button class="btn btn-primary btn-sm" onclick="applyMessageFilters()" style="height:2.1rem">&#x1F50D; Search</button>
+      <button class="btn btn-ghost btn-sm" onclick="resetMessageFilters()" style="height:2.1rem">Reset</button>
     </div>
-    <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:.75rem">
-      <div class="card"><div class="card-label">Sent</div><div class="card-val" style="color:var(--green)" id="st-sent">&#x2014;</div></div>
-      <div class="card"><div class="card-label">Received</div><div class="card-val" style="color:var(--blue)" id="st-recv">&#x2014;</div></div>
-      <div class="card"><div class="card-label">Total</div><div class="card-val" id="st-total">&#x2014;</div></div>
-      <div class="card"><div class="card-label">Contacts</div><div class="card-val" id="st-contacts">&#x2014;</div></div>
-    </div>
-    <div id="stats-daily" style="font-size:.82rem;color:var(--text2)"></div>
+  </div>
+  <!-- Per-app breakdown -->
+  <div class="panel" id="app-breakdown-panel" style="display:none;margin-top:.75rem">
+    <div class="panel-hdr"><h3>&#x1F4CA; Traffic by App / Domain</h3></div>
+    <div id="app-breakdown"></div>
+  </div>
+  <!-- Daily chart -->
+  <div class="panel" style="margin-top:.75rem">
+    <div class="panel-hdr"><h3>&#x1F4C8; Daily Volume</h3></div>
+    <div id="daily-chart" style="overflow-x:auto"></div>
+  </div>
+  <!-- Message history table -->
+  <div class="panel" style="margin-top:.75rem">
+    <div class="panel-hdr"><h3>&#x1F4AC; Message History</h3><span id="msg-count-label" style="font-size:.78rem;color:var(--text3)"></span></div>
+    <div id="msg-list" style="max-height:32rem;overflow-y:auto"><div style="color:var(--text3);font-size:.82rem;padding:1rem;text-align:center">Click Search to load messages</div></div>
+    <div class="pager" id="msg-pager"></div>
   </div>
 </div>
 
@@ -640,6 +659,7 @@ function go(page) {
   if (page === 'overview') loadOverview();
   if (page === 'apikeys') loadKeys();
   if (page === 'apps') loadApps();
+  if (page === 'messages') { loadAppsDropdown(); loadStats(); loadMessages(0); }
   if (page === 'events') loadEvents();
   if (page === 'settings') loadSettings();
 }
@@ -1161,29 +1181,68 @@ async function deleteAppAction(id) {
 // ── Messages ─────────────────────────────────────────
 let msgOffset = 0;
 const MSG_LIMIT = 40;
+
+function getMessageFilters() {
+  return {
+    phone: $('msg-phone').value.trim(),
+    dir: $('msg-dir').value,
+    appId: $('msg-app').value,
+    days: $('stats-days').value,
+  };
+}
+
+async function applyMessageFilters() {
+  loadStats();
+  loadMessages(0);
+}
+
+function resetMessageFilters() {
+  $('msg-phone').value = '';
+  $('msg-dir').value = '';
+  $('msg-app').value = '';
+  $('stats-days').value = '7';
+  applyMessageFilters();
+}
+
+async function loadAppsDropdown() {
+  try {
+    const r = await fetch('/admin/apps', { headers: hdr() });
+    if (!r.ok) return;
+    const apps = await r.json();
+    $('msg-app').innerHTML = '<option value="">All Apps</option>' +
+      apps.filter(a => a.status === 'active').map(a =>
+        '<option value="'+a.id+'">'+esc(a.name)+(a.domain?' ('+esc(a.domain)+')':'')+'</option>'
+      ).join('');
+  } catch(e) {}
+}
+
 async function loadMessages(offset) {
   msgOffset = offset || 0;
-  const phone = $('msg-phone').value.trim();
-  const dir = $('msg-dir').value;
+  const f = getMessageFilters();
   const qs = new URLSearchParams({limit:MSG_LIMIT, offset:msgOffset});
-  if (phone) qs.set('phone', phone);
-  if (dir) qs.set('direction', dir);
+  if (f.phone) qs.set('phone', f.phone);
+  if (f.dir) qs.set('direction', f.dir);
+  if (f.appId) qs.set('app_id', f.appId);
   try {
     const r = await fetch('/admin/messages?'+qs, { headers: hdr() });
     if (!r.ok) { $('msg-list').innerHTML = '<div style="color:var(--red);padding:1rem;text-align:center">'+r.status+' error</div>'; return }
     const d = await r.json();
+    $('msg-count-label').textContent = d.total + ' message' + (d.total !== 1 ? 's' : '');
     if (!d.rows || !d.rows.length) { $('msg-list').innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center">No messages found</div>'; $('msg-pager').innerHTML=''; return }
-    $('msg-list').innerHTML = '<table class="tbl"><thead><tr><th>Time</th><th>Dir</th><th>Phone</th><th>Type</th><th>Content</th></tr></thead><tbody>' +
+    $('msg-list').innerHTML = '<table class="tbl"><thead><tr><th>Time</th><th>Dir</th><th>Phone</th><th>App</th><th>Type</th><th>Content</th><th>Status</th></tr></thead><tbody>' +
       d.rows.map(m => {
         const t = new Date(m.created_at).toLocaleString();
         const dc = m.direction==='out'?'var(--green)':'var(--blue)';
-        return '<tr><td style="white-space:nowrap;color:var(--text3)">'+t+'</td><td style="font-weight:700;color:'+dc+'">'+m.direction.toUpperCase()+'</td><td style="font-family:var(--mono)">'+esc(m.phone||'')+'</td><td>'+esc(m.message_type)+'</td><td style="color:var(--text2);word-break:break-all">'+esc((m.content||'').slice(0,120))+'</td></tr>';
+        const dirIcon = m.direction==='out'?'&#x2B06;':'&#x2B07;';
+        const appTag = m.app_name ? '<span style="background:var(--accent-dim);color:var(--accent);padding:.1rem .35rem;border-radius:4px;font-size:.68rem;font-weight:600">'+esc(m.app_name)+'</span>' : '<span style="color:var(--text3);font-size:.72rem">Direct</span>';
+        const statusDot = m.status==='sent'||m.status==='delivered'?'dot-active':'dot-inactive';
+        return '<tr><td style="white-space:nowrap;color:var(--text3);font-size:.78rem">'+t+'</td><td style="font-weight:700;color:'+dc+'">'+dirIcon+' '+m.direction.toUpperCase()+'</td><td style="font-family:var(--mono);font-size:.78rem">'+esc(m.phone||'')+'</td><td>'+appTag+'</td><td style="font-size:.78rem">'+esc(m.message_type)+'</td><td style="color:var(--text2);word-break:break-all;max-width:16rem;font-size:.78rem">'+esc((m.content||'').slice(0,100))+(m.content&&m.content.length>100?'...':'')+'</td><td><span class="status-dot '+statusDot+'"></span><span style="font-size:.72rem">'+esc(m.status)+'</span></td></tr>';
       }).join('') + '</tbody></table>';
     const pages = Math.ceil(d.total/MSG_LIMIT);
     const cur = Math.floor(msgOffset/MSG_LIMIT);
     let ph = '';
     if (cur>0) ph += '<button class="btn btn-ghost btn-sm" onclick="loadMessages('+(msgOffset-MSG_LIMIT)+')">&#x2190; Prev</button>';
-    ph += '<span>Page '+(cur+1)+' of '+pages+' ('+d.total+' messages)</span>';
+    ph += '<span>Page '+(cur+1)+' of '+pages+'</span>';
     if (cur<pages-1) ph += '<button class="btn btn-ghost btn-sm" onclick="loadMessages('+(msgOffset+MSG_LIMIT)+')">Next &#x2192;</button>';
     $('msg-pager').innerHTML = ph;
   } catch(e) { $('msg-list').innerHTML = '<div style="color:var(--red);padding:1rem;text-align:center">'+e.message+'</div>' }
@@ -1191,21 +1250,66 @@ async function loadMessages(offset) {
 
 // ── Stats ────────────────────────────────────────────
 async function loadStats() {
-  const days = $('stats-days').value;
+  const f = getMessageFilters();
+  const qs = new URLSearchParams({days: f.days});
+  if (f.appId) qs.set('app_id', f.appId);
   try {
-    const r = await fetch('/admin/stats?days='+days, { headers: hdr() });
+    const r = await fetch('/admin/stats?'+qs, { headers: hdr() });
     if (!r.ok) return;
     const d = await r.json();
     if (d.summary) {
-      $('st-sent').textContent = d.summary.sent || 0;
-      $('st-recv').textContent = d.summary.received || 0;
-      $('st-total').textContent = d.summary.total || 0;
-      $('st-contacts').textContent = d.summary.unique_contacts || 0;
+      var sent = parseInt(d.summary.sent)||0, recv = parseInt(d.summary.received)||0, total = parseInt(d.summary.total)||0, contacts = parseInt(d.summary.unique_contacts)||0;
+      $('st-sent').textContent = sent;
+      $('st-recv').textContent = recv;
+      $('st-total').textContent = total;
+      $('st-contacts').textContent = contacts;
+      // Sub labels
+      var pct = total > 0 ? Math.round(sent/total*100) : 0;
+      $('st-sent-sub').textContent = pct + '% of total';
+      $('st-recv-sub').textContent = (100-pct) + '% of total';
+      $('st-total-sub').textContent = 'Last ' + f.days + ' days';
+      $('st-contacts-sub').textContent = total > 0 ? (total/contacts).toFixed(1) + ' msg/contact' : '';
     }
+    // Daily chart — CSS bar chart
     if (d.daily && d.daily.length) {
-      $('stats-daily').innerHTML = '<table class="tbl"><thead><tr><th>Date</th><th style="text-align:right">Sent</th><th style="text-align:right">Received</th></tr></thead><tbody>' +
-        d.daily.map(r => '<tr><td>'+r.day+'</td><td style="text-align:right;color:var(--green)">'+r.sent+'</td><td style="text-align:right;color:var(--blue)">'+r.received+'</td></tr>').join('') + '</tbody></table>';
-    } else { $('stats-daily').innerHTML = '<div style="color:var(--text3);padding:.5rem">No data</div>' }
+      var maxDay = Math.max(1, ...d.daily.map(r => parseInt(r.sent)+parseInt(r.received)));
+      $('daily-chart').innerHTML = '<div style="display:flex;align-items:end;gap:3px;height:7rem;padding-top:.5rem">' +
+        d.daily.map(r => {
+          var s = parseInt(r.sent), rv = parseInt(r.received), h = Math.max(2, Math.round((s+rv)/maxDay*100));
+          var hs = Math.round(s/(s+rv||1)*h), hr = h - hs;
+          var label = new Date(r.day).toLocaleDateString('en',{month:'short',day:'numeric'});
+          return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px" title="'+label+': '+s+' sent, '+rv+' recv">' +
+            '<div style="width:100%;display:flex;flex-direction:column;gap:1px;align-items:stretch">' +
+              '<div style="height:'+hr+'px;background:var(--blue);border-radius:2px 2px 0 0;min-height:'+(rv>0?'2':'0')+'px"></div>' +
+              '<div style="height:'+hs+'px;background:var(--green);border-radius:0 0 2px 2px;min-height:'+(s>0?'2':'0')+'px"></div>' +
+            '</div>' +
+            '<span style="font-size:.58rem;color:var(--text3);white-space:nowrap;margin-top:2px">'+label+'</span>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem;font-size:.7rem;color:var(--text3)">' +
+        '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:3px"></span>Sent</span>' +
+        '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--blue);margin-right:3px"></span>Received</span>' +
+      '</div>';
+    } else { $('daily-chart').innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;font-size:.82rem">No data for this period</div>' }
+    // Per-app breakdown
+    if (d.byApp && d.byApp.length) {
+      $('app-breakdown-panel').style.display = '';
+      var maxApp = Math.max(1, ...d.byApp.map(a => parseInt(a.total)));
+      $('app-breakdown').innerHTML = '<table class="tbl"><thead><tr><th>App</th><th>Domain</th><th style="text-align:right">Sent</th><th style="text-align:right">Received</th><th style="text-align:right">Total</th><th style="text-align:right">Contacts</th><th>Volume</th></tr></thead><tbody>' +
+        d.byApp.map(a => {
+          var pctW = Math.max(4, Math.round(parseInt(a.total)/maxApp*100));
+          var sPct = Math.round(parseInt(a.sent)/(parseInt(a.total)||1)*100);
+          return '<tr><td style="font-weight:600">'+esc(a.app_name||'Unknown')+'</td>' +
+            '<td style="font-family:var(--mono);font-size:.78rem;color:var(--text2)">'+esc(a.app_domain||'')+'</td>' +
+            '<td style="text-align:right;color:var(--green)">'+a.sent+'</td>' +
+            '<td style="text-align:right;color:var(--blue)">'+a.received+'</td>' +
+            '<td style="text-align:right;font-weight:600">'+a.total+'</td>' +
+            '<td style="text-align:right;color:var(--text2)">'+a.unique_contacts+'</td>' +
+            '<td style="min-width:6rem"><div style="height:8px;border-radius:4px;background:var(--surface2);overflow:hidden;position:relative"><div style="position:absolute;left:0;top:0;height:100%;width:'+pctW+'%;display:flex"><div style="width:'+sPct+'%;background:var(--green)"></div><div style="flex:1;background:var(--blue)"></div></div></div></td>' +
+          '</tr>';
+        }).join('') + '</tbody></table>';
+    } else { $('app-breakdown-panel').style.display = 'none' }
   } catch(e) {}
 }
 

@@ -529,9 +529,10 @@ const server = http.createServer(async (req, res) => {
       if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
       const direction = parsed.searchParams.get('direction') || undefined;
       const phone = parsed.searchParams.get('phone') || undefined;
+      const appId = parsed.searchParams.get('app_id') || undefined;
       const limit = Math.min(parseInt(parsed.searchParams.get('limit') || '50', 10), 200);
       const offset = Math.max(parseInt(parsed.searchParams.get('offset') || '0', 10), 0);
-      const data = await getMessages({ direction, phone, limit, offset });
+      const data = await getMessages({ direction, phone, appId, limit, offset });
       return json(res, 200, data);
     }
 
@@ -540,7 +541,8 @@ const server = http.createServer(async (req, res) => {
       if (!requireAdmin(req, res)) return;
       if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
       const days = Math.min(parseInt(parsed.searchParams.get('days') || '7', 10), 90);
-      const data = await getStats(days);
+      const appId = parsed.searchParams.get('app_id') || null;
+      const data = await getStats(days, appId);
       return json(res, 200, data);
     }
 

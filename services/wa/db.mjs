@@ -173,34 +173,51 @@ export async function logEvent(logger, type, detail) {
 // ---------------------------------------------------------------------------
 // Messages / Events queries
 // ---------------------------------------------------------------------------
-export async function getMessages({ direction, phone, limit = 50, offset = 0 } = {}) {
+export async function getMessages({ direction, phone, appId, limit = 50, offset = 0 } = {}) {
   if (!ready) return { rows: [], total: 0 };
   const conds = []; const params = []; let idx = 1;
-  if (direction) { conds.push(`direction = $${idx++}`); params.push(direction); }
-  if (phone) { conds.push(`phone LIKE $${idx++}`); params.push(`%${phone}%`); }
+  if (direction) { conds.push(`m.direction = $${idx++}`); params.push(direction); }
+  if (phone) { conds.push(`m.phone LIKE $${idx++}`); params.push(`%${phone}%`); }
+  if (appId) { conds.push(`m.api_key_id IN (SELECT id FROM api_keys WHERE app_id = $${idx++})`); params.push(parseInt(appId)); }
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-  const cnt = await pool.query(`SELECT COUNT(*) AS total FROM message_log ${where}`, params);
+  const cnt = await pool.query(`SELECT COUNT(*) AS total FROM message_log m ${where}`, params);
   const dataP = [...params, Math.min(limit, 200), Math.max(offset, 0)];
   const rows = await pool.query(
-    `SELECT * FROM message_log ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`, dataP);
+    `SELECT m.*, k.label AS key_label, a.name AS app_name, a.domain AS app_domain
+     FROM message_log m
+     LEFT JOIN api_keys k ON m.api_key_id = k.id
+     LEFT JOIN connected_apps a ON k.app_id = a.id
+     ${where} ORDER BY m.created_at DESC LIMIT $${idx++} OFFSET $${idx++}`, dataP);
   return { rows: rows.rows, total: parseInt(cnt.rows[0].total, 10) };
 }
 
-export async function getStats(days = 7) {
+export async function getStats(days = 7, appId = null) {
   if (!ready) return null;
+  const appFilter = appId ? ` AND api_key_id IN (SELECT id FROM api_keys WHERE app_id = ${parseInt(appId)})` : '';
   const r = await pool.query(`
     SELECT COUNT(*) FILTER (WHERE direction='out') AS sent,
            COUNT(*) FILTER (WHERE direction='in')  AS received,
            COUNT(*) AS total, COUNT(DISTINCT phone) AS unique_contacts,
            MIN(created_at) AS earliest, MAX(created_at) AS latest
-    FROM message_log WHERE created_at >= now() - make_interval(days => $1)`, [days]);
+    FROM message_log WHERE created_at >= now() - make_interval(days => $1)${appFilter}`, [days]);
   const daily = await pool.query(`
     SELECT date_trunc('day',created_at)::date AS day,
            COUNT(*) FILTER (WHERE direction='out') AS sent,
            COUNT(*) FILTER (WHERE direction='in')  AS received
-    FROM message_log WHERE created_at >= now() - make_interval(days => $1)
+    FROM message_log WHERE created_at >= now() - make_interval(days => $1)${appFilter}
     GROUP BY 1 ORDER BY 1`, [days]);
-  return { summary: r.rows[0], daily: daily.rows };
+  // Per-app breakdown
+  const byApp = await pool.query(`
+    SELECT a.name AS app_name, a.domain AS app_domain, a.id AS app_id,
+           COUNT(*) FILTER (WHERE m.direction='out') AS sent,
+           COUNT(*) FILTER (WHERE m.direction='in')  AS received,
+           COUNT(*) AS total, COUNT(DISTINCT m.phone) AS unique_contacts
+    FROM message_log m
+    JOIN api_keys k ON m.api_key_id = k.id
+    JOIN connected_apps a ON k.app_id = a.id
+    WHERE m.created_at >= now() - make_interval(days => $1)${appFilter}
+    GROUP BY a.id, a.name, a.domain ORDER BY total DESC`, [days]);
+  return { summary: r.rows[0], daily: daily.rows, byApp: byApp.rows };
 }
 
 export async function getPersistedEvents(limit = 100) {
