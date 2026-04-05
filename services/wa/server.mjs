@@ -12,8 +12,9 @@ import pino from 'pino';
 import QRCode from 'qrcode';
 import {
   initDb, isDbReady, logMessage, logEvent, getMessages, getStats, getPersistedEvents,
-  createApiKey, listApiKeys, revokeApiKey, deleteApiKey, validateApiKey, recordKeyUsage,
-  createApp, listApps, getApp, updateApp, deleteApp,
+  createApiKey, listApiKeys, revokeApiKey, disableApiKey, enableApiKey, regenerateApiKey,
+  assignKeyToApp, deleteApiKey, validateApiKey, recordKeyUsage,
+  createApp, listApps, getApp, updateApp, deleteApp, toggleAppStatus,
   getOverviewStats, getSetting, getSettings, setSetting, hashApiKey,
 } from './db.mjs';
 import { consoleHtml } from './ui.mjs';
@@ -564,9 +565,54 @@ const server = http.createServer(async (req, res) => {
       if (!requireAdmin(req, res)) return;
       if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
       const body = await readBody(req);
-      const data = await createApiKey(body.label, body.scopes);
+      const data = await createApiKey(body.label, body.scopes, body.app_id);
       addEvent('admin', `API key created: ${data.label} (${data.key_prefix}...)`);
       return json(res, 201, data);
+    }
+
+    // POST /admin/api-keys/:id/regenerate — regenerate key secret
+    if (/^\/admin\/api-keys\/\d+\/regenerate$/.test(path) && method === 'POST') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const id = parseInt(path.split('/')[3], 10);
+      const data = await regenerateApiKey(id);
+      if (!data) return json(res, 404, { error: 'Key not found or revoked' });
+      addEvent('admin', `API key regenerated: ${data.label} (${data.key_prefix}...)`);
+      return json(res, 200, data);
+    }
+
+    // POST /admin/api-keys/:id/disable — disable key
+    if (/^\/admin\/api-keys\/\d+\/disable$/.test(path) && method === 'POST') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const id = parseInt(path.split('/')[3], 10);
+      const data = await disableApiKey(id);
+      if (!data) return json(res, 404, { error: 'Key not found or not active' });
+      addEvent('admin', `API key disabled: ${data.label}`);
+      return json(res, 200, data);
+    }
+
+    // POST /admin/api-keys/:id/enable — enable key
+    if (/^\/admin\/api-keys\/\d+\/enable$/.test(path) && method === 'POST') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const id = parseInt(path.split('/')[3], 10);
+      const data = await enableApiKey(id);
+      if (!data) return json(res, 404, { error: 'Key not found or not disabled' });
+      addEvent('admin', `API key enabled: ${data.label}`);
+      return json(res, 200, data);
+    }
+
+    // PATCH /admin/api-keys/:id/assign — assign key to app
+    if (/^\/admin\/api-keys\/\d+\/assign$/.test(path) && method === 'PATCH') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const id = parseInt(path.split('/')[3], 10);
+      const body = await readBody(req);
+      const data = await assignKeyToApp(id, body.app_id);
+      if (!data) return json(res, 404, { error: 'Key not found' });
+      addEvent('admin', `API key ${data.label} assigned to app ${body.app_id || 'none'}`);
+      return json(res, 200, data);
     }
 
     // DELETE /admin/api-keys/:id — revoke a key
@@ -617,7 +663,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // PATCH /admin/apps/:id — update an app
-    if (path.startsWith('/admin/apps/') && method === 'PATCH') {
+    if (path.startsWith('/admin/apps/') && !path.includes('/toggle') && !path.includes('/delete') && method === 'PATCH') {
       if (!requireAdmin(req, res)) return;
       if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
       const id = parseInt(path.split('/').pop(), 10);
@@ -627,6 +673,28 @@ const server = http.createServer(async (req, res) => {
       if (!data) return json(res, 404, { error: 'App not found' });
       addEvent('admin', `App updated: ${data.name}`);
       return json(res, 200, data);
+    }
+
+    // POST /admin/apps/:id/toggle — enable/disable app
+    if (/^\/admin\/apps\/\d+\/toggle$/.test(path) && method === 'POST') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const id = parseInt(path.split('/')[3], 10);
+      const data = await toggleAppStatus(id);
+      if (!data) return json(res, 404, { error: 'App not found' });
+      addEvent('admin', `App ${data.status}: ${data.name}`);
+      return json(res, 200, data);
+    }
+
+    // DELETE /admin/apps/:id — delete app
+    if (path.startsWith('/admin/apps/') && method === 'DELETE') {
+      if (!requireAdmin(req, res)) return;
+      if (!isDbReady()) return json(res, 503, { error: 'Database not available' });
+      const id = parseInt(path.split('/').pop(), 10);
+      if (!id) return json(res, 400, { error: 'Invalid app ID' });
+      await deleteApp(id);
+      addEvent('admin', `App deleted: #${id}`);
+      return json(res, 200, { success: true });
     }
 
     // ── Settings ───────────────────────────────────────

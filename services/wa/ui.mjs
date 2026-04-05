@@ -176,6 +176,22 @@ button{font-family:var(--font)}
 /* ─── Page sections ─── */
 .page{display:none}.page.active{display:block}
 
+/* ─── App card list ─── */
+.app-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:.75rem;transition:border-color .2s}
+.app-card:hover{border-color:var(--accent-border)}
+.app-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+.app-card-hdr h4{font-size:.95rem;font-weight:700;display:flex;align-items:center;gap:.5rem}
+.app-card-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:.5rem .75rem;font-size:.78rem;color:var(--text2)}
+.app-card-meta dt{color:var(--text3);font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.app-card-meta dd{margin:0 0 .25rem 0}
+.app-actions{display:flex;gap:.35rem;flex-wrap:wrap}
+.key-actions{display:flex;gap:.2rem;justify-content:flex-end}
+.empty-val{color:var(--text3);font-style:italic}
+
+/* ─── Config snippet ─── */
+.config-block{background:var(--bg);border:1px solid var(--border);border-radius:.5rem;padding:.75rem;font-family:var(--mono);font-size:.76rem;line-height:1.7;white-space:pre-wrap;word-break:break-all;color:var(--text2);margin:.5rem 0;position:relative}
+.config-block .cp{position:absolute;top:.5rem;right:.5rem}
+
 /* ─── Auth overlay ─── */
 .auth-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(6,8,18,.92);backdrop-filter:blur(8px)}
 .auth-card{background:var(--surface);border:1px solid var(--border);border-radius:1rem;padding:2.5rem 2rem;width:22rem;max-width:90vw;text-align:center}
@@ -303,10 +319,16 @@ button{font-family:var(--font)}
 <!-- ════════════ API KEYS ════════════ -->
 <div class="page" id="p-apikeys">
   <div class="panel">
-    <div class="panel-hdr"><h3>&#x1F511; API Keys</h3><button class="btn btn-primary btn-sm" onclick="openModal('key-modal')">+ Create Key</button></div>
-    <table class="tbl" id="keys-table">
-      <thead><tr><th>Prefix</th><th>Label</th><th>Scopes</th><th>Status</th><th>Last Used</th><th>Usage</th><th>Created</th><th></th></tr></thead>
-      <tbody id="keys-body"><tr><td colspan="8" style="color:var(--text3);text-align:center;padding:1.5rem">Loading&#x2026;</td></tr></tbody>
+    <div class="panel-hdr"><h3>&#x1F511; API Keys</h3><button class="btn btn-primary btn-sm" onclick="openKeyModal()">+ Create Key</button></div>
+    <div id="keys-empty" style="display:none;color:var(--text3);text-align:center;padding:2rem">
+      <div style="font-size:2rem;margin-bottom:.5rem">&#x1F511;</div>
+      <p style="font-weight:600">No API keys yet</p>
+      <p style="font-size:.8rem;margin-top:.25rem">Create an API key to let your apps send WhatsApp messages through this gateway.</p>
+      <button class="btn btn-primary btn-sm" style="margin-top:.75rem" onclick="openKeyModal()">+ Create First Key</button>
+    </div>
+    <table class="tbl" id="keys-table" style="display:none">
+      <thead><tr><th>Label</th><th>Prefix</th><th>Scopes</th><th>Assigned App</th><th>Status</th><th>Last Used</th><th>Usage</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>
+      <tbody id="keys-body"></tbody>
     </table>
   </div>
 </div>
@@ -315,10 +337,13 @@ button{font-family:var(--font)}
 <div class="page" id="p-apps">
   <div class="panel">
     <div class="panel-hdr"><h3>&#x1F4E6; Connected Apps / Domains</h3><button class="btn btn-primary btn-sm" onclick="openAppModal()">+ Register App</button></div>
-    <table class="tbl">
-      <thead><tr><th>Name</th><th>Domain</th><th>API Key</th><th>Status</th><th>Webhook</th><th>Created</th><th></th></tr></thead>
-      <tbody id="apps-body"><tr><td colspan="7" style="color:var(--text3);text-align:center;padding:1.5rem">Loading&#x2026;</td></tr></tbody>
-    </table>
+    <div id="apps-empty" style="display:none;color:var(--text3);text-align:center;padding:2rem">
+      <div style="font-size:2rem;margin-bottom:.5rem">&#x1F4E6;</div>
+      <p style="font-weight:600">No apps registered yet</p>
+      <p style="font-size:.8rem;margin-top:.25rem">Register your client app or domain so you can assign API keys and configure webhooks.</p>
+      <button class="btn btn-primary btn-sm" style="margin-top:.75rem" onclick="openAppModal()">+ Register First App</button>
+    </div>
+    <div id="apps-list"></div>
   </div>
 </div>
 
@@ -425,39 +450,97 @@ button{font-family:var(--font)}
 <!-- ─── Create API Key Modal ─── -->
 <div class="modal-overlay" id="key-modal">
   <div class="modal">
-    <h3>Create API Key</h3>
-    <div class="field"><label>Label</label><input type="text" id="key-label" placeholder="e.g. Serapod Staging"/></div>
-    <div class="field"><label>Scopes</label>
-      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.25rem">
-        <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="scope-send" checked/> send</label>
-        <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="scope-read" checked/> read</label>
-        <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="scope-admin"/> admin</label>
+    <h3 id="key-modal-title">Create API Key</h3>
+    <div id="key-form">
+      <div class="field"><label>Label</label><input type="text" id="key-label" placeholder="e.g. Serapod Staging"/><div class="hint">A friendly name to identify this key</div></div>
+      <div class="field"><label>Scopes</label>
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.25rem">
+          <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="scope-send" checked/> send</label>
+          <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="scope-read" checked/> read</label>
+          <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="scope-admin"/> admin</label>
+        </div>
+        <div class="hint">send = can send messages &bull; read = can read status/messages &bull; admin = full console access</div>
+      </div>
+      <div class="field"><label>Assign to App (optional)</label><select id="key-app"><option value="">None &mdash; assign later</option></select><div class="hint">You can assign this key to an app later from either page</div></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeKeyModal()">Cancel</button>
+        <button class="btn btn-primary" id="key-create-btn" onclick="createKey()">Create Key</button>
       </div>
     </div>
-    <div id="key-created" style="display:none;margin-top:.75rem;padding:.75rem;background:var(--green-dim);border:1px solid var(--green-border);border-radius:.5rem">
-      <div style="font-size:.78rem;color:var(--green);font-weight:700;margin-bottom:.35rem">Key Created! Copy it now &#x2014; it won't be shown again.</div>
-      <div style="font-family:var(--mono);font-size:.85rem;word-break:break-all;color:var(--text);user-select:all" id="key-raw"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('key-modal')">Cancel</button>
-      <button class="btn btn-primary" id="key-create-btn" onclick="createKey()">Create</button>
+    <div id="key-created" style="display:none">
+      <div style="padding:.75rem;background:var(--yellow-dim);border:1px solid var(--yellow-border);border-radius:.5rem;margin-bottom:.75rem">
+        <div style="font-size:.82rem;color:var(--yellow);font-weight:700">&#x26A0; This secret will only be shown once</div>
+        <div style="font-size:.75rem;color:var(--text2);margin-top:.2rem">Copy it now and store it securely. You will not be able to see it again.</div>
+      </div>
+      <div class="field"><label>Full API Secret</label>
+        <div style="position:relative">
+          <div style="font-family:var(--mono);font-size:.85rem;word-break:break-all;color:var(--text);background:var(--bg);border:1px solid var(--green-border);border-radius:.5rem;padding:.65rem .8rem;padding-right:4.5rem;user-select:all" id="key-raw"></div>
+          <button class="btn btn-primary btn-sm" style="position:absolute;top:.45rem;right:.45rem" onclick="copySecret()">Copy</button>
+        </div>
+      </div>
+      <div class="field"><label>Key Prefix</label><div style="font-family:var(--mono);font-size:.82rem;color:var(--text2)" id="key-created-prefix"></div></div>
+      <div class="field"><label>Label</label><div style="font-size:.82rem;color:var(--text2)" id="key-created-label"></div></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="closeKeyModal()">Done &mdash; I've copied the key</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ─── Register App Modal ─── -->
+<!-- ─── Register / Edit App Modal ─── -->
 <div class="modal-overlay" id="app-modal">
   <div class="modal">
     <h3 id="app-modal-title">Register App</h3>
     <input type="hidden" id="app-edit-id"/>
-    <div class="field"><label>App Name</label><input type="text" id="app-name" placeholder="e.g. Serapod2U"/></div>
-    <div class="field"><label>Domain</label><input type="text" id="app-domain" placeholder="e.g. stg.serapod2u.com"/></div>
-    <div class="field"><label>Description</label><textarea id="app-desc" rows="2" placeholder="Optional description"></textarea></div>
-    <div class="field"><label>Webhook URL</label><input type="text" id="app-webhook" placeholder="https://..."/></div>
-    <div class="field"><label>API Key</label><select id="app-key"><option value="">None</option></select></div>
+    <div class="field"><label>App Name</label><input type="text" id="app-name" placeholder="e.g. Serapod2U Staging"/><div class="hint">A recognizable name for this client application</div></div>
+    <div class="field"><label>Domain</label><input type="text" id="app-domain" placeholder="e.g. stg.serapod2u.com"/><div class="hint">The domain where this app runs</div></div>
+    <div class="field"><label>Description</label><textarea id="app-desc" rows="2" placeholder="Optional &mdash; describe what this app does"></textarea></div>
+    <div class="field"><label>Webhook URL <span style="color:var(--text3);font-weight:400">(optional)</span></label><input type="text" id="app-webhook" placeholder="https://your-domain.com/api/whatsapp/webhook"/>
+      <div class="hint">Used if this app wants to receive inbound WhatsApp events or delivery callbacks. Leave empty for apps that only send outbound messages.</div>
+      <div class="hint" style="margin-top:.15rem;color:var(--text3)">Example: https://stg.serapod2u.com/api/whatsapp/webhook</div>
+    </div>
+    <div class="field"><label>Assign API Key <span style="color:var(--text3);font-weight:400">(optional)</span></label><select id="app-key"><option value="">None &mdash; assign later</option></select>
+      <div class="hint">Choose an existing API key, or create the app first and assign a key later</div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('app-modal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveApp()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── App Detail / Config Modal ─── -->
+<div class="modal-overlay" id="app-detail-modal">
+  <div class="modal" style="max-width:600px">
+    <h3 id="app-detail-title">App Details</h3>
+    <div id="app-detail-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('app-detail-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Client Config Modal ─── -->
+<div class="modal-overlay" id="config-modal">
+  <div class="modal" style="max-width:600px">
+    <h3>&#x1F4CB; Client Configuration</h3>
+    <div id="config-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('config-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Assign Key Modal ─── -->
+<div class="modal-overlay" id="assign-modal">
+  <div class="modal" style="max-width:400px">
+    <h3 id="assign-title">Assign API Key</h3>
+    <input type="hidden" id="assign-key-id"/>
+    <input type="hidden" id="assign-context"/>
+    <div class="field"><label>Select App / Domain</label><select id="assign-app-select"><option value="">Unassign (no app)</option></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('assign-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="doAssign()">Assign</button>
     </div>
   </div>
 </div>
@@ -714,18 +797,73 @@ if (getAdminKey()) {
 }
 
 // ── API Keys ─────────────────────────────────────────
+let _keysCache = [];
+
 async function loadKeys() {
   try {
     const r = await fetch('/admin/api-keys', { headers: hdr() });
-    if (!r.ok) { $('keys-body').innerHTML = '<tr><td colspan="8" style="color:var(--red);text-align:center;padding:1rem">'+r.status+' error</td></tr>'; return }
+    if (!r.ok) { $('keys-table').style.display='none'; $('keys-empty').style.display='none'; toast(r.status+' error loading keys','err'); return }
     const keys = await r.json();
-    if (!keys.length) { $('keys-body').innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:1.5rem">No API keys yet. Click + Create Key.</td></tr>'; return }
+    _keysCache = keys;
+    if (!keys.length) {
+      $('keys-table').style.display = 'none';
+      $('keys-empty').style.display = 'block';
+      return;
+    }
+    $('keys-empty').style.display = 'none';
+    $('keys-table').style.display = '';
     $('keys-body').innerHTML = keys.map(k => {
-      const st = k.status === 'active';
       const sc = (typeof k.scopes==='string'?JSON.parse(k.scopes):k.scopes||[]).join(', ');
-      return '<tr><td style="font-family:var(--mono);font-size:.78rem">'+esc(k.key_prefix)+'...</td><td>'+esc(k.label)+'</td><td style="font-size:.78rem">'+esc(sc)+'</td><td><span class="status-dot '+(st?'dot-active':'dot-revoked')+'"></span>'+esc(k.status)+'</td><td style="font-size:.78rem;color:var(--text3)">'+(k.last_used_at?new Date(k.last_used_at).toLocaleString():'Never')+'</td><td>'+k.usage_count+'</td><td style="font-size:.78rem;color:var(--text3)">'+new Date(k.created_at).toLocaleDateString()+'</td><td>'+(st?'<button class="btn-icon" title="Revoke" onclick="revokeKey('+k.id+')">&#x1F6AB;</button>':'')+'</td></tr>';
+      const isActive = k.status === 'active';
+      const isDisabled = k.status === 'disabled';
+      const appLabel = k.app_name ? esc(k.app_name) + (k.app_domain ? ' <span style="color:var(--text3);font-size:.72rem">('+esc(k.app_domain)+')</span>' : '') : '<span class="empty-val">Unassigned</span>';
+      const dotClass = isActive ? 'dot-active' : isDisabled ? 'dot-inactive' : 'dot-revoked';
+      // Action buttons
+      let acts = '';
+      if (isActive) {
+        acts += '<button class="btn btn-ghost btn-sm" title="Regenerate" onclick="regenerateKey('+k.id+')">&#x1F504;</button>';
+        acts += '<button class="btn btn-ghost btn-sm" title="Disable" onclick="disableKey('+k.id+')">&#x23F8;</button>';
+        acts += '<button class="btn btn-ghost btn-sm" title="Assign to App" onclick="assignKey('+k.id+')">&#x1F517;</button>';
+        acts += '<button class="btn btn-danger btn-sm" title="Revoke" onclick="revokeKey('+k.id+')">&#x1F6AB;</button>';
+      } else if (isDisabled) {
+        acts += '<button class="btn btn-ghost btn-sm" title="Re-enable" onclick="enableKey('+k.id+')">&#x25B6;</button>';
+        acts += '<button class="btn btn-danger btn-sm" title="Revoke" onclick="revokeKey('+k.id+')">&#x1F6AB;</button>';
+      }
+      return '<tr><td>'+esc(k.label)+'</td>' +
+        '<td style="font-family:var(--mono);font-size:.78rem">'+esc(k.key_prefix)+'...</td>' +
+        '<td style="font-size:.78rem">'+esc(sc||'none')+'</td>' +
+        '<td style="font-size:.78rem">'+appLabel+'</td>' +
+        '<td><span class="status-dot '+dotClass+'"></span>'+esc(k.status)+'</td>' +
+        '<td style="font-size:.78rem;color:var(--text3)">'+(k.last_used_at?new Date(k.last_used_at).toLocaleString():'<span class="empty-val">Never</span>')+'</td>' +
+        '<td>'+k.usage_count+'</td>' +
+        '<td style="font-size:.78rem;color:var(--text3)">'+new Date(k.created_at).toLocaleDateString()+'</td>' +
+        '<td><div class="key-actions">'+acts+'</div></td></tr>';
     }).join('');
   } catch(e) { toast(e.message,'err') }
+}
+
+function openKeyModal() {
+  $('key-form').style.display = '';
+  $('key-created').style.display = 'none';
+  $('key-label').value = '';
+  $('scope-send').checked = true;
+  $('scope-read').checked = true;
+  $('scope-admin').checked = false;
+  $('key-create-btn').disabled = false;
+  // Load apps dropdown
+  fetch('/admin/apps', { headers: hdr() }).then(r => r.ok ? r.json() : []).then(apps => {
+    $('key-app').innerHTML = '<option value="">None — assign later</option>' + apps.filter(a=>a.status==='active').map(a => '<option value="'+a.id+'">'+esc(a.name)+(a.domain?' ('+esc(a.domain)+')':'')+'</option>').join('');
+  }).catch(()=>{});
+  openModal('key-modal');
+}
+function closeKeyModal() {
+  closeModal('key-modal');
+  $('key-form').style.display = '';
+  $('key-created').style.display = 'none';
+}
+function copySecret() {
+  const raw = $('key-raw').textContent;
+  navigator.clipboard.writeText(raw).then(() => toast('Secret copied to clipboard','ok')).catch(() => toast('Copy failed','err'));
 }
 
 async function createKey() {
@@ -734,22 +872,26 @@ async function createKey() {
   if ($('scope-send').checked) scopes.push('send');
   if ($('scope-read').checked) scopes.push('read');
   if ($('scope-admin').checked) scopes.push('admin');
+  const app_id = $('key-app').value ? parseInt($('key-app').value) : null;
   $('key-create-btn').disabled = true;
   try {
-    const r = await fetch('/admin/api-keys', { method:'POST', headers: hdrJson(), body: JSON.stringify({label, scopes}) });
+    const r = await fetch('/admin/api-keys', { method:'POST', headers: hdrJson(), body: JSON.stringify({label, scopes, app_id}) });
     const d = await r.json();
     if (r.ok) {
-      $('key-raw').textContent = d.raw_key;
+      // Show created state
+      $('key-form').style.display = 'none';
       $('key-created').style.display = 'block';
+      $('key-raw').textContent = d.raw_key;
+      $('key-created-prefix').textContent = d.key_prefix + '...';
+      $('key-created-label').textContent = label;
       toast('API key created','ok');
       loadKeys();
-    } else { toast(d.error||'Failed','err') }
-  } catch(e) { toast(e.message,'err') }
-  $('key-create-btn').disabled = false;
+    } else { toast(d.error||'Failed','err'); $('key-create-btn').disabled = false; }
+  } catch(e) { toast(e.message,'err'); $('key-create-btn').disabled = false; }
 }
 
 async function revokeKey(id) {
-  if (!confirm('Revoke this API key? Apps using it will lose access.')) return;
+  if (!confirm('Revoke this API key permanently? Apps using it will lose access immediately.')) return;
   try {
     const r = await fetch('/admin/api-keys/'+id, { method:'DELETE', headers: hdr() });
     if (r.ok) { toast('Key revoked','ok'); loadKeys() }
@@ -757,22 +899,113 @@ async function revokeKey(id) {
   } catch(e) { toast(e.message,'err') }
 }
 
+async function regenerateKey(id) {
+  if (!confirm('Regenerate this key? The old secret will stop working immediately.')) return;
+  try {
+    const r = await fetch('/admin/api-keys/'+id+'/regenerate', { method:'POST', headers: hdr() });
+    const d = await r.json();
+    if (r.ok) {
+      // Show the new secret in the key modal
+      $('key-form').style.display = 'none';
+      $('key-created').style.display = 'block';
+      $('key-raw').textContent = d.raw_key;
+      $('key-created-prefix').textContent = d.key_prefix + '...';
+      $('key-created-label').textContent = d.label || '';
+      $('key-modal-title').textContent = 'Regenerated Key';
+      openModal('key-modal');
+      toast('Key regenerated — copy new secret','ok');
+      loadKeys();
+    } else { toast(d.error||'Failed','err') }
+  } catch(e) { toast(e.message,'err') }
+}
+
+async function disableKey(id) {
+  try {
+    const r = await fetch('/admin/api-keys/'+id+'/disable', { method:'POST', headers: hdr() });
+    if (r.ok) { toast('Key disabled','ok'); loadKeys() }
+    else { const d = await r.json(); toast(d.error||'Failed','err') }
+  } catch(e) { toast(e.message,'err') }
+}
+
+async function enableKey(id) {
+  try {
+    const r = await fetch('/admin/api-keys/'+id+'/enable', { method:'POST', headers: hdr() });
+    if (r.ok) { toast('Key re-enabled','ok'); loadKeys() }
+    else { const d = await r.json(); toast(d.error||'Failed','err') }
+  } catch(e) { toast(e.message,'err') }
+}
+
+async function assignKey(keyId) {
+  $('assign-key-id').value = keyId;
+  $('assign-context').value = 'key';
+  $('assign-title').textContent = 'Assign Key to App';
+  try {
+    const r = await fetch('/admin/apps', { headers: hdr() });
+    const apps = r.ok ? await r.json() : [];
+    // Find current assignment
+    const key = _keysCache.find(k => k.id === keyId);
+    $('assign-app-select').innerHTML = '<option value="">Unassign (no app)</option>' + apps.filter(a=>a.status==='active').map(a => '<option value="'+a.id+'"'+(key && key.app_id==a.id?' selected':'')+'>'+esc(a.name)+(a.domain?' ('+esc(a.domain)+')':'')+'</option>').join('');
+  } catch(e) {}
+  openModal('assign-modal');
+}
+
+async function doAssign() {
+  const keyId = $('assign-key-id').value;
+  const appId = $('assign-app-select').value ? parseInt($('assign-app-select').value) : null;
+  try {
+    const r = await fetch('/admin/api-keys/'+keyId+'/assign', { method:'PATCH', headers: hdrJson(), body: JSON.stringify({app_id:appId}) });
+    if (r.ok) {
+      toast(appId ? 'Key assigned to app' : 'Key unassigned','ok');
+      closeModal('assign-modal');
+      loadKeys();
+      loadApps();
+    } else { const d = await r.json(); toast(d.error||'Failed','err') }
+  } catch(e) { toast(e.message,'err') }
+}
+
 // ── Apps ─────────────────────────────────────────────
+let _appsCache = [];
+
 async function loadApps() {
   try {
     const r = await fetch('/admin/apps', { headers: hdr() });
     if (!r.ok) return;
     const apps = await r.json();
-    if (!apps.length) { $('apps-body').innerHTML = '<tr><td colspan="7" style="color:var(--text3);text-align:center;padding:1.5rem">No apps registered yet.</td></tr>'; return }
-    $('apps-body').innerHTML = apps.map(a => {
-      const st = a.status === 'active';
-      return '<tr><td><strong>'+esc(a.name)+'</strong></td><td style="font-family:var(--mono);font-size:.78rem">'+esc(a.domain||'&#x2014;')+'</td><td style="font-size:.78rem">'+(a.key_prefix?esc(a.key_prefix)+'...':'&#x2014;')+'</td><td><span class="status-dot '+(st?'dot-active':'dot-inactive')+'"></span>'+esc(a.status)+'</td><td style="font-size:.78rem;color:var(--text3)">'+esc(a.webhook_url||'&#x2014;')+'</td><td style="font-size:.78rem;color:var(--text3)">'+new Date(a.created_at).toLocaleDateString()+'</td><td><button class="btn-icon" title="Edit" onclick="editApp('+a.id+')">&#x270F;</button></td></tr>';
+    _appsCache = apps;
+    if (!apps.length) {
+      $('apps-empty').style.display = 'block';
+      $('apps-list').innerHTML = '';
+      return;
+    }
+    $('apps-empty').style.display = 'none';
+    $('apps-list').innerHTML = apps.map(a => {
+      const isActive = a.status === 'active';
+      const dotClass = isActive ? 'dot-active' : 'dot-inactive';
+      const keyInfo = a.key_prefix ? esc(a.key_prefix)+'... <span style="font-size:.68rem;color:var(--text3)">('+esc(a.key_status||'')+')</span>' : '<span class="empty-val">No key assigned</span>';
+      const wh = a.webhook_url ? '<span style="font-family:var(--mono);font-size:.72rem;word-break:break-all">'+esc(a.webhook_url)+'</span>' : '<span class="empty-val">None</span>';
+      return '<div class="app-card">' +
+        '<div class="app-card-hdr">' +
+          '<h4><span class="status-dot '+dotClass+'"></span>'+esc(a.name)+'</h4>' +
+          '<div class="app-actions">' +
+            '<button class="btn btn-ghost btn-sm" title="View Details" onclick="viewApp('+a.id+')">&#x1F441;</button>' +
+            '<button class="btn btn-ghost btn-sm" title="Edit" onclick="editApp('+a.id+')">&#x270F;</button>' +
+            '<button class="btn btn-ghost btn-sm" title="'+(isActive?'Disable':'Enable')+'" onclick="toggleApp('+a.id+')">'+(isActive?'&#x23F8;':'&#x25B6;')+'</button>' +
+            '<button class="btn btn-ghost btn-sm" title="Copy Client Config" onclick="copyAppConfig('+a.id+')">&#x1F4CB;</button>' +
+            '<button class="btn btn-danger btn-sm" title="Delete" onclick="deleteAppAction('+a.id+')">&#x1F5D1;</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="app-card-meta">' +
+          '<div><dt>Domain</dt><dd>'+(a.domain ? '<span style="font-family:var(--mono)">'+esc(a.domain)+'</span>' : '<span class="empty-val">Not set</span>')+'</dd></div>' +
+          '<div><dt>API Key</dt><dd>'+keyInfo+'</dd></div>' +
+          '<div><dt>Webhook</dt><dd>'+wh+'</dd></div>' +
+          '<div><dt>Created</dt><dd>'+new Date(a.created_at).toLocaleDateString()+'</dd></div>' +
+        '</div>' +
+      '</div>';
     }).join('');
   } catch(e) { toast(e.message,'err') }
 }
 
 async function openAppModal(editId) {
-  // Reset form
   $('app-edit-id').value = '';
   $('app-name').value = '';
   $('app-domain').value = '';
@@ -784,7 +1017,7 @@ async function openAppModal(editId) {
     const kr = await fetch('/admin/api-keys', { headers: hdr() });
     if (kr.ok) {
       const keys = await kr.json();
-      $('app-key').innerHTML = '<option value="">None</option>' + keys.filter(k=>k.status==='active').map(k => '<option value="'+k.id+'">'+esc(k.label)+' ('+esc(k.key_prefix)+'...)</option>').join('');
+      $('app-key').innerHTML = '<option value="">None — assign later</option>' + keys.filter(k=>k.status==='active').map(k => '<option value="'+k.id+'">'+esc(k.label)+' ('+esc(k.key_prefix)+'...)</option>').join('');
     }
   } catch(e) {}
   openModal('app-modal');
@@ -825,7 +1058,67 @@ async function saveApp() {
       toast(id?'App updated':'App registered','ok');
       closeModal('app-modal');
       loadApps();
+      loadKeys(); // refresh key assignments
     } else { const d = await r.json(); toast(d.error||'Failed','err') }
+  } catch(e) { toast(e.message,'err') }
+}
+
+async function viewApp(id) {
+  const a = _appsCache.find(x => x.id === id);
+  if (!a) { toast('App not found','err'); return; }
+  $('app-detail-title').textContent = a.name;
+  const isActive = a.status === 'active';
+  $('app-detail-body').innerHTML =
+    '<div class="app-card-meta" style="margin-bottom:.75rem">' +
+      '<div><dt>Status</dt><dd><span class="status-dot '+(isActive?'dot-active':'dot-inactive')+'"></span>'+esc(a.status)+'</dd></div>' +
+      '<div><dt>Domain</dt><dd>'+(a.domain ? esc(a.domain) : '<span class="empty-val">Not set</span>')+'</dd></div>' +
+      '<div><dt>API Key</dt><dd>'+(a.key_prefix ? esc(a.key_prefix)+'...' : '<span class="empty-val">None</span>')+'</dd></div>' +
+      '<div><dt>Created</dt><dd>'+new Date(a.created_at).toLocaleDateString()+'</dd></div>' +
+    '</div>' +
+    (a.description ? '<div style="margin-bottom:.5rem"><strong style="font-size:.78rem;color:var(--text3)">Description</strong><p style="font-size:.85rem;color:var(--text2)">'+esc(a.description)+'</p></div>' : '') +
+    (a.webhook_url ? '<div><strong style="font-size:.78rem;color:var(--text3)">Webhook URL</strong><div style="font-family:var(--mono);font-size:.78rem;color:var(--text2);word-break:break-all;margin-top:.15rem">'+esc(a.webhook_url)+'</div></div>' : '<div style="font-size:.82rem;color:var(--text3)">No webhook configured — this app only sends outbound messages.</div>');
+  openModal('app-detail-modal');
+}
+
+function copyAppConfig(id) {
+  const a = _appsCache.find(x => x.id === id);
+  if (!a) { toast('App not found','err'); return; }
+  const keyInfo = a.key_prefix ? a.key_prefix + '...' : '(no key assigned)';
+  const envBlock = '# Getouch WhatsApp Gateway — ' + (a.name||'App') + '\nWHATSAPP_GATEWAY_BASE_URL=https://wa.getouch.co\nWHATSAPP_GATEWAY_API_KEY=your_full_api_secret_here';
+  const curlBlock = 'curl -X POST https://wa.getouch.co/api/send-text \\\n  -H "Content-Type: application/json" \\\n  -H "X-API-Key: YOUR_KEY" \\\n  -d \'{"to":"60123456789","text":"Hello!"}\'';
+  $('config-body').innerHTML =
+    '<div style="margin-bottom:.75rem"><strong>App:</strong> '+esc(a.name)+(a.domain?' &middot; <span style="font-family:var(--mono);font-size:.82rem">'+esc(a.domain)+'</span>':'')+'</div>' +
+    '<div style="margin-bottom:.5rem"><strong>API Key:</strong> <span style="font-family:var(--mono)">'+esc(keyInfo)+'</span></div>' +
+    '<div style="margin-bottom:.75rem"><strong>Gateway URL:</strong> <span style="font-family:var(--mono)">https://wa.getouch.co</span></div>' +
+    '<div style="font-weight:700;font-size:.82rem;margin-bottom:.25rem">Environment Variables (.env)</div>' +
+    '<div class="config-block" id="cfg-env">'+esc(envBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\'cfg-env\')">Copy</button></div>' +
+    '<div style="font-weight:700;font-size:.82rem;margin-bottom:.25rem;margin-top:.75rem">cURL Example</div>' +
+    '<div class="config-block" id="cfg-curl">'+esc(curlBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\'cfg-curl\')">Copy</button></div>';
+  openModal('config-modal');
+}
+function cpBlock(id) {
+  const el = $(id);
+  // Get text without the button text
+  const btn = el.querySelector('.cp');
+  const txt = el.textContent.replace(btn?btn.textContent:'','').trim();
+  navigator.clipboard.writeText(txt).then(() => toast('Copied','ok')).catch(() => toast('Copy failed','err'));
+}
+
+async function toggleApp(id) {
+  try {
+    const r = await fetch('/admin/apps/'+id+'/toggle', { method:'POST', headers: hdr() });
+    if (r.ok) { const d = await r.json(); toast('App '+(d.status==='active'?'enabled':'disabled'),'ok'); loadApps() }
+    else { const d = await r.json(); toast(d.error||'Failed','err') }
+  } catch(e) { toast(e.message,'err') }
+}
+
+async function deleteAppAction(id) {
+  const a = _appsCache.find(x => x.id === id);
+  if (!confirm('Delete app "'+((a&&a.name)||id)+'"? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/admin/apps/'+id, { method:'DELETE', headers: hdr() });
+    if (r.ok) { toast('App deleted','ok'); loadApps(); loadKeys() }
+    else { const d = await r.json(); toast(d.error||'Failed','err') }
   } catch(e) { toast(e.message,'err') }
 }
 

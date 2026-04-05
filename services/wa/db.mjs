@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
   key_prefix  TEXT NOT NULL,
   label       TEXT NOT NULL DEFAULT 'Unnamed Key',
   scopes      JSONB NOT NULL DEFAULT '["send","read"]',
-  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
+  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled','revoked')),
+  app_id      INTEGER,
   last_used_at TIMESTAMPTZ,
   usage_count INTEGER NOT NULL DEFAULT 0,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -123,7 +124,18 @@ async function migrate(logger) {
   const client = await pool.connect();
   try {
     await client.query(SCHEMA_SQL);
-    logger?.info('Database schema verified (v2)');
+    // v3 migrations: add columns/constraints if missing
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS app_id INTEGER;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+    await client.query(`
+      ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_status_check;
+      ALTER TABLE api_keys ADD CONSTRAINT api_keys_status_check CHECK (status IN ('active','disabled','revoked'));
+    `).catch(() => {});
+    logger?.info('Database schema verified (v3)');
   } finally {
     client.release();
   }
@@ -202,26 +214,59 @@ export async function getPersistedEvents(limit = 100) {
 // ---------------------------------------------------------------------------
 // API Keys CRUD
 // ---------------------------------------------------------------------------
-export async function createApiKey(label, scopes) {
+export async function createApiKey(label, scopes, appId) {
   const raw = generateApiKey();
   const hash = hashApiKey(raw);
   const prefix = raw.slice(0, 8);
   const sc = JSON.stringify(scopes || ['send', 'read']);
   const r = await pool.query(
-    `INSERT INTO api_keys (key_hash,key_prefix,label,scopes) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [hash, prefix, label || 'Unnamed Key', sc]);
+    `INSERT INTO api_keys (key_hash,key_prefix,label,scopes,app_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [hash, prefix, label || 'Unnamed Key', sc, appId || null]);
   return { ...r.rows[0], raw_key: raw };
 }
 
 export async function listApiKeys() {
-  const r = await pool.query(
-    'SELECT id,key_prefix,label,scopes,status,last_used_at,usage_count,created_at FROM api_keys ORDER BY created_at DESC');
+  const r = await pool.query(`
+    SELECT k.id, k.key_prefix, k.label, k.scopes, k.status, k.app_id,
+           k.last_used_at, k.usage_count, k.created_at,
+           a.name AS app_name, a.domain AS app_domain
+    FROM api_keys k LEFT JOIN connected_apps a ON k.app_id = a.id
+    ORDER BY k.created_at DESC`);
   return r.rows;
 }
 
 export async function revokeApiKey(id) {
   const r = await pool.query(
     `UPDATE api_keys SET status='revoked' WHERE id=$1 RETURNING *`, [id]);
+  return r.rows[0] || null;
+}
+
+export async function disableApiKey(id) {
+  const r = await pool.query(
+    `UPDATE api_keys SET status='disabled' WHERE id=$1 AND status='active' RETURNING *`, [id]);
+  return r.rows[0] || null;
+}
+
+export async function enableApiKey(id) {
+  const r = await pool.query(
+    `UPDATE api_keys SET status='active' WHERE id=$1 AND status='disabled' RETURNING *`, [id]);
+  return r.rows[0] || null;
+}
+
+export async function regenerateApiKey(id) {
+  const raw = generateApiKey();
+  const hash = hashApiKey(raw);
+  const prefix = raw.slice(0, 8);
+  const r = await pool.query(
+    `UPDATE api_keys SET key_hash=$1, key_prefix=$2, usage_count=0, last_used_at=NULL WHERE id=$3 AND status != 'revoked' RETURNING *`,
+    [hash, prefix, id]);
+  if (!r.rows[0]) return null;
+  return { ...r.rows[0], raw_key: raw };
+}
+
+export async function assignKeyToApp(keyId, appId) {
+  const r = await pool.query(
+    `UPDATE api_keys SET app_id=$1 WHERE id=$2 RETURNING *`, [appId || null, keyId]);
   return r.rows[0] || null;
 }
 
@@ -256,10 +301,16 @@ export async function createApp({ name, domain, description, apiKeyId, webhookUr
 
 export async function listApps() {
   const r = await pool.query(`
-    SELECT a.*, k.label AS key_label, k.key_prefix
+    SELECT a.*, k.label AS key_label, k.key_prefix, k.status AS key_status
     FROM connected_apps a LEFT JOIN api_keys k ON a.api_key_id = k.id
     ORDER BY a.created_at DESC`);
   return r.rows;
+}
+
+export async function toggleAppStatus(id) {
+  const r = await pool.query(
+    `UPDATE connected_apps SET status = CASE WHEN status='active' THEN 'inactive' ELSE 'active' END, updated_at=now() WHERE id=$1 RETURNING *`, [id]);
+  return r.rows[0] || null;
 }
 
 export async function getApp(id) {
