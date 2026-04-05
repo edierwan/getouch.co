@@ -35,7 +35,7 @@ services:
     container_name: getouch-web
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -156,8 +156,10 @@ services:
 
       # ── RAG Embeddings ──
       RAG_EMBEDDING_ENGINE: "ollama"
-      RAG_EMBEDDING_MODEL: "all-minilm:latest"
+      RAG_EMBEDDING_MODEL: "nomic-embed-text:latest"
       RAG_OLLAMA_BASE_URL: http://ollama:11434
+      RAG_CHUNK_SIZE: "1000"
+      RAG_CHUNK_OVERLAP: "200"
       RAG_PDF_EXTRACT_IMAGES: "true"
 
       # ── Pipelines connection ──
