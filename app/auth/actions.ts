@@ -429,5 +429,7 @@ async function provisionUserToOpenWebUI(user: { id: string; name: string; email:
 
 export async function logout() {
   await clearSessionCookie();
-  redirect('/auth/login');
+  // Don't redirect here — the AdminLayout's session guard will
+  // trigger redirect('/auth/login') on the automatic RSC re-render,
+  // avoiding a double-redirect client error.
 }
