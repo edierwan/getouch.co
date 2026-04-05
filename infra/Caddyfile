@@ -273,3 +273,16 @@ http://admin.getouch.co {
   import common_headers
   respond "Not configured on this server." 404
 }
+http://stg.serapod2u.com {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control public, max-age=31536000, immutable
+
+  @html path /
+  header @html Cache-Control public, max-age=0, must-revalidate
+
+  handle {
+    reverse_proxy serapod-web-stg:3000
+  }
+}
