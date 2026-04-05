@@ -175,6 +175,17 @@ button{font-family:var(--font)}
 
 /* ─── Page sections ─── */
 .page{display:none}.page.active{display:block}
+
+/* ─── Auth overlay ─── */
+.auth-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(6,8,18,.92);backdrop-filter:blur(8px)}
+.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:1rem;padding:2.5rem 2rem;width:22rem;max-width:90vw;text-align:center}
+.auth-card h2{font-size:1.25rem;margin-bottom:.25rem}
+.auth-card small{color:var(--text3);font-size:.78rem}
+.auth-input{width:100%;margin-top:1.25rem;padding:.65rem .85rem;font-size:.85rem;font-family:var(--mono);border-radius:.5rem;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none}
+.auth-input:focus{border-color:var(--accent)}
+.auth-btn{width:100%;margin-top:.75rem;padding:.65rem;font-size:.9rem;font-weight:700;border-radius:.5rem;border:none;background:var(--accent);color:#fff;cursor:pointer}
+.auth-btn:hover{opacity:.9}
+.auth-err{color:var(--red);font-size:.78rem;margin-top:.5rem;min-height:1.1rem}
 </style>
 </head>
 <body>
@@ -200,7 +211,10 @@ button{font-family:var(--font)}
     <button class="nav-item" onclick="go('integrations')"><span class="ni">&#x1F517;</span> Integrations</button>
     <button class="nav-item" onclick="go('settings')"><span class="ni">&#x2699;</span> Settings</button>
   </nav>
-  <div class="sidebar-foot">Getouch WA v2.0${isDbReady() ? ' &middot; <span style="color:var(--green)">DB</span>' : ''}</div>
+  <div class="sidebar-foot">
+    <span>Getouch WA v2.0${isDbReady() ? ' &middot; <span style="color:var(--green)">DB</span>' : ''}</span>
+    <button class="btn-icon" title="Logout" onclick="logout()" style="float:right;font-size:.85rem">&#x1F6AA;</button>
+  </div>
 </aside>
 
 <!-- ─── Main ─── -->
@@ -450,6 +464,18 @@ button{font-family:var(--font)}
 
 <div class="toast-area" id="toast-area"></div>
 
+<!-- Auth overlay -->
+<div class="auth-overlay" id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div style="font-size:2rem;margin-bottom:.5rem">&#x1F512;</div>
+    <h2>Getouch WA</h2>
+    <small>Admin Console</small>
+    <input class="auth-input" id="auth-key-input" type="password" placeholder="Enter admin API key" autocomplete="off" />
+    <button class="auth-btn" id="auth-btn" onclick="doAuth()">Sign In</button>
+    <div class="auth-err" id="auth-err"></div>
+  </div>
+</div>
+
 <script>
 // ── Globals ──────────────────────────────────────────
 const ADMIN_KEY = localStorage.getItem('wa_admin_key') || '';
@@ -461,15 +487,46 @@ function cpSnip(btn){ const t=btn.parentElement.textContent.replace('Copy','').t
 
 // ── Auth key ─────────────────────────────────────────
 function getAdminKey() {
-  let k = localStorage.getItem('wa_admin_key');
-  if (!k) {
-    k = prompt('Enter your Admin API Key (WA_ADMIN_KEY):');
-    if (k) localStorage.setItem('wa_admin_key', k);
-  }
-  return k || '';
+  return localStorage.getItem('wa_admin_key') || '';
 }
 function hdr() { return { 'X-API-Key': getAdminKey() } }
 function hdrJson() { return { 'X-API-Key': getAdminKey(), 'Content-Type': 'application/json' } }
+
+function showAuth() {
+  $('auth-overlay').style.display = 'flex';
+  $('auth-key-input').value = '';
+  $('auth-err').textContent = '';
+  setTimeout(() => $('auth-key-input').focus(), 100);
+}
+
+async function doAuth() {
+  const k = $('auth-key-input').value.trim();
+  if (!k) { $('auth-err').textContent = 'Key cannot be empty'; return }
+  $('auth-btn').disabled = true;
+  $('auth-btn').textContent = 'Verifying...';
+  try {
+    const r = await fetch('/admin/overview', { headers: { 'X-API-Key': k } });
+    if (r.ok) {
+      localStorage.setItem('wa_admin_key', k);
+      $('auth-overlay').style.display = 'none';
+      initDashboard();
+    } else {
+      $('auth-err').textContent = 'Invalid key (HTTP ' + r.status + ')';
+    }
+  } catch(e) {
+    $('auth-err').textContent = 'Connection error';
+  } finally {
+    $('auth-btn').disabled = false;
+    $('auth-btn').textContent = 'Sign In';
+  }
+}
+
+$('auth-key-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') doAuth() });
+
+function logout() {
+  localStorage.removeItem('wa_admin_key');
+  showAuth();
+}
 
 // ── Toast ────────────────────────────────────────────
 function toast(msg, type='info') {
@@ -542,8 +599,6 @@ async function pollStatus() {
     }
   } catch(e) {}
 }
-pollStatus();
-setInterval(pollStatus, 4000);
 
 // ── QR polling ───────────────────────────────────────
 let qrTimer = null;
@@ -643,7 +698,20 @@ async function loadOverview() {
     }
   } catch(e) {}
 }
-loadOverview();
+function initDashboard() {
+  loadOverview();
+  pollStatus();
+  setInterval(pollStatus, 4000);
+  startQrPoll();
+}
+
+// Boot: check if already authed
+if (getAdminKey()) {
+  $('auth-overlay').style.display = 'none';
+  initDashboard();
+} else {
+  showAuth();
+}
 
 // ── API Keys ─────────────────────────────────────────
 async function loadKeys() {
