@@ -1084,16 +1084,18 @@ function copyAppConfig(id) {
   const a = _appsCache.find(x => x.id === id);
   if (!a) { toast('App not found','err'); return; }
   const keyInfo = a.key_prefix ? a.key_prefix + '...' : '(no key assigned)';
-  const envBlock = '# Getouch WhatsApp Gateway — ' + (a.name||'App') + '\nWHATSAPP_GATEWAY_BASE_URL=https://wa.getouch.co\nWHATSAPP_GATEWAY_API_KEY=your_full_api_secret_here';
-  const curlBlock = 'curl -X POST https://wa.getouch.co/api/send-text \\\n  -H "Content-Type: application/json" \\\n  -H "X-API-Key: YOUR_KEY" \\\n  -d \'{"to":"60123456789","text":"Hello!"}\'';
+  var NL = String.fromCharCode(10);
+  var SQ = String.fromCharCode(39);
+  var envBlock = ['# Getouch WhatsApp Gateway - ' + (a.name||'App'), 'WHATSAPP_GATEWAY_BASE_URL=https://wa.getouch.co', 'WHATSAPP_GATEWAY_API_KEY=your_full_api_secret_here'].join(NL);
+  var curlBlock = ['curl -X POST https://wa.getouch.co/api/send-text \\\\', '  -H "Content-Type: application/json" \\\\', '  -H "X-API-Key: YOUR_KEY" \\\\', '  -d ' + SQ + '{"to":"60123456789","text":"Hello!"}' + SQ].join(NL);
   $('config-body').innerHTML =
     '<div style="margin-bottom:.75rem"><strong>App:</strong> '+esc(a.name)+(a.domain?' &middot; <span style="font-family:var(--mono);font-size:.82rem">'+esc(a.domain)+'</span>':'')+'</div>' +
     '<div style="margin-bottom:.5rem"><strong>API Key:</strong> <span style="font-family:var(--mono)">'+esc(keyInfo)+'</span></div>' +
     '<div style="margin-bottom:.75rem"><strong>Gateway URL:</strong> <span style="font-family:var(--mono)">https://wa.getouch.co</span></div>' +
     '<div style="font-weight:700;font-size:.82rem;margin-bottom:.25rem">Environment Variables (.env)</div>' +
-    '<div class="config-block" id="cfg-env">'+esc(envBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\'cfg-env\')">Copy</button></div>' +
+    '<div class="config-block" id="cfg-env">'+esc(envBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\\'cfg-env\\')">Copy</button></div>' +
     '<div style="font-weight:700;font-size:.82rem;margin-bottom:.25rem;margin-top:.75rem">cURL Example</div>' +
-    '<div class="config-block" id="cfg-curl">'+esc(curlBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\'cfg-curl\')">Copy</button></div>';
+    '<div class="config-block" id="cfg-curl">'+esc(curlBlock)+'<button class="btn btn-ghost btn-sm cp" onclick="cpBlock(\\'cfg-curl\\')">Copy</button></div>';
   openModal('config-modal');
 }
 function cpBlock(id) {
