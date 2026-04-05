@@ -135,6 +135,10 @@ async function migrate(logger) {
       ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_status_check;
       ALTER TABLE api_keys ADD CONSTRAINT api_keys_status_check CHECK (status IN ('active','disabled','revoked'));
     `).catch(() => {});
+    // v3.1: add api_key_id to message_log for app attribution
+    await client.query(`
+      ALTER TABLE message_log ADD COLUMN IF NOT EXISTS api_key_id INTEGER;
+    `).catch(() => {});
     logger?.info('Database schema verified (v3)');
   } finally {
     client.release();
