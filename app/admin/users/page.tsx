@@ -31,17 +31,16 @@ export default async function UsersPage() {
   const provisionedIds = new Set(provisions.map((p) => p.userId));
 
   return (
-    <main className="admin-main">
-      <div className="container">
-        <div className="admin-header">
-          <span className="section-tag">User Management</span>
-          <h1>Users</h1>
-          <p className="admin-sub">
-            Manage platform users, roles, and downstream provisioning.
-          </p>
+    <div className="portal-body">
+      <div className="portal-page-header">
+        <div>
+          <h2 className="portal-page-title">Users</h2>
+          <p className="portal-page-sub">Manage platform users, roles, and downstream provisioning.</p>
         </div>
+        <a href="/admin" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>← Back to Dashboard</a>
+      </div>
 
-        <section className="admin-section">
+        <section className="portal-section" style={{ marginBottom: 0 }}>
           <div className="users-table-wrap">
             <table className="users-table">
               <thead>
@@ -148,7 +147,6 @@ export default async function UsersPage() {
             </table>
           </div>
         </section>
-      </div>
-    </main>
+    </div>
   );
 }

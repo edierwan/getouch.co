@@ -1,264 +1,291 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-type Tab = 'overview' | 'services' | 'infra';
+type ServiceStatus = 'HEALTHY' | 'ACTIVE' | 'ONLINE' | 'CHECKING' | 'DEGRADED' | 'UNKNOWN';
 
-interface Props {
-  sessionName: string | null;
-  stats: { total: number; active: number; pending: number; provisioned: number };
-  recentUsers: { id: string; name: string; email: string; role: string }[];
+interface ServiceDef {
+  name: string;
+  type: string;
+  category: string;
+  url?: string;
+  healthUrl?: string;
+  description?: string;
 }
 
-const serviceCategories = [
-  {
-    name: 'AI & Chat',
-    services: [
-      { name: 'Getouch AI', desc: 'AI Chat, Image Gen, RAG, Agents', url: 'https://ai.getouch.co', icon: '🧠' },
-      { name: 'WhatsApp API', desc: 'WhatsApp Business messaging', url: 'https://wa.getouch.co', icon: '💬' },
-    ],
-  },
-  {
-    name: 'Database',
-    services: [
-      { name: 'pgAdmin', desc: 'PostgreSQL database management', url: 'https://db.getouch.co', icon: '🗄️' },
-    ],
-    subgroups: [
-      {
-        name: 'Supabase',
-        services: [
-          { name: 'Getouch SSO', desc: 'Central shared sign-in / identity', url: 'https://st-sso.getouch.co', icon: '🔐' },
-          { name: 'Serapod Staging', desc: 'Serapod staging database', url: 'https://st-stg-serapod.getouch.co', icon: '⚡' },
-          { name: 'QR System Dev', desc: 'QR System development', url: 'https://st-dev-qrsys.getouch.co', icon: '🔧' },
-          { name: 'QR System Prod', desc: 'QR System production', url: 'https://st-prd-qrsys.getouch.co', icon: '🟢' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'Storage',
-    services: [
-      { name: 'S3 Storage', desc: 'File browser & management (Filestash)', url: 'https://s3.getouch.co', icon: '📦' },
-      { name: 'S3 API', desc: 'S3-compatible object storage API', url: 'https://s3api.getouch.co', icon: '🔌' },
-    ],
-  },
-  {
-    name: 'DevOps',
-    services: [
-      { name: 'Coolify', desc: 'Deployment & container management', url: 'https://coolify.getouch.co', icon: '🚀' },
-      { name: 'SearXNG', desc: 'Private meta search engine', url: 'https://search.getouch.co', icon: '🔍' },
-      { name: 'Grafana', desc: 'Metrics & observability', url: 'https://grafana.getouch.co', icon: '📊' },
-      { name: 'Analytics', desc: 'Self-hosted web analytics', url: 'https://analytics.getouch.co', icon: '📉' },
-    ],
-  },
+const SERVICES: ServiceDef[] = [
+  // Infrastructure
+  { name: 'Caddy', type: 'Reverse Proxy', category: 'Infrastructure', description: 'HTTPS edge proxy for all services' },
+  { name: 'PostgreSQL 16', type: 'Database', category: 'Infrastructure', description: 'Primary relational database', healthUrl: 'https://getouch.co/api/admin/health?svc=postgres' },
+  { name: 'pgAdmin 4', type: 'Admin', category: 'Infrastructure', url: 'https://db.getouch.co', healthUrl: 'https://db.getouch.co' },
+  { name: 'Cloudflare Tunnel', type: 'Network', category: 'Infrastructure', description: 'Zero-trust edge tunnel' },
+  // Platform
+  { name: 'Coolify', type: 'DevOps', category: 'Platform', url: 'https://coolify.getouch.co', healthUrl: 'https://coolify.getouch.co', description: 'Container deployment platform' },
+  { name: 'Getouch.co (Prod)', type: 'App', category: 'Platform', url: 'https://getouch.co', healthUrl: 'https://getouch.co', description: 'Main web application' },
+  { name: 'Getouch News', type: 'App', category: 'Platform', url: 'https://news.getouch.co', healthUrl: 'https://news.getouch.co', description: 'News portal' },
+  // AI & Automation
+  { name: 'Open WebUI', type: 'AI', category: 'AI & Automation', url: 'https://ai.getouch.co', healthUrl: 'https://ai.getouch.co', description: 'AI chat + models UI' },
+  { name: 'Ollama', type: 'AI Engine', category: 'AI & Automation', description: 'Local LLM inference (GPU)' },
+  { name: 'SearXNG', type: 'Search', category: 'AI & Automation', url: 'https://search.getouch.co', healthUrl: 'https://search.getouch.co', description: 'Private meta search engine' },
+  // Identity
+  { name: 'Getouch SSO', type: 'Auth', category: 'Identity', url: 'https://st-sso.getouch.co', description: 'Central identity (Supabase)' },
+  { name: 'Serapod Staging', type: 'Supabase', category: 'Identity', url: 'https://st-stg-serapod.getouch.co', description: 'Serapod staging stack' },
+  { name: 'QRSys Dev', type: 'Supabase', category: 'Identity', url: 'https://st-dev-qrsys.getouch.co', description: 'QR System development' },
+  { name: 'QRSys Prod', type: 'Supabase', category: 'Identity', url: 'https://st-prd-qrsys.getouch.co', description: 'QR System production' },
+  // Communication
+  { name: 'WhatsApp API', type: 'Messaging', category: 'Communication', url: 'https://wa.getouch.co', healthUrl: 'https://wa.getouch.co/healthz', description: 'WhatsApp Business gateway' },
+  { name: 'Chatwoot', type: 'Support', category: 'Communication', description: 'Customer support platform' },
+  // Storage
+  { name: 'SeaweedFS', type: 'Object Storage', category: 'Storage', url: 'https://s3api.getouch.co', description: 'S3-compatible distributed storage' },
+  { name: 'Filestash', type: 'File Browser', category: 'Storage', url: 'https://s3.getouch.co', healthUrl: 'https://s3.getouch.co', description: 'Web-based file manager' },
+  // Monitoring
+  { name: 'Grafana', type: 'Metrics', category: 'Monitoring', url: 'https://grafana.getouch.co', healthUrl: 'https://grafana.getouch.co', description: 'Dashboards & observability' },
+  { name: 'Umami Analytics', type: 'Analytics', category: 'Monitoring', url: 'https://analytics.getouch.co', healthUrl: 'https://analytics.getouch.co', description: 'Self-hosted web analytics' },
 ];
 
-const plannedServices = [
-  { name: 'Bot Service', desc: 'Chatbot orchestration engine', icon: '🤖' },
-  { name: 'API Gateway', desc: 'Central REST/GraphQL API', icon: '⚡' },
+const QUICK_ACTIONS = [
+  { label: 'Open Coolify', url: 'https://coolify.getouch.co', icon: '🚀' },
+  { label: 'Open AI', url: 'https://ai.getouch.co', icon: '🧠' },
+  { label: 'pgAdmin', url: 'https://db.getouch.co', icon: '🗄️' },
+  { label: 'Grafana', url: 'https://grafana.getouch.co', icon: '📊' },
+  { label: 'S3 Storage', url: 'https://s3.getouch.co', icon: '📦' },
+  { label: 'Analytics', url: 'https://analytics.getouch.co', icon: '📉' },
 ];
 
-const infraSpecs = [
-  { label: 'Server', value: 'Ubuntu 24.04 LTS' },
-  { label: 'CPU', value: '12 cores' },
-  { label: 'RAM', value: '64 GB DDR5' },
+const ENV_SPECS = [
+  { label: 'CPU', value: '12 vCPU Intel Xeon' },
+  { label: 'Memory', value: '64 GB DDR5' },
   { label: 'GPU', value: 'RTX 5060 Ti 16GB' },
-  { label: 'Disk', value: '100 GB + 1.5 TB NVMe' },
+  { label: 'Storage', value: '98 GB OS + 1.5 TB NVMe' },
+  { label: 'OS', value: 'Ubuntu 24.04 LTS' },
+  { label: 'Containers', value: '74 running' },
+];
+
+const NETWORK_INFO = [
+  { label: 'Domain', value: 'getouch.co' },
+  { label: 'SSL', value: 'Let\'s Encrypt — VALID' },
   { label: 'Edge', value: 'Cloudflare Tunnel' },
-  { label: 'Proxy', value: 'Caddy' },
-  { label: 'Database', value: 'PostgreSQL 16' },
-  { label: 'Deploy', value: 'Coolify + Docker' },
-  { label: 'VPN', value: 'Tailscale' },
+  { label: 'Firewall', value: 'UFW + DOCKER-USER' },
+  { label: 'VPN', value: 'Tailscale (100.84.14.93)' },
 ];
 
-const tabs: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'services', label: 'Services' },
-  { key: 'infra', label: 'Infrastructure' },
-];
+const CATEGORIES = Array.from(new Set(SERVICES.map((s) => s.category)));
 
-export default function Dashboard({ sessionName, stats, recentUsers }: Props) {
-  const [tab, setTab] = useState<Tab>('overview');
+function StatusBadge({ status }: { status: ServiceStatus }) {
+  const color =
+    status === 'CHECKING' ? '#6b7280' :
+    status === 'DEGRADED' || status === 'UNKNOWN' ? '#ef4444' :
+    '#22c55e';
+  const bg =
+    status === 'CHECKING' ? 'rgba(107,114,128,0.12)' :
+    status === 'DEGRADED' || status === 'UNKNOWN' ? 'rgba(239,68,68,0.12)' :
+    'rgba(34,197,94,0.12)';
+  return (
+    <span style={{ color, background: bg, padding: '2px 8px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em' }}>
+      {status === 'CHECKING' ? '···' : status}
+    </span>
+  );
+}
+
+interface Props {
+  stats: { users: number; pending: number; aiProvisioned: number };
+}
+
+export default function PortalDashboard({ stats }: Props) {
+  const [statuses, setStatuses] = useState<Record<string, ServiceStatus>>(() =>
+    Object.fromEntries(SERVICES.map((s) => [s.name, 'CHECKING']))
+  );
+  const [lastChecked, setLastChecked] = useState<string>('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  const checkHealth = useCallback(async () => {
+    const servicesWithHealth = SERVICES.filter((s) => s.healthUrl);
+    const results = await Promise.allSettled(
+      servicesWithHealth.map(async (svc) => {
+        try {
+          const resp = await fetch(`/api/admin/health?url=${encodeURIComponent(svc.healthUrl!)}`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          return { name: svc.name, ok: resp.ok };
+        } catch {
+          return { name: svc.name, ok: false };
+        }
+      })
+    );
+
+    const newStatuses: Record<string, ServiceStatus> = { ...statuses };
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        newStatuses[result.value.name] = result.value.ok ? 'HEALTHY' : 'DEGRADED';
+      }
+    });
+    // Services without healthUrl are ACTIVE (no HTTP check possible)
+    SERVICES.filter((s) => !s.healthUrl).forEach((s) => {
+      newStatuses[s.name] = 'ACTIVE';
+    });
+    setStatuses(newStatuses);
+    setLastChecked(new Date().toLocaleTimeString());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    checkHealth();
+  }, [checkHealth]);
+
+  const healthyCount = Object.values(statuses).filter((s) => s === 'HEALTHY' || s === 'ACTIVE' || s === 'ONLINE').length;
+  const degradedCount = Object.values(statuses).filter((s) => s === 'DEGRADED').length;
+  const filteredServices = activeCategory
+    ? SERVICES.filter((s) => s.category === activeCategory)
+    : SERVICES;
 
   return (
-    <main className="admin-main">
-      <div className="container">
-        <div className="admin-header">
-          <span className="section-tag">Admin Dashboard</span>
-          <h1>Platform Overview</h1>
-          <p className="admin-sub">Welcome back, {sessionName}.</p>
+    <div className="portal-body">
+      {/* Page title */}
+      <div className="portal-page-header">
+        <div>
+          <h2 className="portal-page-title">Dashboard</h2>
+          <p className="portal-page-sub">Infrastructure overview</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {lastChecked && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Last checked: {lastChecked}
+            </span>
+          )}
+          <button onClick={checkHealth} className="portal-refresh-btn">↻ Refresh</button>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="portal-stats-row">
+        <div className="portal-stat-card">
+          <span className="portal-stat-val">{SERVICES.length}</span>
+          <span className="portal-stat-lbl">Total Services</span>
+        </div>
+        <div className="portal-stat-card portal-stat-green">
+          <span className="portal-stat-val">{healthyCount}</span>
+          <span className="portal-stat-lbl">Healthy</span>
+        </div>
+        <div className={`portal-stat-card${degradedCount > 0 ? ' portal-stat-red' : ''}`}>
+          <span className="portal-stat-val">{degradedCount}</span>
+          <span className="portal-stat-lbl">Degraded</span>
+        </div>
+        <div className="portal-stat-card">
+          <span className="portal-stat-val">{stats.users}</span>
+          <span className="portal-stat-lbl">Users</span>
+        </div>
+        <div className="portal-stat-card">
+          <span className="portal-stat-val">{stats.aiProvisioned}</span>
+          <span className="portal-stat-lbl">AI Users</span>
+        </div>
+        <div className={`portal-stat-card${stats.pending > 0 ? ' portal-stat-amber' : ''}`}>
+          <span className="portal-stat-val">{stats.pending}</span>
+          <span className="portal-stat-lbl">Pending</span>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="portal-section">
+        <h3 className="portal-section-title">QUICK ACTIONS</h3>
+        <div className="portal-actions-row">
+          {QUICK_ACTIONS.map((a) => (
+            <a key={a.label} href={a.url} target="_blank" rel="noopener noreferrer" className="portal-action-btn">
+              <span>{a.icon}</span> {a.label}
+            </a>
+          ))}
+          <a href="/admin/users" className="portal-action-btn">
+            <span>◉</span> Manage Users
+          </a>
+        </div>
+      </div>
+
+      {/* Main content: Service Health + Side panels */}
+      <div className="portal-grid">
+        {/* Service Health Table */}
+        <div className="portal-table-wrap" style={{ gridColumn: '1 / -1' }}>
+          <div className="portal-section">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <h3 className="portal-section-title" style={{ marginBottom: 0 }}>SERVICE HEALTH</h3>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setActiveCategory(null)}
+                  className={`portal-tag-btn${activeCategory === null ? ' portal-tag-active' : ''}`}
+                >All</button>
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
+                    className={`portal-tag-btn${activeCategory === cat ? ' portal-tag-active' : ''}`}
+                  >{cat}</button>
+                ))}
+              </div>
+            </div>
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Category</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredServices.map((svc) => (
+                  <tr key={svc.name}>
+                    <td className="portal-table-name">{svc.name}</td>
+                    <td className="portal-table-cat">{svc.category}</td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{svc.type}</td>
+                    <td><StatusBadge status={statuses[svc.name] ?? 'CHECKING'} /></td>
+                    <td>
+                      {svc.url ? (
+                        <a href={svc.url} target="_blank" rel="noopener noreferrer" className="portal-table-link">
+                          ↗
+                        </a>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Tab Navigation */}
-        <nav className="tab-nav">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              className={`tab-btn${tab === t.key ? ' tab-active' : ''}`}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* ─── Overview Tab ─── */}
-        {tab === 'overview' && (
-          <>
-            <section className="admin-section">
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <span className="stat-value">{stats.total}</span>
-                  <span className="stat-label">Total Users</span>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-value">{stats.active}</span>
-                  <span className="stat-label">Active</span>
-                </div>
-                <div className="stat-card stat-accent">
-                  <span className="stat-value">{stats.pending}</span>
-                  <span className="stat-label">Pending</span>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-value">{stats.provisioned}</span>
-                  <span className="stat-label">AI Provisioned</span>
-                </div>
+        {/* Network Panel */}
+        <div className="portal-side-panel">
+          <h3 className="portal-section-title">NETWORK</h3>
+          <div className="portal-info-list">
+            {NETWORK_INFO.map((item) => (
+              <div key={item.label} className="portal-info-row">
+                <span className="portal-info-label">{item.label}</span>
+                <span className="portal-info-value">{item.value}</span>
               </div>
-            </section>
-
-            {recentUsers.length > 0 && (
-              <section className="admin-section">
-                <h2>Recent Users</h2>
-                <div className="recent-list">
-                  {recentUsers.map((u) => (
-                    <div key={u.id} className="recent-row">
-                      <div className="recent-info">
-                        <span className="recent-name">{u.name}</span>
-                        <span className="recent-email">{u.email}</span>
-                      </div>
-                      <span className={`role-badge role-${u.role}`}>{u.role}</span>
-                    </div>
-                  ))}
-                </div>
-                <a href="/admin/users" className="view-all-link">View all users →</a>
-              </section>
-            )}
-
-            <section className="admin-section">
-              <h2>Quick Access</h2>
-              <div className="quick-links">
-                <a href="https://ai.getouch.co/admin" target="_blank" rel="noopener noreferrer" className="quick-card">
-                  <span className="quick-icon">🧠</span>
-                  <div><h3>Open WebUI Admin</h3><p>Manage AI models, settings &amp; connections</p></div>
-                  <span className="quick-arrow">→</span>
-                </a>
-                <a href="https://db.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
-                  <span className="quick-icon">🗄️</span>
-                  <div><h3>Database Admin</h3><p>pgAdmin — manage PostgreSQL databases</p></div>
-                  <span className="quick-arrow">→</span>
-                </a>
-                <a href="https://coolify.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
-                  <span className="quick-icon">🚀</span>
-                  <div><h3>Coolify</h3><p>Deployments &amp; container management</p></div>
-                  <span className="quick-arrow">→</span>
-                </a>
-                <a href="https://s3.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
-                  <span className="quick-icon">📦</span>
-                  <div><h3>S3 Storage</h3><p>Browse &amp; manage files in S3 buckets</p></div>
-                  <span className="quick-arrow">→</span>
-                </a>
-                <a href="https://grafana.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
-                  <span className="quick-icon">📊</span>
-                  <div><h3>Grafana</h3><p>Metrics, dashboards &amp; observability</p></div>
-                  <span className="quick-arrow">→</span>
-                </a>
-                <a href="https://analytics.getouch.co" target="_blank" rel="noopener noreferrer" className="quick-card">
-                  <span className="quick-icon">📉</span>
-                  <div><h3>Analytics</h3><p>Self-hosted web analytics (Umami)</p></div>
-                  <span className="quick-arrow">→</span>
-                </a>
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* ─── Services Tab ─── */}
-        {tab === 'services' && (
-          <>
-            {serviceCategories.map((cat) => (
-              <section key={cat.name} className="admin-section">
-                <div className="category-header">
-                  <h2>{cat.name}</h2>
-                </div>
-                <div className="service-grid">
-                  {cat.services.map((s) => (
-                    <a key={s.name} href={s.url} target="_blank" rel="noopener noreferrer" className="service-card service-live">
-                      <div className="service-icon">{s.icon}</div>
-                      <div className="service-info">
-                        <h3>{s.name}</h3>
-                        <p>{s.desc}</p>
-                        <span className="service-url">{s.url.replace('https://', '')}</span>
-                      </div>
-                      <div className="service-status status-live">Live</div>
-                    </a>
-                  ))}
-                </div>
-                {cat.subgroups?.map((sub) => (
-                  <div key={sub.name} className="service-subgroup">
-                    <h3 className="subgroup-title">{sub.name}</h3>
-                    <div className="service-grid">
-                      {sub.services.map((s) => (
-                        <a key={s.name} href={s.url} target="_blank" rel="noopener noreferrer" className="service-card service-live">
-                          <div className="service-icon">{s.icon}</div>
-                          <div className="service-info">
-                            <h3>{s.name}</h3>
-                            <p>{s.desc}</p>
-                            <span className="service-url">{s.url.replace('https://', '')}</span>
-                          </div>
-                          <div className="service-status status-live">Live</div>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </section>
             ))}
+          </div>
+        </div>
 
-            <section className="admin-section">
-              <div className="category-header">
-                <h2>Planned</h2>
+        {/* Environment Panel */}
+        <div className="portal-side-panel">
+          <h3 className="portal-section-title">ENVIRONMENT</h3>
+          <div className="portal-info-list">
+            {ENV_SPECS.map((item) => (
+              <div key={item.label} className="portal-info-row">
+                <span className="portal-info-label">{item.label}</span>
+                <span className="portal-info-value">{item.value}</span>
               </div>
-              <div className="service-grid">
-                {plannedServices.map((s) => (
-                  <div key={s.name} className="service-card service-planned">
-                    <div className="service-icon">{s.icon}</div>
-                    <div className="service-info">
-                      <h3>{s.name}</h3>
-                      <p>{s.desc}</p>
-                    </div>
-                    <div className="service-status status-planned">Planned</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
+            ))}
+          </div>
+        </div>
 
-        {/* ─── Infrastructure Tab ─── */}
-        {tab === 'infra' && (
-          <section className="admin-section">
-            <h2>Server Specifications</h2>
-            <div className="infra-table">
-              {infraSpecs.map((item) => (
-                <div key={item.label} className="infra-row">
-                  <span className="infra-label">{item.label}</span>
-                  <span className="infra-value">{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* Recent Activity */}
+        <div className="portal-side-panel">
+          <h3 className="portal-section-title">RECENT ACTIVITY</h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            Activity log will appear here once event tracking is configured.
+          </p>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
