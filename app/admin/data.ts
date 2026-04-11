@@ -1,253 +1,493 @@
-export type AdminStatus = 'HEALTHY' | 'ONLINE' | 'ACTIVE' | 'DEGRADED';
+export type StatusTone = 'healthy' | 'active' | 'warning';
 
-export interface AdminService {
+export interface NavItem {
+  label: string;
+  href: string;
+  icon: string;
+  external?: boolean;
+}
+
+export interface NavSection {
+  label: string;
+  items: NavItem[];
+}
+
+export interface SummaryCard {
+  label: string;
+  value: string;
+  tone?: StatusTone;
+  icon: string;
+}
+
+export interface ResourceRow {
   name: string;
-  type: string;
-  category: string;
   description: string;
-  url?: string;
-  healthUrl?: string;
+  type: string;
+  status: string;
+  tone: StatusTone;
+  href?: string;
 }
 
-export interface AdminServiceWithStatus extends AdminService {
-  status: AdminStatus;
+export interface InfoRow {
+  label: string;
+  value: string;
 }
 
-export const ADMIN_SERVICES: AdminService[] = [
+export interface DetailCard {
+  title: string;
+  status: string;
+  tone: StatusTone;
+  rows: InfoRow[];
+}
+
+export interface QuickLinkGroup {
+  title: string;
+  links: Array<{ label: string; href: string; external?: boolean }>;
+}
+
+export const ADMIN_NAV: NavSection[] = [
   {
-    name: 'Caddy',
-    type: 'Reverse Proxy',
-    category: 'Infrastructure',
-    description: 'HTTPS edge proxy for getouch.co services.',
-    url: 'https://getouch.co',
-    healthUrl: 'https://getouch.co',
+    label: 'OVERVIEW',
+    items: [{ label: 'Dashboard', href: '/admin', icon: '⌘' }],
   },
   {
-    name: 'PostgreSQL 16',
-    type: 'Database',
-    category: 'Infrastructure',
-    description: 'Primary relational database for auth, admin, and platform workloads.',
+    label: 'INFRASTRUCTURE',
+    items: [
+      { label: 'Servers & Nodes', href: '/admin/servers', icon: '▣' },
+      { label: 'Databases', href: '/admin/databases', icon: '▤' },
+      { label: 'Reverse Proxy', href: '/admin/reverse-proxy', icon: '◫' },
+    ],
   },
   {
-    name: 'pgAdmin 4',
-    type: 'Database Admin',
-    category: 'Infrastructure',
-    description: 'PostgreSQL management console.',
-    url: 'https://db.getouch.co',
-    healthUrl: 'https://db.getouch.co',
+    label: 'PLATFORM',
+    items: [
+      { label: 'Coolify', href: 'https://coolify.getouch.co', icon: '◈', external: true },
+      { label: 'Deployments', href: '/admin/deployments', icon: '⬡' },
+    ],
   },
   {
-    name: 'Cloudflare Tunnel',
-    type: 'Ingress',
-    category: 'Infrastructure',
-    description: 'Cloudflare edge tunnel for public ingress routing.',
+    label: 'APPLICATIONS',
+    items: [{ label: 'App Registry', href: '/admin/app-registry', icon: '▥' }],
   },
   {
-    name: 'Coolify',
-    type: 'Deployment',
-    category: 'Platform',
-    description: 'Self-hosted application deployment platform.',
-    url: 'https://coolify.getouch.co',
-    healthUrl: 'https://coolify.getouch.co',
+    label: 'COMMUNICATION',
+    items: [
+      { label: 'Mail Services', href: '/admin/mail-services', icon: '✉' },
+      { label: 'Messaging', href: '/admin/messaging', icon: '◌' },
+    ],
   },
   {
-    name: 'Getouch.co Production',
-    type: 'Application',
-    category: 'Platform',
-    description: 'Primary production Next.js application.',
-    url: 'https://getouch.co',
-    healthUrl: 'https://getouch.co',
+    label: 'AI & AUTOMATION',
+    items: [{ label: 'AI Services', href: '/admin/ai-services', icon: '◎' }],
   },
   {
-    name: 'Getouch News',
-    type: 'Application',
-    category: 'Platform',
-    description: 'News portal and content surface.',
-    url: 'https://news.getouch.co',
-    healthUrl: 'https://news.getouch.co',
+    label: 'MONITORING',
+    items: [{ label: 'System Health', href: '/admin/system-health', icon: '∿' }],
   },
   {
-    name: 'Open WebUI',
-    type: 'AI Service',
-    category: 'AI & Automation',
-    description: 'AI portal and chat interface.',
-    url: 'https://ai.getouch.co',
-    healthUrl: 'https://ai.getouch.co',
+    label: 'ACCESS',
+    items: [{ label: 'Quick Links', href: '/admin/quick-links', icon: '⊞' }],
   },
-  {
-    name: 'Ollama',
-    type: 'AI Engine',
-    category: 'AI & Automation',
-    description: 'GPU-backed LLM inference runtime.',
-  },
-  {
-    name: 'SearXNG',
-    type: 'Search',
-    category: 'AI & Automation',
-    description: 'Private search aggregation layer.',
-    url: 'https://search.getouch.co',
-    healthUrl: 'https://search.getouch.co',
-  },
-  {
-    name: 'Getouch SSO',
-    type: 'Auth / Supabase',
-    category: 'Identity',
-    description: 'Shared authentication and identity services.',
-    url: 'https://st-sso.getouch.co',
-    healthUrl: 'https://st-sso.getouch.co',
-  },
-  {
-    name: 'Serapod Staging',
-    type: 'Supabase',
-    category: 'Identity',
-    description: 'Serapod staging stack and APIs.',
-    url: 'https://st-stg-serapod.getouch.co',
-    healthUrl: 'https://st-stg-serapod.getouch.co',
-  },
-  {
-    name: 'QRSys Dev',
-    type: 'Supabase',
-    category: 'Identity',
-    description: 'QR system development stack.',
-    url: 'https://st-dev-qrsys.getouch.co',
-    healthUrl: 'https://st-dev-qrsys.getouch.co',
-  },
-  {
-    name: 'QRSys Prod',
-    type: 'Supabase',
-    category: 'Identity',
-    description: 'QR system production stack.',
-    url: 'https://st-prd-qrsys.getouch.co',
-    healthUrl: 'https://st-prd-qrsys.getouch.co',
-  },
-  {
-    name: 'WhatsApp API',
-    type: 'Messaging',
-    category: 'Communication',
-    description: 'WhatsApp gateway and automation endpoint.',
-    url: 'https://wa.getouch.co',
-    healthUrl: 'https://wa.getouch.co/healthz',
-  },
-  {
-    name: 'Chatwoot',
-    type: 'Support',
-    category: 'Communication',
-    description: 'Customer support workspace.',
-  },
-  {
-    name: 'SeaweedFS',
-    type: 'Object Storage',
-    category: 'Storage',
-    description: 'S3-compatible object storage backend.',
-    url: 'https://s3api.getouch.co',
-  },
-  {
-    name: 'Filestash',
-    type: 'File Browser',
-    category: 'Storage',
-    description: 'Browser-based file access for storage volumes.',
-    url: 'https://s3.getouch.co',
-    healthUrl: 'https://s3.getouch.co',
-  },
-  {
-    name: 'Grafana',
-    type: 'Monitoring',
-    category: 'Monitoring',
-    description: 'Metrics and dashboards.',
-    url: 'https://grafana.getouch.co',
-    healthUrl: 'https://grafana.getouch.co',
-  },
-  {
-    name: 'Umami Analytics',
-    type: 'Analytics',
-    category: 'Monitoring',
-    description: 'Self-hosted web analytics.',
-    url: 'https://analytics.getouch.co',
-    healthUrl: 'https://analytics.getouch.co',
-  },
+];
+
+export const DASHBOARD_SUMMARY: SummaryCard[] = [
+  { label: 'TOTAL SERVICES', value: '16', icon: '▤' },
+  { label: 'HEALTHY', value: '16', tone: 'healthy', icon: '♡' },
+  { label: 'DEGRADED', value: '0', tone: 'warning', icon: '△' },
+  { label: 'APPLICATIONS', value: '3', icon: '▣' },
+  { label: 'MAIL', value: 'Relay', tone: 'active', icon: '✉' },
+  { label: 'AI ENGINE', value: 'Active', tone: 'active', icon: '◎' },
 ];
 
 export const QUICK_ACTIONS = [
-  { label: 'Open Coolify', url: 'https://coolify.getouch.co' },
-  { label: 'Open AI', url: 'https://ai.getouch.co' },
-  { label: 'Open pgAdmin', url: 'https://db.getouch.co' },
-  { label: 'Open Grafana', url: 'https://grafana.getouch.co' },
-  { label: 'Open Storage', url: 'https://s3.getouch.co' },
-  { label: 'Open Analytics', url: 'https://analytics.getouch.co' },
+  { label: 'Open Coolify', href: 'https://coolify.getouch.co', external: true },
+  { label: 'Open AI', href: 'https://ai.getouch.co', external: true },
+  { label: 'Open pgAdmin', href: 'https://db.getouch.co', external: true },
+  { label: 'Open Storage', href: 'https://s3.getouch.co', external: true },
+  { label: 'Open Grafana', href: 'https://grafana.getouch.co', external: true },
+  { label: 'Manage Users', href: '/admin/users' },
 ];
 
-export const NETWORK_INFO = [
-  { label: 'Public Access', value: 'Cloudflare Tunnel + Caddy' },
+export const DASHBOARD_SERVICES: ResourceRow[] = [
+  {
+    name: 'PostgreSQL 16',
+    description: 'Primary database engine for auth, users, and platform data.',
+    type: 'DATABASE',
+    status: 'HEALTHY',
+    tone: 'healthy',
+  },
+  {
+    name: 'pgAdmin 4',
+    description: 'Database management UI for PostgreSQL administration.',
+    type: 'DATABASE',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://db.getouch.co',
+  },
+  {
+    name: 'Coolify',
+    description: 'Self-hosted PaaS for deployments and rolling updates.',
+    type: 'DEPLOYMENT',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://coolify.getouch.co',
+  },
+  {
+    name: 'Open WebUI',
+    description: 'AI chat, RAG, and model management interface.',
+    type: 'AI',
+    status: 'ACTIVE',
+    tone: 'active',
+    href: 'https://ai.getouch.co',
+  },
+  {
+    name: 'Cloudflare Tunnel',
+    description: 'Public ingress path routing traffic into the VPS securely.',
+    type: 'NETWORK',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'Caddy Reverse Proxy',
+    description: 'TLS termination and routing for main workloads.',
+    type: 'PROXY',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'WhatsApp API',
+    description: 'WhatsApp gateway and automation endpoint.',
+    type: 'MESSAGING',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://wa.getouch.co',
+  },
+  {
+    name: 'SearXNG',
+    description: 'Private search backend used by AI and operator workflows.',
+    type: 'SEARCH',
+    status: 'ACTIVE',
+    tone: 'active',
+    href: 'https://search.getouch.co',
+  },
+];
+
+export const DASHBOARD_NETWORK: InfoRow[] = [
+  { label: 'Public IP', value: '100.84.14.93 (Tailscale)' },
   { label: 'Domain', value: 'getouch.co' },
   { label: 'SSL', value: "Let's Encrypt VALID" },
-  { label: 'Firewall', value: 'UFW + DOCKER-USER ACTIVE' },
-  { label: 'VPN', value: 'Tailscale 100.84.14.93' },
+  { label: 'Firewall', value: 'ACTIVE' },
 ];
 
-export const ENVIRONMENT_INFO = [
+export const DASHBOARD_ENVIRONMENT: InfoRow[] = [
   { label: 'CPU', value: '12 vCPU' },
   { label: 'Memory', value: '64 GB DDR5' },
-  { label: 'GPU', value: 'RTX 5060 Ti 16GB' },
-  { label: 'Storage', value: '98 GB OS + 1.5 TB NVMe' },
+  { label: 'Storage', value: '98 GB + 1.5 TB NVMe' },
   { label: 'OS', value: 'Ubuntu 24.04.4 LTS' },
-  { label: 'Containers', value: '74 running' },
 ];
 
-export const SERVER_NODES = [
+export const DASHBOARD_ACTIVITY: string[] = [
+  'Admin portal redeployed from Coolify after transient DNS failure.',
+  'Production web container is healthy on the latest image.',
+  'Infrastructure routing, storage, AI, and messaging services are online.',
+];
+
+export const SERVER_CARDS: DetailCard[] = [
   {
-    name: 'Primary VPS',
-    address: '100.84.14.93',
-    role: 'Main application and AI host',
-    specs: '12 vCPU, 64 GB RAM, RTX 5060 Ti, Ubuntu 24.04.4 LTS',
+    title: 'Primary VPS',
     status: 'ACTIVE',
+    tone: 'active',
+    rows: [
+      { label: 'Address', value: '100.84.14.93' },
+      { label: 'Role', value: 'Main app, AI, storage, and admin host' },
+      { label: 'Specs', value: '12 vCPU, 64 GB RAM, RTX 5060 Ti, Ubuntu 24.04.4 LTS' },
+    ],
   },
   {
-    name: 'Edge Access',
-    address: 'Cloudflare Tunnel + Tailscale',
-    role: 'Ingress, zero-trust access, private ops path',
-    specs: 'Public ingress via tunnel, private admin via tailnet',
-    status: 'ACTIVE',
-  },
-  {
-    name: 'Runtime',
-    address: 'Coolify + Docker',
-    role: 'Application and service orchestration',
-    specs: '74 running containers, 0 unhealthy after April hardening',
+    title: 'Ingress Layer',
     status: 'HEALTHY',
+    tone: 'healthy',
+    rows: [
+      { label: 'Public Access', value: 'Cloudflare Tunnel' },
+      { label: 'Private Access', value: 'Tailscale tailnet' },
+      { label: 'Proxy', value: 'Caddy reverse proxy' },
+    ],
+  },
+  {
+    title: 'Runtime',
+    status: 'HEALTHY',
+    tone: 'healthy',
+    rows: [
+      { label: 'Orchestrator', value: 'Coolify + Docker' },
+      { label: 'Containers', value: '74 running' },
+      { label: 'Health', value: '0 unhealthy after hardening' },
+    ],
   },
 ];
 
-async function probeUrl(url: string): Promise<AdminStatus> {
-  try {
-    const response = await fetch(url, {
-      method: 'HEAD',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(4000),
-      cache: 'no-store',
-    });
-    if (response.ok) return 'HEALTHY';
-    if (response.status === 405 || response.status === 403) {
-      const fallback = await fetch(url, {
-        method: 'GET',
-        redirect: 'follow',
-        signal: AbortSignal.timeout(4000),
-        cache: 'no-store',
-      });
-      return fallback.ok ? 'ONLINE' : 'DEGRADED';
-    }
-    return 'DEGRADED';
-  } catch {
-    return 'DEGRADED';
-  }
-}
+export const DATABASE_ROWS: ResourceRow[] = [
+  {
+    name: 'PostgreSQL 16',
+    description: 'Primary relational database for getouch.co.',
+    type: 'DATABASE',
+    status: 'HEALTHY',
+    tone: 'healthy',
+  },
+  {
+    name: 'pgAdmin 4',
+    description: 'Querying, schema management, and database administration.',
+    type: 'DATABASE ADMIN',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://db.getouch.co',
+  },
+  {
+    name: 'Getouch SSO',
+    description: 'Shared authentication service on Supabase.',
+    type: 'AUTH',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-sso.getouch.co',
+  },
+  {
+    name: 'Serapod Staging',
+    description: 'Supabase staging stack for Serapod workloads.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-stg-serapod.getouch.co',
+  },
+  {
+    name: 'QRSys Production',
+    description: 'Production Supabase stack for QR System.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-prd-qrsys.getouch.co',
+  },
+];
 
-export async function getServicesWithStatus(): Promise<AdminServiceWithStatus[]> {
-  return Promise.all(
-    ADMIN_SERVICES.map(async (service) => {
-      if (!service.healthUrl) {
-        return { ...service, status: 'ACTIVE' };
-      }
-      return { ...service, status: await probeUrl(service.healthUrl) };
-    })
-  );
-}
+export const REVERSE_PROXY_ROWS: ResourceRow[] = [
+  {
+    name: 'Caddy',
+    description: 'TLS termination and routing for public applications.',
+    type: 'PROXY',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'Cloudflare Tunnel',
+    description: 'Zero-trust ingress from the public internet.',
+    type: 'INGRESS',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'SSL Automation',
+    description: 'Certificate issuance and renewal for getouch.co domains.',
+    type: 'TLS',
+    status: 'HEALTHY',
+    tone: 'healthy',
+  },
+  {
+    name: 'Tailscale',
+    description: 'Private admin and maintenance access path.',
+    type: 'VPN',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+];
+
+export const DEPLOYMENT_ROWS: ResourceRow[] = [
+  {
+    name: 'Production',
+    description: 'Branch: main. Live Coolify application serving getouch.co.',
+    type: 'MAIN',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://coolify.getouch.co',
+  },
+  {
+    name: 'Staging',
+    description: 'Branch: staging. Preview environment for validation.',
+    type: 'STAGING',
+    status: 'ACTIVE',
+    tone: 'active',
+    href: 'https://coolify.getouch.co',
+  },
+  {
+    name: 'Develop',
+    description: 'Branch: develop. Integration branch for ongoing work.',
+    type: 'DEVELOP',
+    status: 'ACTIVE',
+    tone: 'active',
+    href: 'https://coolify.getouch.co',
+  },
+];
+
+export const APP_REGISTRY_ROWS: ResourceRow[] = [
+  {
+    name: 'Getouch.co',
+    description: 'Main Next.js application and admin portal.',
+    type: 'WEB',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://getouch.co',
+  },
+  {
+    name: 'Getouch News',
+    description: 'News frontend and content stack.',
+    type: 'CONTENT',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://news.getouch.co',
+  },
+  {
+    name: 'Portal Users',
+    description: 'Admin-managed user access and provisioning.',
+    type: 'ADMIN',
+    status: 'ACTIVE',
+    tone: 'active',
+    href: '/admin/users',
+  },
+];
+
+export const MAIL_ROWS: ResourceRow[] = [
+  {
+    name: 'SMTP Relay',
+    description: 'Transactional email routing for auth and notifications.',
+    type: 'SMTP',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'Verification Email',
+    description: 'Account verification and login-related email delivery.',
+    type: 'AUTH MAIL',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'Notification Sender',
+    description: 'App-level outbound messages from nodemailer integration.',
+    type: 'APP MAIL',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+];
+
+export const MESSAGING_ROWS: ResourceRow[] = [
+  {
+    name: 'WhatsApp API',
+    description: 'Gateway for WhatsApp delivery and automation.',
+    type: 'WHATSAPP',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://wa.getouch.co',
+  },
+  {
+    name: 'Chatwoot',
+    description: 'Customer communication and support workspace.',
+    type: 'SUPPORT',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'OTP via WhatsApp',
+    description: 'Phone verification token delivery inside the auth flow.',
+    type: 'AUTH FLOW',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+];
+
+export const AI_ROWS: ResourceRow[] = [
+  {
+    name: 'Open WebUI',
+    description: 'Operator and end-user AI interface.',
+    type: 'PORTAL',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://ai.getouch.co',
+  },
+  {
+    name: 'Ollama',
+    description: 'Model inference service on the local GPU node.',
+    type: 'INFERENCE',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'SearXNG',
+    description: 'Private search stack used by AI workflows.',
+    type: 'SEARCH',
+    status: 'ACTIVE',
+    tone: 'active',
+    href: 'https://search.getouch.co',
+  },
+  {
+    name: 'Pipelines',
+    description: 'Custom AI automation and orchestration pipelines.',
+    type: 'AUTOMATION',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+];
+
+export const SYSTEM_HEALTH_ROWS: ResourceRow[] = [
+  {
+    name: 'Containers',
+    description: '74 running containers, current production web container healthy.',
+    type: 'RUNTIME',
+    status: 'HEALTHY',
+    tone: 'healthy',
+  },
+  {
+    name: 'Deployments',
+    description: 'Latest Coolify redeploy completed successfully after retry.',
+    type: 'CI/CD',
+    status: 'HEALTHY',
+    tone: 'healthy',
+  },
+  {
+    name: 'Edge Routing',
+    description: 'Cloudflare tunnel, Caddy, and SSL routing are active.',
+    type: 'NETWORK',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    name: 'Storage',
+    description: 'Main NVMe and service volumes available.',
+    type: 'DISK',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+];
+
+export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
+  {
+    title: 'Platform',
+    links: [
+      { label: 'Coolify', href: 'https://coolify.getouch.co', external: true },
+      { label: 'Getouch.co', href: 'https://getouch.co', external: true },
+      { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
+    ],
+  },
+  {
+    title: 'Operations',
+    links: [
+      { label: 'pgAdmin', href: 'https://db.getouch.co', external: true },
+      { label: 'Grafana', href: 'https://grafana.getouch.co', external: true },
+      { label: 'Analytics', href: 'https://analytics.getouch.co', external: true },
+    ],
+  },
+  {
+    title: 'AI & Messaging',
+    links: [
+      { label: 'Open WebUI', href: 'https://ai.getouch.co', external: true },
+      { label: 'WhatsApp API', href: 'https://wa.getouch.co', external: true },
+      { label: 'Search', href: 'https://search.getouch.co', external: true },
+    ],
+  },
+];
