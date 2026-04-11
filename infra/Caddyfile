@@ -254,7 +254,15 @@ http://social.news.getouch.co {
 http://portal.getouch.co {
   import common_headers
 
-  redir https://portal.getouch.cloud{uri} 308
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-prod:3000
+  }
 }
 
 http://bot.getouch.co,
