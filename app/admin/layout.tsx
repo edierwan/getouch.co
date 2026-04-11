@@ -10,22 +10,22 @@ const NAV_SECTIONS = [
   {
     label: 'INFRASTRUCTURE',
     items: [
-      { label: 'Servers & Nodes', href: '/admin#servers', icon: '□' },
-      { label: 'Databases', href: '/admin#databases', icon: '▤' },
-      { label: 'Reverse Proxy', href: '/admin#proxy', icon: '⇄' },
+      { label: 'Servers & Nodes', href: '/admin/servers', icon: '□' },
+      { label: 'Databases', href: '/admin/databases', icon: '▤' },
+      { label: 'Reverse Proxy', href: '/admin/reverse-proxy', icon: '⇄' },
     ],
   },
   {
     label: 'PLATFORM',
     items: [
       { label: 'Coolify', href: 'https://coolify.getouch.co', icon: '◈', external: true },
-      { label: 'Deployments', href: '/admin#deployments', icon: '↑' },
+      { label: 'Deployments', href: '/admin/servers', icon: '↑' },
     ],
   },
   {
     label: 'APPLICATIONS',
     items: [
-      { label: 'App Registry', href: '/admin#apps', icon: '▣' },
+      { label: 'App Registry', href: '/admin/databases', icon: '▣' },
       { label: 'Users', href: '/admin/users', icon: '◉' },
     ],
   },
@@ -46,14 +46,14 @@ const NAV_SECTIONS = [
   {
     label: 'MONITORING',
     items: [
-      { label: 'System Health', href: '/admin#health', icon: '◍' },
+      { label: 'System Health', href: '/admin', icon: '◍' },
       { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◫', external: true },
       { label: 'Analytics', href: 'https://analytics.getouch.co', icon: '▥', external: true },
     ],
   },
   {
     label: 'ACCESS',
-    items: [{ label: 'Quick Links', href: '/admin#links', icon: '⊞' }],
+    items: [{ label: 'Quick Links', href: '/admin', icon: '⊞' }],
   },
 ];
 
