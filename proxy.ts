@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
+const getPortalAdminUrl = () => process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+
 const getSecret = () => {
   const secret = process.env.AUTH_SECRET;
   return new TextEncoder().encode(secret || 'dev-only-secret-not-for-production');
@@ -14,8 +16,11 @@ export async function proxy(request: NextRequest) {
     const token = request.cookies.get('session')?.value;
     if (token) {
       try {
-        await jwtVerify(token, getSecret());
-        return NextResponse.redirect(new URL('/admin', request.url));
+        const { payload } = await jwtVerify(token, getSecret());
+        if (payload.role === 'admin') {
+          return NextResponse.redirect(new URL(getPortalAdminUrl()));
+        }
+        return NextResponse.redirect(new URL('/portal', request.url));
       } catch {
         /* invalid token — let them access auth pages */
       }
@@ -37,7 +42,7 @@ export async function proxy(request: NextRequest) {
       if (payload.role !== 'admin') {
         return NextResponse.redirect(new URL('/portal', request.url));
       }
-      return NextResponse.next();
+      return NextResponse.redirect(new URL(getPortalAdminUrl()));
     } catch {
       const url = new URL('/auth/login', request.url);
       url.searchParams.set('from', pathname);

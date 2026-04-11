@@ -15,6 +15,9 @@ import { eq, and, gt } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import crypto from 'crypto';
 
+const getPortalAdminUrl = () =>
+  process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+
 export async function login(_prev: unknown, formData: FormData) {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
@@ -101,7 +104,7 @@ export async function login(_prev: unknown, formData: FormData) {
 
   // Redirect based on role
   if (user.role === 'admin') {
-    redirect('/admin');
+    redirect(getPortalAdminUrl());
   } else {
     redirect('/portal');
   }
