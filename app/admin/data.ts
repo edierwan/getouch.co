@@ -293,6 +293,14 @@ export const DATABASE_ROWS: ResourceRow[] = [
     href: 'https://st-stg-serapod.getouch.co',
   },
   {
+    name: 'Serapod Preprod',
+    description: 'Supabase pre-production stack for Serapod validation.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-preprod-serapod.getouch.co',
+  },
+  {
     name: 'Serapod Production',
     description: 'Supabase production stack for Serapod workloads and data APIs.',
     type: 'BAAS',
@@ -388,6 +396,15 @@ export const DATABASE_MODULES: InfrastructureModule[] = [
   },
   {
     eyebrow: 'BAAS',
+    title: 'Serapod Preprod',
+    description: 'Pre-production Supabase stack for Serapod validation and release checks.',
+    footer: 'st-preprod-serapod.getouch.co',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-preprod-serapod.getouch.co',
+  },
+  {
+    eyebrow: 'BAAS',
     title: 'Serapod Production',
     description: 'Production Supabase workloads for storage, auth, REST, and realtime APIs.',
     footer: 'st-prd-serapod.getouch.co',
@@ -405,6 +422,14 @@ export const BAAS_ROWS: ResourceRow[] = [
     status: 'ONLINE',
     tone: 'healthy',
     href: 'https://st-sso.getouch.co',
+  },
+  {
+    name: 'Serapod Preprod',
+    description: 'Pre-production Supabase workloads for Serapod validation.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-preprod-serapod.getouch.co',
   },
   {
     name: 'Serapod Production',
@@ -425,6 +450,15 @@ export const BAAS_MODULES: InfrastructureModule[] = [
     status: 'ONLINE',
     tone: 'healthy',
     href: 'https://st-sso.getouch.co',
+  },
+  {
+    eyebrow: 'BAAS',
+    title: 'Serapod Preprod',
+    description: 'Pre-production Supabase environment for Serapod validation and release checks.',
+    footer: 'Pre-production BaaS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-preprod-serapod.getouch.co',
   },
   {
     eyebrow: 'BAAS',
@@ -596,7 +630,7 @@ export const MESSAGING_ROWS: ResourceRow[] = [
     type: 'SUPPORT',
     status: 'ACTIVE',
     tone: 'active',
-    href: 'https://chatwood.getouch.co',
+    href: 'https://chatwoot.getouch.co',
   },
   {
     name: 'OTP via WhatsApp',

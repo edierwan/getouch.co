@@ -212,6 +212,16 @@ http://st-prd-serapod.getouch.co {
   reverse_proxy serapod-prd-studio:3000
 }
 
+http://sb-preprod-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-preprod-kong:8000
+}
+
+http://st-preprod-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-preprod-studio:3000
+}
+
 http://auth.getouch.co {
   import common_headers
 
@@ -285,7 +295,7 @@ http://analytics.getouch.co {
   reverse_proxy umami:3000
 }
 
-http://chatwood.getouch.co {
+http://chatwoot.getouch.co {
   import common_headers
   reverse_proxy chatwoot-web:3000
 }
