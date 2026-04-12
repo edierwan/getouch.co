@@ -540,6 +540,14 @@ export const APP_REGISTRY_ROWS: ResourceRow[] = [
     href: 'https://news.getouch.co',
   },
   {
+    name: 'News CMS',
+    description: 'Strapi content management for Getouch News.',
+    type: 'CMS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://cms.news.getouch.co',
+  },
+  {
     name: 'Portal Users',
     description: 'Admin-managed user access and provisioning.',
     type: 'ADMIN',
@@ -588,6 +596,7 @@ export const MESSAGING_ROWS: ResourceRow[] = [
     type: 'SUPPORT',
     status: 'ACTIVE',
     tone: 'active',
+    href: 'https://chatwood.getouch.co',
   },
   {
     name: 'OTP via WhatsApp',
@@ -669,6 +678,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
       { label: 'Coolify', href: 'https://coolify.getouch.co', external: true },
       { label: 'Getouch.co', href: 'https://getouch.co', external: true },
       { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
+      { label: 'News CMS', href: 'https://cms.news.getouch.co', external: true },
     ],
   },
   {

@@ -1,0 +1,325 @@
+###############################################################################
+# Supabase Production — Isolated Self-Hosted Stack
+# Project : Serapod Production
+# Domains : sb-prd-serapod.getouch.co  (API + Auth + REST + Realtime)
+#           st-prd-serapod.getouch.co  (Studio dashboard)
+#
+# IMPORTANT: This stack is fully isolated from the Getouch platform.
+#            It has its own PostgreSQL, network, and volumes.
+###############################################################################
+
+services:
+  # ───────────────────── PostgreSQL ─────────────────────
+  db:
+    image: supabase/postgres:15.6.1.145
+    container_name: serapod-prd-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: supabase_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-supabase}
+    volumes:
+      - serapod-prd-db-data:/var/lib/postgresql/data
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/migrations/99-roles.sql:ro
+      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:ro
+      - ./volumes/db/analytics.sql:/docker-entrypoint-initdb.d/migrations/99-analytics.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supabase_admin -d ${POSTGRES_DB:-supabase}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Kong (API Gateway) ─────────────────────
+  kong:
+    image: kong:2.8.1
+    container_name: serapod-prd-kong
+    restart: unless-stopped
+    entrypoint: ["bash", "/home/kong/entrypoint.sh"]
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    volumes:
+      - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
+      - ./volumes/api/kong-entrypoint.sh:/home/kong/entrypoint.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supabase-prd-net
+      - getouch-edge
+
+  # ───────────────────── GoTrue (Auth) ─────────────────────
+  auth:
+    image: supabase/gotrue:v2.164.0
+    container_name: serapod-prd-auth
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-supabase}
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ""
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${GOTRUE_EXTERNAL_EMAIL_ENABLED:-true}
+      GOTRUE_MAILER_AUTOCONFIRM: ${GOTRUE_MAILER_AUTOCONFIRM:-false}
+      GOTRUE_SMTP_HOST: ${GOTRUE_SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${GOTRUE_SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${GOTRUE_SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${GOTRUE_SMTP_PASS:-}
+      GOTRUE_SMTP_SENDER_NAME: ${GOTRUE_SMTP_SENDER_NAME:-Serapod}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── PostgREST ─────────────────────
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: serapod-prd-rest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-supabase}
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Realtime ─────────────────────
+  realtime:
+    image: supabase/realtime:v2.33.58
+    container_name: serapod-prd-realtime
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-supabase}
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      APP_NAME: realtime
+      SECRET_KEY_BASE: ${JWT_SECRET}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      ENABLE_TAILWIND: "false"
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Storage ─────────────────────
+  storage:
+    image: supabase/storage-api:v1.11.13
+    container_name: serapod-prd-storage
+    restart: unless-stopped
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-supabase}
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-file}
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: local
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: "true"
+      IMGPROXY_URL: http://imgproxy:8080
+    volumes:
+      - serapod-prd-storage-data:/var/lib/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      imgproxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5000/status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Imgproxy ─────────────────────
+  imgproxy:
+    image: darthsim/imgproxy:v3.8.0
+    container_name: serapod-prd-imgproxy
+    restart: unless-stopped
+    environment:
+      IMGPROXY_BIND: ":8080"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: "true"
+    volumes:
+      - serapod-prd-storage-data:/var/lib/storage:ro
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Meta (DB inspector for Studio) ─────────────────────
+  meta:
+    image: supabase/postgres-meta:v0.95.2
+    container_name: serapod-prd-meta
+    restart: unless-stopped
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB:-supabase}
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CRYPTO_KEY: ${PG_META_CRYPTO_KEY:-your-super-secret-encryption-key}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://localhost:8080/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Analytics (Logflare) ─────────────────────
+  analytics:
+    image: supabase/logflare:1.31.2
+    container_name: serapod-prd-analytics
+    restart: unless-stopped
+    environment:
+      LOGFLARE_NODE_HOST: 127.0.0.1
+      DB_USERNAME: supabase_admin
+      DB_DATABASE: _supabase
+      DB_HOSTNAME: db
+      DB_PORT: 5432
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SCHEMA: _analytics
+      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+      LOGFLARE_PRIVATE_ACCESS_TOKEN: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
+      LOGFLARE_SINGLE_TENANT: "true"
+      LOGFLARE_SUPABASE_MODE: "true"
+      POSTGRES_BACKEND_URL: postgresql://supabase_admin:${POSTGRES_PASSWORD}@db:5432/_supabase
+      POSTGRES_BACKEND_SCHEMA: _analytics
+      LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend=true
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - supabase-prd-net
+
+  # ───────────────────── Studio (Dashboard) ─────────────────────
+  studio:
+    image: supabase/studio:2026.03.04-sha-0043607
+    container_name: serapod-prd-studio
+    restart: unless-stopped
+    environment:
+      HOSTNAME: "::"
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-supabase}
+      PG_META_CRYPTO_KEY: ${PG_META_CRYPTO_KEY:-your-super-secret-encryption-key}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,storage,graphql_public}
+      PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS:-1000}
+      PGRST_DB_EXTRA_SEARCH_PATH: ${PGRST_DB_EXTRA_SEARCH_PATH:-public}
+      DEFAULT_ORGANIZATION_NAME: Serapod
+      DEFAULT_PROJECT_NAME: "Serapod Production"
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      LOGFLARE_API_KEY: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+      LOGFLARE_PRIVATE_ACCESS_TOKEN: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
+      LOGFLARE_URL: http://analytics:4000
+      NEXT_PUBLIC_ENABLE_LOGS: "true"
+      NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
+      SNIPPETS_MANAGEMENT_FOLDER: /app/data/snippets
+      EDGE_FUNCTIONS_MANAGEMENT_FOLDER: /app/data/edge-functions
+    volumes:
+      - serapod-prd-snippets-data:/app/data/snippets
+      - serapod-prd-edge-functions-data:/app/data/edge-functions
+    depends_on:
+      analytics:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+      meta:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - supabase-prd-net
+      - getouch-edge
+
+# ───────────────────── Volumes (isolated) ─────────────────────
+volumes:
+  serapod-prd-db-data:
+    name: serapod-prd-db-data
+  serapod-prd-storage-data:
+    name: serapod-prd-storage-data
+  serapod-prd-snippets-data:
+    name: serapod-prd-snippets-data
+  serapod-prd-edge-functions-data:
+    name: serapod-prd-edge-functions-data
+
+# ───────────────────── Network (isolated) ─────────────────────
+networks:
+  supabase-prd-net:
+    name: supabase-prd-net
+    driver: bridge
+  getouch-edge:
+    external: true

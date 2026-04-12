@@ -43,13 +43,25 @@ export default function SidebarNav() {
               );
             }
 
+            /* When clicking a hash link on the same page (e.g. Infrastructure →
+               Servers & Nodes), Next.js Link won't trigger a native hashchange
+               because the pathname is identical.  Force the hash update so
+               InfrastructureClient's hashchange listener picks it up. */
+            const handleClick = (e: React.MouseEvent) => {
+              if (itemHash && pathname === normalizeHref(item.href)) {
+                e.preventDefault();
+                window.location.hash = itemHash;
+              }
+              setActiveHash(itemHash);
+            };
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={className}
                 aria-current={isActive ? 'page' : undefined}
-                onClick={() => setActiveHash(itemHash)}
+                onClick={handleClick}
               >
                 <span className="portal-nav-icon">{item.icon}</span>
                 <span>{item.label}</span>

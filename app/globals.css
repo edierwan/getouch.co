@@ -1528,6 +1528,18 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+a.portal-resource-row-link {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+a.portal-resource-row-link:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .portal-resource-row:first-child {
   border-top: 0;
   padding-top: 0;

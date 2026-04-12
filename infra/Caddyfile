@@ -20,9 +20,6 @@
 http://getouch.co {
   import common_headers
 
-  @portal_admin path /admin /admin/*
-  redir @portal_admin https://portal.getouch.co 308
-
   # Coolify webhook proxy — bypasses Cloudflare Access on coolify.getouch.co
   handle /webhooks/source/* {
     reverse_proxy coolify:8080 {
@@ -202,6 +199,16 @@ http://st-sso.getouch.co {
   reverse_proxy getouch-sso-studio:3000
 }
 
+http://sb-prd-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-prd-kong:8000
+}
+
+http://st-prd-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-prd-studio:3000
+}
+
 http://auth.getouch.co {
   import common_headers
 
@@ -265,12 +272,25 @@ http://portal.getouch.co {
   }
 }
 
+http://grafana.getouch.co {
+  import common_headers
+  reverse_proxy grafana:3000
+}
+
+http://analytics.getouch.co {
+  import common_headers
+  reverse_proxy umami:3000
+}
+
+http://chatwood.getouch.co {
+  import common_headers
+  reverse_proxy chatwoot-web:3000
+}
+
 http://bot.getouch.co,
 http://api.getouch.co,
-http://grafana.getouch.co,
 http://metrics.getouch.co,
 http://sms.getouch.co,
-http://analytics.getouch.co,
 http://billing.getouch.co,
 http://admin.getouch.co {
   import common_headers
