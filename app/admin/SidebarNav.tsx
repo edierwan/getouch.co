@@ -6,6 +6,7 @@ import { ADMIN_NAV } from './data';
 
 export default function SidebarNav() {
   const pathname = usePathname();
+  const normalizeHref = (href: string) => href.split('#')[0];
 
   return (
     <nav className="portal-nav">
@@ -13,7 +14,7 @@ export default function SidebarNav() {
         <div key={section.label} className="portal-nav-section">
           <div className="portal-nav-label">{section.label}</div>
           {section.items.map((item) => {
-            const isActive = !item.external && pathname === item.href;
+            const isActive = !item.external && pathname === normalizeHref(item.href);
             const className = `portal-nav-item${isActive ? ' portal-nav-item-active' : ''}`;
 
             if (item.external) {

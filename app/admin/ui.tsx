@@ -158,3 +158,33 @@ export function QuickLinkGroups({ groups }: { groups: QuickLinkGroup[] }) {
     </div>
   );
 }
+
+export function AnchorSection({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section id={id} className="portal-anchor-section">
+      <div className="portal-anchor-title">{title}</div>
+      {children}
+    </section>
+  );
+}
+
+export function MetricStrip({ rows }: { rows: InfoRow[] }) {
+  return (
+    <section className="portal-panel portal-metric-strip">
+      {rows.map((row) => (
+        <div key={row.label} className="portal-metric-cell">
+          <div className="portal-metric-label">{row.label}</div>
+          <div className="portal-metric-value">{row.value}</div>
+        </div>
+      ))}
+    </section>
+  );
+}
