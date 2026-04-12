@@ -18,7 +18,7 @@ export default async function AdminLayout({
         <div className="portal-brand">
           <span className="portal-brand-mark">◜</span>
           <div>
-            <div className="portal-brand-name">GetTouch Cloud</div>
+            <div className="portal-brand-name">getouch.cloud</div>
             <div className="portal-brand-sub">INFRASTRUCTURE</div>
           </div>
         </div>

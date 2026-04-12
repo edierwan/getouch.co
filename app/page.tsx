@@ -16,7 +16,7 @@ export default function HomePage() {
           <div className="lp-nav-links">
             <a href="#product" className="lp-nav-link">Product</a>
             <a href="#pricing" className="lp-nav-link">Pricing</a>
-            <a href="/admin" className="lp-nav-admin">Admin</a>
+            <a href="/admin" className="lp-nav-admin">Portal</a>
             <a href="https://ai.getouch.co" className="lp-nav-cta">Try Getouch</a>
           </div>
         </div>

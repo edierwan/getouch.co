@@ -7,21 +7,11 @@ import {
   QUICK_ACTIONS,
 } from './data';
 import { ActionBar, ActivityPanel, InfoPanel, PageIntro, ServicePanel, SummaryGrid } from './ui';
-
-interface Props {
-  stats: { users: number; pending: number; aiProvisioned: number };
-}
-
-export default function PortalDashboard({ stats }: Props) {
-  const summaryCards = [...DASHBOARD_SUMMARY];
-  summaryCards[3] = { ...summaryCards[3], value: String(stats.users) };
-  summaryCards[4] = { ...summaryCards[4], value: String(stats.aiProvisioned) };
-  summaryCards[5] = { ...summaryCards[5], value: stats.pending > 0 ? `${stats.pending} Pending` : 'Active' };
-
+export default function PortalDashboard() {
   return (
     <div className="portal-body">
       <PageIntro title="Dashboard" subtitle="Infrastructure overview and quick access to all services." />
-      <SummaryGrid cards={summaryCards} />
+      <SummaryGrid cards={DASHBOARD_SUMMARY} />
       <ActionBar actions={QUICK_ACTIONS} />
 
       <div className="portal-dashboard-grid">

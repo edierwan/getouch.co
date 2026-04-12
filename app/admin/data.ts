@@ -1,4 +1,5 @@
 export type StatusTone = 'healthy' | 'active' | 'warning';
+export type InfrastructureSectionId = 'servers' | 'databases' | 'reverse-proxy' | 'baas';
 
 export interface NavItem {
   label: string;
@@ -45,6 +46,23 @@ export interface QuickLinkGroup {
   links: Array<{ label: string; href: string; external?: boolean }>;
 }
 
+export interface InfrastructureSectionLink {
+  id: InfrastructureSectionId;
+  label: string;
+  icon: string;
+  description: string;
+}
+
+export interface InfrastructureModule {
+  eyebrow: string;
+  title: string;
+  description: string;
+  footer: string;
+  status: string;
+  tone: StatusTone;
+  href?: string;
+}
+
 export const ADMIN_NAV: NavSection[] = [
   {
     label: 'OVERVIEW',
@@ -53,9 +71,10 @@ export const ADMIN_NAV: NavSection[] = [
   {
     label: 'INFRASTRUCTURE',
     items: [
-      { label: 'Servers & Nodes', href: '/admin/servers', icon: '▣' },
-      { label: 'Databases', href: '/admin/databases', icon: '▤' },
-      { label: 'Reverse Proxy', href: '/admin/reverse-proxy', icon: '◫' },
+      { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
+      { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
+      { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
+      { label: 'Reverse Proxy', href: '/admin/infrastructure#reverse-proxy', icon: '◫' },
     ],
   },
   {
@@ -91,21 +110,21 @@ export const ADMIN_NAV: NavSection[] = [
 ];
 
 export const DASHBOARD_SUMMARY: SummaryCard[] = [
-  { label: 'TOTAL SERVICES', value: '16', icon: '▤' },
-  { label: 'HEALTHY', value: '16', tone: 'healthy', icon: '♡' },
+  { label: 'TOTAL SERVICES', value: '13', icon: '▤' },
+  { label: 'HEALTHY', value: '13', tone: 'healthy', icon: '♡' },
   { label: 'DEGRADED', value: '0', tone: 'warning', icon: '△' },
-  { label: 'APPLICATIONS', value: '3', icon: '▣' },
-  { label: 'MAIL', value: 'Relay', tone: 'active', icon: '✉' },
+  { label: 'APPLICATIONS', value: '1', icon: '▣' },
+  { label: 'MAIL', value: 'OK', tone: 'active', icon: '✉' },
   { label: 'AI ENGINE', value: 'Active', tone: 'active', icon: '◎' },
 ];
 
 export const QUICK_ACTIONS = [
   { label: 'Open Coolify', href: 'https://coolify.getouch.co', external: true },
-  { label: 'Open AI', href: 'https://ai.getouch.co', external: true },
+  { label: 'Open Webmail', href: 'https://mail.getouch.co', external: true },
+  { label: 'Mail Admin', href: 'https://mail.getouch.co', external: true },
   { label: 'Open pgAdmin', href: 'https://db.getouch.co', external: true },
-  { label: 'Open Storage', href: 'https://s3.getouch.co', external: true },
   { label: 'Open Grafana', href: 'https://grafana.getouch.co', external: true },
-  { label: 'Manage Users', href: '/admin/users' },
+  { label: 'Portal Users', href: '/admin/users' },
 ];
 
 export const DASHBOARD_SERVICES: ResourceRow[] = [
@@ -126,15 +145,23 @@ export const DASHBOARD_SERVICES: ResourceRow[] = [
   },
   {
     name: 'Coolify',
-    description: 'Self-hosted PaaS for deployments and rolling updates.',
+    description: 'Self-hosted PaaS for deployments, image builds, and release flow.',
     type: 'DEPLOYMENT',
     status: 'ONLINE',
     tone: 'healthy',
     href: 'https://coolify.getouch.co',
   },
   {
+    name: 'Getouch Portal',
+    description: 'Primary customer-facing Next.js application and account portal.',
+    type: 'APPLICATION',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://getouch.co',
+  },
+  {
     name: 'Open WebUI',
-    description: 'AI chat, RAG, and model management interface.',
+    description: 'AI chat, RAG, model workflows, and operator tooling.',
     type: 'AI',
     status: 'ACTIVE',
     tone: 'active',
@@ -153,6 +180,14 @@ export const DASHBOARD_SERVICES: ResourceRow[] = [
     type: 'PROXY',
     status: 'ACTIVE',
     tone: 'active',
+  },
+  {
+    name: 'Mail Services',
+    description: 'Inbound, outbound, and admin mail flows for getouch.co.',
+    type: 'MAIL',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://mail.getouch.co',
   },
   {
     name: 'WhatsApp API',
@@ -258,12 +293,174 @@ export const DATABASE_ROWS: ResourceRow[] = [
     href: 'https://st-stg-serapod.getouch.co',
   },
   {
-    name: 'QRSys Production',
-    description: 'Production Supabase stack for QR System.',
+    name: 'Serapod Production',
+    description: 'Supabase production stack for Serapod workloads and data APIs.',
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-qrsys.getouch.co',
+    href: 'https://st-prd-serapod.getouch.co',
+  },
+];
+
+export const INFRASTRUCTURE_SUMMARY: SummaryCard[] = [
+  { label: 'SERVICES', value: '5', icon: '▣' },
+  { label: 'DATABASES', value: '3', icon: '▤' },
+  { label: 'PROXY', value: 'Caddy', tone: 'active', icon: '◫' },
+  { label: 'STORAGE', value: '1.5 TB', icon: '◌' },
+];
+
+export const INFRASTRUCTURE_SECTION_LINKS: InfrastructureSectionLink[] = [
+  {
+    id: 'servers',
+    label: 'Servers & Nodes',
+    icon: '▣',
+    description: 'Primary VPS, ingress path, runtime health',
+  },
+  {
+    id: 'databases',
+    label: 'Databases',
+    icon: '▤',
+    description: 'PostgreSQL, pgAdmin, and Supabase stacks',
+  },
+  {
+    id: 'reverse-proxy',
+    label: 'Reverse Proxy',
+    icon: '◫',
+    description: 'Cloudflare Tunnel, Caddy, TLS, and access path',
+  },
+  {
+    id: 'baas',
+    label: 'BaaS',
+    icon: '◎',
+    description: 'Auth, storage, REST, and realtime modules',
+  },
+];
+
+export const INFRASTRUCTURE_SERVER_ROWS: InfoRow[] = [
+  { label: 'Provider', value: 'Getouch VPS (Ubuntu 24.04)' },
+  { label: 'CPU', value: '12 vCPU - GPU node' },
+  { label: 'RAM', value: '64 GB DDR5' },
+  { label: 'IP', value: '100.84.14.93' },
+];
+
+export const INFRASTRUCTURE_PROXY_ROWS: InfoRow[] = [
+  { label: 'SSL Provider', value: "Let's Encrypt + Cloudflare" },
+  { label: 'Domains', value: 'getouch.co + subdomains' },
+  { label: 'Firewall', value: 'ACTIVE' },
+  { label: 'Ingress', value: 'Cloudflare Tunnel + Caddy' },
+];
+
+export const DATABASE_MODULES: InfrastructureModule[] = [
+  {
+    eyebrow: 'DATABASE',
+    title: 'PostgreSQL 16',
+    description: 'Primary database engine for the getouch.co platform, auth state, and operator data.',
+    footer: 'Internal network only · localhost:5432',
+    status: 'HEALTHY',
+    tone: 'healthy',
+  },
+  {
+    eyebrow: 'DATABASE ADMIN',
+    title: 'pgAdmin 4',
+    description: 'Querying, schema administration, and direct operational access for PostgreSQL workloads.',
+    footer: 'db.getouch.co',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://db.getouch.co',
+  },
+  {
+    eyebrow: 'AUTH',
+    title: 'Getouch SSO',
+    description: 'Shared authentication, Studio, and API entrypoint for the wider getouch ecosystem.',
+    footer: 'st-sso.getouch.co',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-sso.getouch.co',
+  },
+  {
+    eyebrow: 'BAAS',
+    title: 'Serapod Staging',
+    description: 'Staging Supabase stack for Serapod testing, dashboard checks, and QA workflows.',
+    footer: 'st-stg-serapod.getouch.co',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-stg-serapod.getouch.co',
+  },
+  {
+    eyebrow: 'BAAS',
+    title: 'Serapod Production',
+    description: 'Production Supabase workloads for storage, auth, REST, and realtime APIs.',
+    footer: 'st-prd-serapod.getouch.co',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-prd-serapod.getouch.co',
+  },
+];
+
+export const BAAS_ROWS: ResourceRow[] = [
+  {
+    name: 'Getouch SSO',
+    description: 'Shared auth, REST, and Studio endpoints for the getouch ecosystem.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-sso.getouch.co',
+  },
+  {
+    name: 'Serapod Production',
+    description: 'Production Supabase workloads for storage, auth, and realtime APIs.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-prd-serapod.getouch.co',
+  },
+];
+
+export const BAAS_MODULES: InfrastructureModule[] = [
+  {
+    eyebrow: 'BAAS',
+    title: 'Getouch SSO',
+    description: 'Shared auth, REST, and Studio control plane for getouch and downstream services.',
+    footer: 'Shared operator auth stack',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-sso.getouch.co',
+  },
+  {
+    eyebrow: 'BAAS',
+    title: 'Serapod Production',
+    description: 'Primary Supabase environment for Serapod APIs, storage, and realtime workflows.',
+    footer: 'Primary production BaaS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-prd-serapod.getouch.co',
+  },
+];
+
+export const PROXY_MODULES: InfrastructureModule[] = [
+  {
+    eyebrow: 'PROXY',
+    title: 'Caddy',
+    description: 'TLS termination and edge routing for public getouch.co applications.',
+    footer: 'Primary reverse proxy',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    eyebrow: 'INGRESS',
+    title: 'Cloudflare Tunnel',
+    description: 'Zero-trust ingress from the public internet into the VPS network.',
+    footer: 'Public entry path',
+    status: 'ACTIVE',
+    tone: 'active',
+  },
+  {
+    eyebrow: 'VPN',
+    title: 'Tailscale',
+    description: 'Private admin connectivity for maintenance and infrastructure operations.',
+    footer: 'Private operator access',
+    status: 'ACTIVE',
+    tone: 'active',
   },
 ];
 
