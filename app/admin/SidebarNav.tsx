@@ -2,11 +2,22 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { ADMIN_NAV } from './data';
 
 export default function SidebarNav() {
   const pathname = usePathname();
+  const [activeHash, setActiveHash] = useState('');
+
+  useEffect(() => {
+    const syncHash = () => setActiveHash(window.location.hash.replace('#', ''));
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, []);
+
   const normalizeHref = (href: string) => href.split('#')[0];
+  const extractHash = (href: string) => href.split('#')[1] ?? '';
 
   return (
     <nav className="portal-nav">
@@ -14,7 +25,12 @@ export default function SidebarNav() {
         <div key={section.label} className="portal-nav-section">
           <div className="portal-nav-label">{section.label}</div>
           {section.items.map((item) => {
-            const isActive = !item.external && pathname === normalizeHref(item.href);
+            const itemHash = extractHash(item.href);
+            const isInfrastructureRoot = normalizeHref(item.href) === '/admin/infrastructure' && itemHash === '';
+            const isActive =
+              !item.external &&
+              pathname === normalizeHref(item.href) &&
+              (itemHash ? activeHash === itemHash : isInfrastructureRoot ? activeHash === '' : true);
             const className = `portal-nav-item${isActive ? ' portal-nav-item-active' : ''}`;
 
             if (item.external) {
@@ -28,7 +44,13 @@ export default function SidebarNav() {
             }
 
             return (
-              <Link key={item.href} href={item.href} className={className}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={className}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => setActiveHash(itemHash)}
+              >
                 <span className="portal-nav-icon">{item.icon}</span>
                 <span>{item.label}</span>
               </Link>

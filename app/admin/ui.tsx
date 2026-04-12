@@ -1,5 +1,15 @@
 import Link from 'next/link';
-import type { DetailCard, InfoRow, QuickLinkGroup, ResourceRow, StatusTone, SummaryCard } from './data';
+import type {
+  DetailCard,
+  InfoRow,
+  InfrastructureModule,
+  InfrastructureSectionId,
+  InfrastructureSectionLink,
+  QuickLinkGroup,
+  ResourceRow,
+  StatusTone,
+  SummaryCard,
+} from './data';
 
 function statusClassName(tone: StatusTone) {
   if (tone === 'warning') return 'portal-status portal-status-warning';
@@ -159,18 +169,100 @@ export function QuickLinkGroups({ groups }: { groups: QuickLinkGroup[] }) {
   );
 }
 
+export function SectionPills({
+  links,
+  activeId,
+}: {
+  links: InfrastructureSectionLink[];
+  activeId: InfrastructureSectionId | null;
+}) {
+  return (
+    <div className="portal-section-pills" aria-label="Infrastructure sections">
+      {links.map((link) => {
+        const isActive = activeId === link.id;
+
+        return (
+          <a
+            key={link.id}
+            href={`#${link.id}`}
+            className={`portal-section-pill${isActive ? ' portal-section-pill-active' : ''}`}
+            aria-current={isActive ? 'location' : undefined}
+          >
+            <span className="portal-section-pill-icon">{link.icon}</span>
+            <span>
+              <span className="portal-section-pill-title">{link.label}</span>
+              <span className="portal-section-pill-copy">{link.description}</span>
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ModuleCardGrid({ modules }: { modules: InfrastructureModule[] }) {
+  return (
+    <div className="portal-module-grid">
+      {modules.map((module) => {
+        const className = `portal-module-card${module.href ? ' portal-module-card-link' : ''}`;
+        const content = (
+          <>
+            <div className="portal-module-head">
+              <span className="portal-module-eyebrow">{module.eyebrow}</span>
+              <span className={statusClassName(module.tone)}>{module.status}</span>
+            </div>
+            <h3 className="portal-module-title">{module.title}</h3>
+            <p className="portal-module-desc">{module.description}</p>
+            <div className="portal-module-footer">
+              <span className="portal-module-footnote">{module.footer}</span>
+              {module.href ? <span className="portal-module-link-mark">↗</span> : null}
+            </div>
+          </>
+        );
+
+        if (module.href) {
+          return (
+            <a
+              key={module.title}
+              href={module.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={className}
+            >
+              {content}
+            </a>
+          );
+        }
+
+        return (
+          <section key={module.title} className={className}>
+            {content}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AnchorSection({
   id,
   title,
+  subtitle,
+  focused = false,
   children,
 }: {
   id: string;
   title: string;
+  subtitle?: string;
+  focused?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="portal-anchor-section">
-      <div className="portal-anchor-title">{title}</div>
+    <section id={id} className={`portal-anchor-section${focused ? ' portal-anchor-section-focused' : ''}`}>
+      <div className="portal-anchor-head">
+        <div className="portal-anchor-title">{title}</div>
+        {subtitle ? <p className="portal-anchor-sub">{subtitle}</p> : null}
+      </div>
       {children}
     </section>
   );
