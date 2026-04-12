@@ -20,6 +20,9 @@
 http://getouch.co {
   import common_headers
 
+  @portal_admin path /admin /admin/*
+  redir @portal_admin https://portal.getouch.co 308
+
   # Coolify webhook proxy — bypasses Cloudflare Access on coolify.getouch.co
   handle /webhooks/source/* {
     reverse_proxy coolify:8080 {
