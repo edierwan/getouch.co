@@ -11,7 +11,7 @@ export default async function PortalLayout({
   if (!session) redirect('/auth/login');
 
   return (
-    <>
+    <div className="portal-app-shell">
       <nav className="portal-nav">
         <div className="portal-nav-inner">
           <a href="/portal" className="portal-brand">
@@ -37,6 +37,6 @@ export default async function PortalLayout({
       <footer className="portal-footer">
         <span className="portal-footer-copy">&copy; 2026 Getouch. All rights reserved.</span>
       </footer>
-    </>
+    </div>
   );
 }
