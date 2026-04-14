@@ -1,8 +1,8 @@
 ###############################################################################
 # Supabase Production — Isolated Self-Hosted Stack
 # Project : Serapod Development-home
-# Domains : sb-dev.serapod.getouch.co  (API + Auth + REST + Realtime)
-#           st-dev.serapod.getouch.co  (Studio dashboard)
+# Domains : sb-dev-serapod.getouch.co  (API + Auth + REST + Realtime)
+#           st-dev-serapod.getouch.co  (Studio dashboard)
 #
 # IMPORTANT: This stack is fully isolated from the Getouch platform.
 #            It has its own PostgreSQL, network, and volumes.
@@ -11,7 +11,7 @@
 services:
   # ───────────────────── PostgreSQL ─────────────────────
   db:
-    image: supabase/postgres:15.6.1.145
+    image: supabase/postgres:17.6.1.104
     container_name: serapod-prd-db
     restart: unless-stopped
     environment:

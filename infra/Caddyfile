@@ -3,11 +3,20 @@
   admin off
 }
 
+:80 {
+  respond "Unknown host." 421
+}
+
 (common_headers) {
   header {
+    -Server
+    -X-Powered-By
+    Content-Security-Policy "base-uri 'self'; frame-ancestors 'self'; object-src 'none'; upgrade-insecure-requests"
+    Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options nosniff
     X-Frame-Options SAMEORIGIN
-    Referrer-Policy no-referrer-when-downgrade
+    Referrer-Policy strict-origin-when-cross-origin
   }
 }
 
@@ -201,19 +210,19 @@ http://st-sso.getouch.co {
 }
 
 http://sb-prd-serapod.getouch.co {
-  redir http://sb-dev.serapod.getouch.co{uri} 308
+  redir http://sb-dev-serapod.getouch.co{uri} 308
 }
 
 http://st-prd-serapod.getouch.co {
-  redir http://st-dev.serapod.getouch.co{uri} 308
+  redir http://st-dev-serapod.getouch.co{uri} 308
 }
 
-http://sb-dev.serapod.getouch.co {
+http://sb-dev-serapod.getouch.co {
   import common_headers
   reverse_proxy serapod-prd-kong:8000
 }
 
-http://st-dev.serapod.getouch.co {
+http://st-dev-serapod.getouch.co {
   import common_headers
   reverse_proxy serapod-prd-studio:3000
 }
@@ -326,5 +335,19 @@ http://stg.serapod2u.com {
 
   handle {
     reverse_proxy serapod-web-stg:3000
+  }
+}
+
+http://preprod.serapod2u.com {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control public, max-age=31536000, immutable
+
+  @html path /
+  header @html Cache-Control public, max-age=0, must-revalidate
+
+  handle {
+    reverse_proxy serapod-web-preprod:3000
   }
 }

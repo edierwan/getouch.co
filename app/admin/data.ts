@@ -74,6 +74,7 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
       { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
+      { label: 'Preprod Backups', href: '/admin/databases', icon: '⟲' },
       { label: 'Reverse Proxy', href: '/admin/infrastructure#reverse-proxy', icon: '◫' },
     ],
   },
@@ -298,7 +299,7 @@ export const DATABASE_ROWS: ResourceRow[] = [
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-dev.serapod.getouch.co',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -390,10 +391,10 @@ export const DATABASE_MODULES: InfrastructureModule[] = [
     eyebrow: 'BAAS',
     title: 'Serapod Development-home',
     description: 'Primary self-hosted Supabase workloads for storage, auth, REST, and realtime APIs.',
-    footer: 'st-dev.serapod.getouch.co',
+    footer: 'st-dev-serapod.getouch.co',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-dev.serapod.getouch.co',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -420,7 +421,7 @@ export const BAAS_ROWS: ResourceRow[] = [
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-dev.serapod.getouch.co',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -450,7 +451,7 @@ export const BAAS_MODULES: InfrastructureModule[] = [
     footer: 'Primary development-home BaaS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-dev.serapod.getouch.co',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
