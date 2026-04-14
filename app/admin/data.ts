@@ -285,14 +285,6 @@ export const DATABASE_ROWS: ResourceRow[] = [
     href: 'https://st-sso.getouch.co',
   },
   {
-    name: 'Serapod Staging',
-    description: 'Supabase staging stack for Serapod workloads.',
-    type: 'BAAS',
-    status: 'ONLINE',
-    tone: 'healthy',
-    href: 'https://st-stg-serapod.getouch.co',
-  },
-  {
     name: 'Serapod Preprod',
     description: 'Supabase pre-production stack for Serapod validation.',
     type: 'BAAS',
@@ -301,12 +293,12 @@ export const DATABASE_ROWS: ResourceRow[] = [
     href: 'https://st-preprod-serapod.getouch.co',
   },
   {
-    name: 'Serapod Production',
-    description: 'Supabase production stack for Serapod workloads and data APIs.',
+    name: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase stack for Serapod workloads and data APIs.',
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-dev.serapod.getouch.co',
   },
 ];
 
@@ -387,15 +379,6 @@ export const DATABASE_MODULES: InfrastructureModule[] = [
   },
   {
     eyebrow: 'BAAS',
-    title: 'Serapod Staging',
-    description: 'Staging Supabase stack for Serapod testing, dashboard checks, and QA workflows.',
-    footer: 'st-stg-serapod.getouch.co',
-    status: 'ONLINE',
-    tone: 'healthy',
-    href: 'https://st-stg-serapod.getouch.co',
-  },
-  {
-    eyebrow: 'BAAS',
     title: 'Serapod Preprod',
     description: 'Pre-production Supabase stack for Serapod validation and release checks.',
     footer: 'st-preprod-serapod.getouch.co',
@@ -405,12 +388,12 @@ export const DATABASE_MODULES: InfrastructureModule[] = [
   },
   {
     eyebrow: 'BAAS',
-    title: 'Serapod Production',
-    description: 'Production Supabase workloads for storage, auth, REST, and realtime APIs.',
-    footer: 'st-prd-serapod.getouch.co',
+    title: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase workloads for storage, auth, REST, and realtime APIs.',
+    footer: 'st-dev.serapod.getouch.co',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-dev.serapod.getouch.co',
   },
 ];
 
@@ -432,12 +415,12 @@ export const BAAS_ROWS: ResourceRow[] = [
     href: 'https://st-preprod-serapod.getouch.co',
   },
   {
-    name: 'Serapod Production',
-    description: 'Production Supabase workloads for storage, auth, and realtime APIs.',
+    name: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase workloads for storage, auth, and realtime APIs.',
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-dev.serapod.getouch.co',
   },
 ];
 
@@ -462,12 +445,12 @@ export const BAAS_MODULES: InfrastructureModule[] = [
   },
   {
     eyebrow: 'BAAS',
-    title: 'Serapod Production',
-    description: 'Primary Supabase environment for Serapod APIs, storage, and realtime workflows.',
-    footer: 'Primary production BaaS',
+    title: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase environment for Serapod APIs, storage, and realtime workflows.',
+    footer: 'Primary development-home BaaS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-dev.serapod.getouch.co',
   },
 ];
 

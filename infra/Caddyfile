@@ -163,13 +163,11 @@ http://coolify.getouch.co {
 }
 
 http://sb-stg-serapod.getouch.co {
-  import common_headers
-  reverse_proxy serapod-stg-kong:8000
+  respond "Serapod staging has been removed." 410
 }
 
 http://st-stg-serapod.getouch.co {
-  import common_headers
-  reverse_proxy serapod-stg-studio:3000
+  respond "Serapod staging has been removed." 410
 }
 
 http://sb-dev-qrsys.getouch.co {
@@ -203,11 +201,19 @@ http://st-sso.getouch.co {
 }
 
 http://sb-prd-serapod.getouch.co {
+  redir http://sb-dev.serapod.getouch.co{uri} 308
+}
+
+http://st-prd-serapod.getouch.co {
+  redir http://st-dev.serapod.getouch.co{uri} 308
+}
+
+http://sb-dev.serapod.getouch.co {
   import common_headers
   reverse_proxy serapod-prd-kong:8000
 }
 
-http://st-prd-serapod.getouch.co {
+http://st-dev.serapod.getouch.co {
   import common_headers
   reverse_proxy serapod-prd-studio:3000
 }
