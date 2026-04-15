@@ -34,8 +34,19 @@ services:
       dockerfile: Dockerfile
     container_name: getouch-web
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret-not-for-production}
+      PORTAL_ADMIN_URL: https://portal.getouch.co
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
+    volumes:
+      - /home/deploy/.ssh/id_ed25519:/tmp/ssh-keys/id_ed25519:ro
+      - /home/deploy/.ssh/known_hosts:/tmp/ssh-keys/known_hosts:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -56,7 +67,7 @@ services:
       WA_API_KEY: ${WA_API_KEY}
       WA_AUTH_DIR: /app/data/auth
       WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
-      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch}
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
       LOG_LEVEL: ${WA_LOG_LEVEL:-info}
     volumes:
       - /data/getouch/wa:/app/data
@@ -73,13 +84,13 @@ services:
     container_name: getouch-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${APP_DB_NAME:-getouch}
+      POSTGRES_DB: ${APP_DB_NAME:-getouch.co}
       POSTGRES_USER: ${APP_DB_USER:-getouch}
       POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - /data/getouch/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-getouch} -d ${APP_DB_NAME:-getouch}"]
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-getouch} -d ${APP_DB_NAME:-getouch.co}"]
       interval: 10s
       timeout: 5s
       retries: 10

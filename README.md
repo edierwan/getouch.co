@@ -21,6 +21,34 @@ npm run dev
 npm run build
 ```
 
+## Portal Routing Guard
+
+`portal.getouch.co`, `auth.getouch.co`, and `getouch.co` must all reverse proxy to the same live Next.js upstream: `getouch-web:3000`.
+
+If `portal.getouch.co` drifts to an old alias such as `getouch-web-prod`, the live portal can serve stale sidebar/auth code even when the repo and current app container are correct.
+
+Run `npm run verify:portal-preprod-backups` after portal navigation or proxy changes.
+
+## Portal Auth Runtime Guard
+
+The portal auth flow depends on the app using the database that actually contains the auth tables: `getouch.co`.
+
+If `APP_DB_NAME` points at `getouch`, the landing page can still render, but portal login fails at runtime with Postgres `relation "users" does not exist` during the sign-in action.
+
+Run `npm run verify:live-deploy` on the live host to print and validate:
+
+- repo path, remote, branch, and commit SHA
+- effective upstream for `getouch.co`, `auth.getouch.co`, and `portal.getouch.co`
+- active web/caddy container identity and alias resolution
+- configured `APP_DB_NAME`
+- presence of the `users` table in the configured app database
+
+If you replace `infra/Caddyfile` with `scp`, force-recreate `caddy` afterward so Docker rebinds the updated file inode:
+
+```bash
+docker compose up -d --force-recreate --no-deps caddy
+```
+
 ## Container
 
 ```bash

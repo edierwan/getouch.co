@@ -54,7 +54,9 @@ http://getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    # Keep public getouch.co/auth/portal hosts on the same live Next.js app.
+    # If this drifts to a stale alias, portal sidebar navigation and auth can point at an old build.
+    reverse_proxy getouch-web:3000
   }
 }
 
@@ -247,7 +249,7 @@ http://auth.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 
@@ -296,7 +298,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 
