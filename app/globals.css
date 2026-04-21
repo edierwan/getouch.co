@@ -1207,7 +1207,7 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .portal-brand {
