@@ -109,27 +109,40 @@ http://openclaw.getouch.co {
     Expires "0"
   }
 
-  # Token bootstrap page — writes token to localStorage then redirects to /chat
+  # Manual bootstrap entry.
   handle /connect {
     root * /etc/caddy/static
     rewrite * /openclaw-connect.html
     file_server
   }
 
-  # Session reset page — clears all openclaw localStorage keys then redirects to /connect
+  # Session reset page — clears exact OpenClaw state and restarts bootstrap.
   handle /reset {
     root * /etc/caddy/static
     rewrite * /openclaw-reset.html
     file_server
   }
 
-  # Bare root GET (not a WebSocket upgrade): redirect to bootstrap page
+  # Guard direct /chat visits before the upstream app loads.
+  @chat_guard {
+    method GET
+    path /chat
+    not header Upgrade websocket
+    not header Cookie *openclaw_boot=1*
+  }
+  handle @chat_guard {
+    root * /etc/caddy/static
+    rewrite * /openclaw-chat-guard.html
+    file_server
+  }
+
+  # Bare root GET (not a WebSocket upgrade): send users to the canonical chat entry.
   @root_redirect {
     method GET
     path /
     not header Upgrade websocket
   }
-  redir @root_redirect /connect 302
+  redir @root_redirect /chat?session=main 302
 
   # All other requests (assets, /chat, WebSocket upgrades) → gateway
   handle {

@@ -21,45 +21,7 @@
 <body>
   <span>Connecting to OpenClaw…</span>
   <script>
-    (function () {
-      // Gateway token — this page is served only from the origin (same-origin storage write is safe)
-      var TOKEN = '6da00bc730e0fa8717db992c3327a671b9d22186143c70b9';
-      var GATEWAY = 'wss://openclaw.getouch.co';
-
-      // Exact localStorage keys used by the OpenClaw Control UI (from bundle analysis)
-      var TOKEN_KEY = 'openclaw.control.token.v1:' + GATEWAY;          // primary: N_() reads this
-      var SETTINGS_KEYED = 'openclaw.control.settings.v1:' + GATEWAY;  // secondary: settings object
-      var SETTINGS_GLOBAL = 'openclaw.control.settings.v1';            // fallback: global settings
-      var DEVICE_AUTH_KEY = 'openclaw.device.auth.v1';                  // stale device token
-
-      try {
-        // 1. Set the primary token key — this is what the app reads on startup via N_()
-        localStorage.setItem(TOKEN_KEY, TOKEN);
-
-        // 2. Patch token into settings objects if they exist (belt-and-suspenders)
-        [SETTINGS_KEYED, SETTINGS_GLOBAL].forEach(function (key) {
-          try {
-            var raw = localStorage.getItem(key);
-            var s = raw ? JSON.parse(raw) : {};
-            if (s.token !== TOKEN) {
-              s.token = TOKEN;
-              if (!s.gatewayUrl) s.gatewayUrl = GATEWAY;
-              localStorage.setItem(key, JSON.stringify(s));
-            }
-          } catch (_) {}
-        });
-
-        // 3. Remove stale device auth token (can trigger confusing retry loops
-        //    when dangerouslyDisableDeviceAuth=true is active server-side)
-        localStorage.removeItem(DEVICE_AUTH_KEY);
-
-      } catch (_) {
-        // localStorage unavailable (e.g. strict private browsing).
-        // Redirect anyway — the app will show its own connect prompt.
-      }
-
-      window.location.replace('/chat?session=main');
-    })();
+    window.location.replace('/chat?session=main');
   </script>
 </body>
 </html>

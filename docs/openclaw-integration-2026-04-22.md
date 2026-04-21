@@ -196,10 +196,81 @@ All changes are reversible. No existing services are modified.
 
 ## Manual Steps Required
 
-1. **First-time access**: Visit `https://openclaw.getouch.co` and enter the gateway token shown in:
-   ```bash
-   grep OPENCLAW_GATEWAY_TOKEN /data/getouch/openclaw/config/.env
-   ```
-2. **WhatsApp channel** (future): Needs a separate WA number — see Phase 4 above
-3. **Model switch**: To use qwen3:14b instead of qwen2.5:14b in OpenClaw, run in Control UI: `/model ollama/qwen3:14b`
-4. **Updates**: `docker pull ghcr.io/openclaw/openclaw:latest && docker compose up -d openclaw-gateway`
+1. **Access**: Visit `https://openclaw.getouch.co`
+2. **Reset stuck browser state**: Visit `https://openclaw.getouch.co/reset`
+3. **WhatsApp channel** (future): Needs a separate WA number — see Phase 4 above
+4. **Model switch**: To use qwen3:14b instead of qwen2.5:14b in OpenClaw, run in Control UI: `/model ollama/qwen3:14b`
+5. **Updates**: `docker pull ghcr.io/openclaw/openclaw:latest && docker compose up -d openclaw-gateway`
+
+---
+
+## Phase 7 — Browser Auth Recovery Fix
+
+### Real Root Cause
+- The live Control UI does **not** use the same storage path for everything.
+- In real browser runtime, the successful token lands in `sessionStorage`, not the manual `localStorage` bootstrap path used by the first fix.
+- Exact successful token key observed in Chrome:
+  - `sessionStorage['openclaw.control.token.v1:wss://openclaw.getouch.co']`
+- Exact settings keys observed in Chrome:
+  - `localStorage['openclaw.control.settings.v1']`
+  - `localStorage['openclaw.control.settings.v1:wss://openclaw.getouch.co']`
+- Direct `https://openclaw.getouch.co/chat?session=main` failed because the browser hit `/chat` with no token in the runtime token store, so the gateway connect request was sent without `auth.token` and returned `AUTH_TOKEN_MISSING`.
+
+### Why The First Fix Failed
+- The first `/connect` page wrote `openclaw.control.token.v1:wss://openclaw.getouch.co` into `localStorage`.
+- Browser validation showed that the Control UI still rendered an empty token field and sent a connect request without `auth.token`.
+- Real browser proof showed that the upstream bundle's working bootstrap path is `https://openclaw.getouch.co/chat?session=main#token=<TOKEN>`, not the manual localStorage write.
+
+### Final Browser-Safe Fix
+- `dangerouslyDisableDeviceAuth: true` remains enabled server-side so browser device pairing is not required.
+- Caddy now guards direct `GET /chat` requests before the upstream app loads:
+  - if no stored token exists, the guard adds `#token=<TOKEN>` and forces a real reload
+  - if a stored token already exists, the guard simply reloads into the upstream app
+- The guard uses a short-lived cookie `openclaw_boot=1` so only the bootstrap pass is intercepted and the next request is proxied to OpenClaw normally.
+- `/reset` now clears the exact OpenClaw browser keys used in practice and then re-enters the guarded `/chat` path.
+
+### Exact Browser Storage Findings
+
+#### Before Working Bootstrap
+- Fresh direct `/chat?session=main`:
+  - no token key present in browser storage
+  - settings keys existed after UI startup
+  - WebSocket connect failed with `unauthorized: gateway token missing`
+
+#### After Working Bootstrap
+- `sessionStorage['openclaw.control.token.v1:wss://openclaw.getouch.co']`
+- `localStorage['openclaw.control.settings.v1']`
+- `localStorage['openclaw.control.settings.v1:wss://openclaw.getouch.co']`
+- `localStorage['openclaw-device-identity-v1']`
+
+### Exact Reset Coverage
+`/reset` explicitly clears these keys before fallback wildcard cleanup:
+- `openclaw-device-identity-v1`
+- `openclaw.device.auth.v1`
+- `openclaw.control.settings.v1`
+- `openclaw.control.settings.v1:wss://openclaw.getouch.co`
+- `openclaw.control.settings.v1:wss://openclaw.getouch.co/chat`
+- `openclaw.control.token.v1`
+- `openclaw.control.token.v1:wss://openclaw.getouch.co`
+- `openclaw.control.token.v1:wss://openclaw.getouch.co/chat`
+
+### Live Browser Validation
+- Fresh Chrome visit to `https://openclaw.getouch.co/`:
+  - request chain: `/` -> `/chat?session=main` -> `/chat?session=main`
+  - final page: connected OpenClaw Control UI
+  - WebSocket: `hello-ok`
+- Fresh Chrome visit to `https://openclaw.getouch.co/chat?session=main`:
+  - final page: connected OpenClaw Control UI
+  - WebSocket: `hello-ok`
+- Fresh Chrome visit to `https://openclaw.getouch.co/reset`:
+  - cleared state
+  - returned to guarded `/chat`
+  - final page: connected OpenClaw Control UI
+  - WebSocket: `hello-ok`
+- Same-tab refresh after bootstrap:
+  - token remained in `sessionStorage`
+  - second WebSocket handshake returned `hello-ok`
+
+### Final Access Flow
+- Canonical user URL: `https://openclaw.getouch.co`
+- Recovery URL: `https://openclaw.getouch.co/reset`
