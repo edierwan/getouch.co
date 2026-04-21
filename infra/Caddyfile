@@ -54,9 +54,7 @@ http://getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    # Keep public getouch.co/auth/portal hosts on the same live Next.js app.
-    # If this drifts to a stale alias, portal sidebar navigation and auth can point at an old build.
-    reverse_proxy getouch-web:3000
+    reverse_proxy getouch-web-prod:3000
   }
 }
 
@@ -101,6 +99,18 @@ http://ai.getouch.co {
 http://wa.getouch.co {
   import common_headers
   reverse_proxy wa:3001
+}
+
+http://openclaw.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+  reverse_proxy openclaw-gateway:18789 {
+    flush_interval -1
+  }
 }
 
 http://s3api.getouch.co {
@@ -174,11 +184,13 @@ http://coolify.getouch.co {
 }
 
 http://sb-stg-serapod.getouch.co {
-  respond "Serapod staging has been removed." 410
+  import common_headers
+  reverse_proxy serapod-stg-kong:8000
 }
 
 http://st-stg-serapod.getouch.co {
-  respond "Serapod staging has been removed." 410
+  import common_headers
+  reverse_proxy serapod-stg-studio:3000
 }
 
 http://sb-dev-qrsys.getouch.co {
@@ -212,19 +224,11 @@ http://st-sso.getouch.co {
 }
 
 http://sb-prd-serapod.getouch.co {
-  redir http://sb-dev-serapod.getouch.co{uri} 308
-}
-
-http://st-prd-serapod.getouch.co {
-  redir http://st-dev-serapod.getouch.co{uri} 308
-}
-
-http://sb-dev-serapod.getouch.co {
   import common_headers
   reverse_proxy serapod-prd-kong:8000
 }
 
-http://st-dev-serapod.getouch.co {
+http://st-prd-serapod.getouch.co {
   import common_headers
   reverse_proxy serapod-prd-studio:3000
 }
@@ -249,7 +253,7 @@ http://auth.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web:3000
+    reverse_proxy getouch-web-prod:3000
   }
 }
 
@@ -298,7 +302,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web:3000
+    reverse_proxy getouch-web-prod:3000
   }
 }
 

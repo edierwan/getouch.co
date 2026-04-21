@@ -67,6 +67,17 @@ services:
       WA_API_KEY: ${WA_API_KEY}
       WA_AUTH_DIR: /app/data/auth
       WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
+      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://dify-nginx}
+      DIFY_APP_API_KEY: ${DIFY_APP_API_KEY:-}
+      WA_DIFY_AUTO_REPLY_ENABLED: ${WA_DIFY_AUTO_REPLY_ENABLED:-false}
+      WA_ACTIVE_RESPONDER: ${WA_ACTIVE_RESPONDER:-true}
+      WA_DEPLOYMENT_LABEL: ${WA_DEPLOYMENT_LABEL:-getouch.co}
+      WA_DIFY_APP_NAME: ${WA_DIFY_APP_NAME:-Serapod Receptionist Bot}
+      WA_ASSISTANT_MODEL_HINT: ${WA_ASSISTANT_MODEL_HINT:-llama3.1:8b}
+      AI_TRIGGER_NAME: ${AI_TRIGGER_NAME:-Sera}
+      AI_SESSION_TIMEOUT_MINUTES: ${AI_SESSION_TIMEOUT_MINUTES:-30}
+      AI_GROUP_REPLY_CONTEXT_MINUTES: ${AI_GROUP_REPLY_CONTEXT_MINUTES:-10}
+      AI_GROUP_PARTICIPANT_WINDOW_MINUTES: ${AI_GROUP_PARTICIPANT_WINDOW_MINUTES:-5}
       DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
       LOG_LEVEL: ${WA_LOG_LEVEL:-info}
     volumes:
@@ -300,6 +311,42 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # OpenClaw — Personal AI Gateway
+  # Control UI at openclaw.getouch.co
+  # Powered by local Ollama models (no cloud API key required)
+  # ────────────────────────────────────────────────────────
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    env_file: /data/getouch/openclaw/config/.env
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      TZ: Asia/Kuala_Lumpur
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
+    volumes:
+      - /data/getouch/openclaw/config:/home/node/.openclaw
+      - /data/getouch/openclaw/workspace:/home/node/.openclaw/workspace
+    command:
+      - node
+      - dist/index.js
+      - gateway
+      - --bind
+      - lan
+      - --port
+      - "18789"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - edge
 

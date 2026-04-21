@@ -41,6 +41,15 @@ const services = [
     tag: 'Storage',
   },
   {
+    name: 'OpenClaw',
+    description: 'Personal AI assistant gateway — chat via WhatsApp, Telegram, Discord and more, powered by local Ollama models.',
+    url: 'https://openclaw.getouch.co',
+    icon: '🦞',
+    status: 'live' as const,
+    app: 'openclaw',
+    tag: 'AI',
+  },
+  {
     name: 'WhatsApp API',
     description: 'Business messaging automation and conversational AI via WhatsApp.',
     url: 'https://wa.getouch.co',
