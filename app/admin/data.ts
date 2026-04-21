@@ -27,6 +27,7 @@ export interface ResourceRow {
   status: string;
   tone: StatusTone;
   href?: string;
+  external?: boolean;
 }
 
 export interface InfoRow {
@@ -98,11 +99,19 @@ export const ADMIN_NAV: NavSection[] = [
   },
   {
     label: 'AI & AUTOMATION',
-    items: [{ label: 'AI Services', href: '/admin/ai-services', icon: '◎' }],
+    items: [
+      { label: 'AI Services', href: '/admin/ai-services', icon: '◎' },
+      { label: 'Dify API Setup', href: '/admin/dify-api-setup', icon: '◉' },
+      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', icon: '🦞', external: true },
+    ],
   },
   {
     label: 'MONITORING',
-    items: [{ label: 'System Health', href: '/admin/system-health', icon: '∿' }],
+    items: [
+      { label: 'System Health', href: '/admin/system-health', icon: '∿' },
+      { label: 'Unexpected Shutdown', href: '/admin/unexpected-shutdown', icon: '⚠' },
+      { label: 'Scheduled Restart', href: '/admin/scheduled-restart', icon: '↻' },
+    ],
   },
   {
     label: 'ACCESS',
@@ -627,12 +636,22 @@ export const MESSAGING_ROWS: ResourceRow[] = [
 
 export const AI_ROWS: ResourceRow[] = [
   {
+    name: 'Dify Receptionist',
+    description: 'Portal-managed Dify receptionist control plane for setup, testing, and app orchestration.',
+    type: 'ORCHESTRATION',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: '/admin/dify-api-setup',
+    external: false,
+  },
+  {
     name: 'Open WebUI',
     description: 'Operator and end-user AI interface.',
     type: 'PORTAL',
     status: 'ONLINE',
     tone: 'healthy',
     href: 'https://ai.getouch.co',
+    external: true,
   },
   {
     name: 'Ollama',
@@ -648,6 +667,7 @@ export const AI_ROWS: ResourceRow[] = [
     status: 'ACTIVE',
     tone: 'active',
     href: 'https://search.getouch.co',
+    external: true,
   },
   {
     name: 'Pipelines',
@@ -711,6 +731,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
     title: 'AI & Messaging',
     links: [
       { label: 'Open WebUI', href: 'https://ai.getouch.co', external: true },
+      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', external: true },
       { label: 'WhatsApp API', href: 'https://wa.getouch.co', external: true },
       { label: 'Search', href: 'https://search.getouch.co', external: true },
     ],
