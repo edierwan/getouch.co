@@ -108,8 +108,34 @@ http://openclaw.getouch.co {
     Pragma "no-cache"
     Expires "0"
   }
-  reverse_proxy openclaw-gateway:18789 {
-    flush_interval -1
+
+  # Token bootstrap page — writes token to localStorage then redirects to /chat
+  handle /connect {
+    root * /etc/caddy/static
+    rewrite * /openclaw-connect.html
+    file_server
+  }
+
+  # Session reset page — clears all openclaw localStorage keys then redirects to /connect
+  handle /reset {
+    root * /etc/caddy/static
+    rewrite * /openclaw-reset.html
+    file_server
+  }
+
+  # Bare root GET (not a WebSocket upgrade): redirect to bootstrap page
+  @root_redirect {
+    method GET
+    path /
+    not header Upgrade websocket
+  }
+  redir @root_redirect /connect 302
+
+  # All other requests (assets, /chat, WebSocket upgrades) → gateway
+  handle {
+    reverse_proxy openclaw-gateway:18789 {
+      flush_interval -1
+    }
   }
 }
 

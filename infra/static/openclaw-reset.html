@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw – Resetting…</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #0a0a0a;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <span>Clearing OpenClaw session data…</span>
+  <script>
+    (function () {
+      try {
+        // Collect all openclaw* keys before iterating (avoid live mutation of localStorage)
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.startsWith('openclaw')) keys.push(k);
+        }
+        keys.forEach(function (k) { localStorage.removeItem(k); });
+      } catch (_) {}
+
+      // Re-bootstrap with a clean token injection
+      window.location.replace('/connect');
+    })();
+  </script>
+</body>
+</html>

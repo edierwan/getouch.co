@@ -102,7 +102,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'AI Services', href: '/admin/ai-services', icon: '◎' },
       { label: 'Dify API Setup', href: '/admin/dify-api-setup', icon: '◉' },
-      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', icon: '🦞', external: true },
+      { label: 'OpenClaw', href: 'https://openclaw.getouch.co/connect', icon: '🦞', external: true },
     ],
   },
   {
@@ -731,7 +731,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
     title: 'AI & Messaging',
     links: [
       { label: 'Open WebUI', href: 'https://ai.getouch.co', external: true },
-      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', external: true },
+      { label: 'OpenClaw', href: 'https://openclaw.getouch.co/connect', external: true },
       { label: 'WhatsApp API', href: 'https://wa.getouch.co', external: true },
       { label: 'Search', href: 'https://search.getouch.co', external: true },
     ],
