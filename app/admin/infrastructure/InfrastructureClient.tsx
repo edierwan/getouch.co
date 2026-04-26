@@ -27,7 +27,15 @@ const SECTION_IDS: InfrastructureSectionId[] = ['servers', 'databases', 'reverse
 function readHash(): InfrastructureSectionId | null {
   if (typeof window === 'undefined') return null;
 
-  const value = decodeURIComponent(window.location.hash.replace('#', ''));
+  const rawValue = window.location.hash.replace('#', '');
+  let value = rawValue;
+
+  try {
+    value = decodeURIComponent(rawValue);
+  } catch {
+    return null;
+  }
+
   return SECTION_IDS.includes(value as InfrastructureSectionId) ? (value as InfrastructureSectionId) : null;
 }
 

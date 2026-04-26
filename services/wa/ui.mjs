@@ -272,6 +272,27 @@ button{font-family:var(--font)}
 
 <!-- ════════════ SESSIONS ════════════ -->
 <div class="page" id="p-sessions">
+  <!-- Multi-tenant sessions table (Request 05 multi-session refactor, 2026-04-26) -->
+  <div class="panel" style="margin-bottom:1rem">
+    <div class="panel-hdr">
+      <h3>&#x1F310; Multi-tenant Sessions</h3>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input type="text" id="new-session-id" placeholder="sessionId (e.g. tenant-xyz)" style="padding:.4rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:.4rem;color:var(--text);font-size:.8rem"/>
+        <button class="btn btn-primary btn-sm" onclick="createSession()">+ Start session</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadSessions()">Refresh</button>
+      </div>
+    </div>
+    <div id="ms-summary" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;font-size:.75rem;color:var(--text2)"></div>
+    <table class="tbl" id="ms-table">
+      <thead><tr>
+        <th>Session ID</th><th>Status</th><th>Phone</th><th>Last seen</th><th>Msgs 24h</th><th>QR</th><th>Last error</th><th style="text-align:right">Actions</th>
+      </tr></thead>
+      <tbody id="ms-body"><tr><td colspan="8" style="text-align:center;color:var(--text3);padding:1rem">Loading sessions&#x2026;</td></tr></tbody>
+    </table>
+    <div style="font-size:.7rem;color:var(--text3);margin-top:.5rem">
+      Default session is auto-managed and used by legacy <code>/api/*</code> endpoints. New WAPI session contract: <code>/api/sessions/:id</code> with <code>X-WAPI-Secret</code>.
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="panel">
       <div class="panel-hdr"><h3>&#x1F4F1; WhatsApp Session</h3></div>
@@ -724,6 +745,89 @@ async function fetchQR() {
 }
 function refreshQR() { fetchQR(); toast('QR refreshed', 'info') }
 startQrPoll();
+
+// ── Multi-session admin (Request 05) ────────────────────────────
+let msTimer = null;
+async function loadSessions() {
+  const key = getAdminKey();
+  if (!key) return;
+  try {
+    const r = await fetch('/admin/sessions', { headers: { 'X-API-Key': key } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const list = d.sessions || [];
+    const totals = list.reduce((a,s)=>{ a.total++; if(s.status==='connected')a.connected++; else if(s.qrAvailable||s.status==='connecting'||s.status==='pending')a.pending++; else a.disconnected++; return a; }, {total:0,connected:0,pending:0,disconnected:0});
+    $('ms-summary').innerHTML =
+      '<span class="status-pill pill-open">'+totals.connected+' connected</span>'+
+      '<span class="status-pill pill-connecting">'+totals.pending+' pending</span>'+
+      '<span class="status-pill pill-closed">'+totals.disconnected+' disconnected</span>'+
+      '<span style="color:var(--text3)">total: '+totals.total+'</span>'+
+      '<span style="color:var(--text3)">default: '+esc(d.defaultSessionId||'-')+'</span>'+
+      '<span style="color:var(--text3)">webhook: '+(d.webhook&&d.webhook.enabled?'enabled':'disabled')+(d.webhook?(' (q='+d.webhook.queueSize+', ok='+d.webhook.stats.delivered+', fail='+d.webhook.stats.failed+')'):'')+'</span>';
+    if (!list.length) {
+      $('ms-body').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:1rem">No sessions registered yet.</td></tr>';
+      return;
+    }
+    $('ms-body').innerHTML = list.map(s => {
+      const cls = s.status==='connected'?'pill-open':s.status==='connecting'||s.status==='pending'?'pill-connecting':'pill-closed';
+      const m = s.messages24h||{inbound:0,outbound:0};
+      return '<tr>'+
+        '<td><strong>'+esc(s.sessionId)+'</strong></td>'+
+        '<td><span class="status-pill '+cls+'">'+esc(s.status||'-')+'</span></td>'+
+        '<td>'+(s.phoneNumber?('+'+esc(s.phoneNumber)):'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
+        '<td style="font-size:.75rem;color:var(--text3)">'+esc(s.lastSeenAt||'-')+'</td>'+
+        '<td>'+m.inbound+' in / '+m.outbound+' out</td>'+
+        '<td>'+(s.qrAvailable?'<button class="btn btn-ghost btn-sm" onclick="showSessionQr(\''+esc(s.sessionId)+'\')">View QR</button>':'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
+        '<td style="font-size:.75rem;color:var(--red)">'+esc(s.lastError||'')+'</td>'+
+        '<td style="text-align:right">'+
+          '<button class="btn btn-ghost btn-sm" onclick="resetSessionAdmin(\''+esc(s.sessionId)+'\')">Reset</button> '+
+          '<button class="btn btn-danger btn-sm" onclick="deleteSessionAdmin(\''+esc(s.sessionId)+'\')">Delete</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('');
+  } catch(e) {}
+}
+async function createSession() {
+  const id = ($('new-session-id').value||'').trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) { toast('Invalid sessionId (alnum, _-, 1-128)','err'); return; }
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions', { method:'POST', headers: { 'X-API-Key': key, 'Content-Type':'application/json' }, body: JSON.stringify({ sessionId: id }) });
+    const d = await r.json();
+    toast(r.ok ? ('Started '+id) : (d.error||'Failed'), r.ok?'ok':'err');
+    if (r.ok) { $('new-session-id').value=''; loadSessions(); }
+  } catch(e) { toast(e.message,'err') }
+}
+async function resetSessionAdmin(id) {
+  if (!confirm('Reset session '+id+'? Clears its auth dir only.')) return;
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions/'+encodeURIComponent(id)+'/reset', { method:'POST', headers: { 'X-API-Key': key } });
+    const d = await r.json();
+    toast(r.ok ? ('Reset '+id) : (d.error||'Failed'), r.ok?'ok':'err');
+    loadSessions();
+  } catch(e) { toast(e.message,'err') }
+}
+async function deleteSessionAdmin(id) {
+  if (!confirm('Delete session '+id+'? Only this session\'s files are removed.')) return;
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions/'+encodeURIComponent(id), { method:'DELETE', headers: { 'X-API-Key': key } });
+    const d = await r.json();
+    toast(r.ok ? ('Deleted '+id) : (d.error||'Failed'), r.ok?'ok':'err');
+    loadSessions();
+  } catch(e) { toast(e.message,'err') }
+}
+async function showSessionQr(id) {
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions/'+encodeURIComponent(id)+'/qr', { headers: { 'X-API-Key': key } });
+    const d = await r.json();
+    if (d.qr) { window.open(d.qr, '_blank'); } else { toast('No QR available for '+id,'info'); }
+  } catch(e) { toast(e.message,'err') }
+}
+function startSessionsPoll() { clearInterval(msTimer); loadSessions(); msTimer = setInterval(loadSessions, 5000); }
+startSessionsPoll();
 
 // ── Session actions ──────────────────────────────────
 async function doPair() {

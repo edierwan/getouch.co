@@ -27,6 +27,7 @@ export interface ResourceRow {
   status: string;
   tone: StatusTone;
   href?: string;
+  external?: boolean;
 }
 
 export interface InfoRow {
@@ -74,6 +75,7 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
       { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
+      { label: 'Preprod Backups', href: '/admin/databases', icon: '⟲' },
       { label: 'Reverse Proxy', href: '/admin/infrastructure#reverse-proxy', icon: '◫' },
     ],
   },
@@ -97,11 +99,19 @@ export const ADMIN_NAV: NavSection[] = [
   },
   {
     label: 'AI & AUTOMATION',
-    items: [{ label: 'AI Services', href: '/admin/ai-services', icon: '◎' }],
+    items: [
+      { label: 'AI Services', href: '/admin/ai-services', icon: '◎' },
+      { label: 'Dify API Setup', href: '/admin/dify-api-setup', icon: '◉' },
+      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', icon: '🦞', external: true },
+    ],
   },
   {
     label: 'MONITORING',
-    items: [{ label: 'System Health', href: '/admin/system-health', icon: '∿' }],
+    items: [
+      { label: 'System Health', href: '/admin/system-health', icon: '∿' },
+      { label: 'Unexpected Shutdown', href: '/admin/unexpected-shutdown', icon: '⚠' },
+      { label: 'Scheduled Restart', href: '/admin/scheduled-restart', icon: '↻' },
+    ],
   },
   {
     label: 'ACCESS',
@@ -285,20 +295,20 @@ export const DATABASE_ROWS: ResourceRow[] = [
     href: 'https://st-sso.getouch.co',
   },
   {
-    name: 'Serapod Staging',
-    description: 'Supabase staging stack for Serapod workloads.',
+    name: 'Serapod Preprod',
+    description: 'Supabase pre-production stack for Serapod validation.',
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-stg-serapod.getouch.co',
+    href: 'https://st-preprod-serapod.getouch.co',
   },
   {
-    name: 'Serapod Production',
-    description: 'Supabase production stack for Serapod workloads and data APIs.',
+    name: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase stack for Serapod workloads and data APIs.',
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -379,21 +389,21 @@ export const DATABASE_MODULES: InfrastructureModule[] = [
   },
   {
     eyebrow: 'BAAS',
-    title: 'Serapod Staging',
-    description: 'Staging Supabase stack for Serapod testing, dashboard checks, and QA workflows.',
-    footer: 'st-stg-serapod.getouch.co',
+    title: 'Serapod Preprod',
+    description: 'Pre-production Supabase stack for Serapod validation and release checks.',
+    footer: 'st-preprod-serapod.getouch.co',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-stg-serapod.getouch.co',
+    href: 'https://st-preprod-serapod.getouch.co',
   },
   {
     eyebrow: 'BAAS',
-    title: 'Serapod Production',
-    description: 'Production Supabase workloads for storage, auth, REST, and realtime APIs.',
-    footer: 'st-prd-serapod.getouch.co',
+    title: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase workloads for storage, auth, REST, and realtime APIs.',
+    footer: 'st-dev-serapod.getouch.co',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -407,12 +417,20 @@ export const BAAS_ROWS: ResourceRow[] = [
     href: 'https://st-sso.getouch.co',
   },
   {
-    name: 'Serapod Production',
-    description: 'Production Supabase workloads for storage, auth, and realtime APIs.',
+    name: 'Serapod Preprod',
+    description: 'Pre-production Supabase workloads for Serapod validation.',
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-preprod-serapod.getouch.co',
+  },
+  {
+    name: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase workloads for storage, auth, and realtime APIs.',
+    type: 'BAAS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -428,12 +446,21 @@ export const BAAS_MODULES: InfrastructureModule[] = [
   },
   {
     eyebrow: 'BAAS',
-    title: 'Serapod Production',
-    description: 'Primary Supabase environment for Serapod APIs, storage, and realtime workflows.',
-    footer: 'Primary production BaaS',
+    title: 'Serapod Preprod',
+    description: 'Pre-production Supabase environment for Serapod validation and release checks.',
+    footer: 'Pre-production BaaS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-prd-serapod.getouch.co',
+    href: 'https://st-preprod-serapod.getouch.co',
+  },
+  {
+    eyebrow: 'BAAS',
+    title: 'Serapod Development-home',
+    description: 'Primary self-hosted Supabase environment for Serapod APIs, storage, and realtime workflows.',
+    footer: 'Primary development-home BaaS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://st-dev-serapod.getouch.co',
   },
 ];
 
@@ -540,6 +567,14 @@ export const APP_REGISTRY_ROWS: ResourceRow[] = [
     href: 'https://news.getouch.co',
   },
   {
+    name: 'News CMS',
+    description: 'Strapi content management for Getouch News.',
+    type: 'CMS',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://cms.news.getouch.co',
+  },
+  {
     name: 'Portal Users',
     description: 'Admin-managed user access and provisioning.',
     type: 'ADMIN',
@@ -588,6 +623,7 @@ export const MESSAGING_ROWS: ResourceRow[] = [
     type: 'SUPPORT',
     status: 'ACTIVE',
     tone: 'active',
+    href: 'https://chatwoot.getouch.co',
   },
   {
     name: 'OTP via WhatsApp',
@@ -600,12 +636,22 @@ export const MESSAGING_ROWS: ResourceRow[] = [
 
 export const AI_ROWS: ResourceRow[] = [
   {
+    name: 'Dify Receptionist',
+    description: 'Portal-managed Dify receptionist control plane for setup, testing, and app orchestration.',
+    type: 'ORCHESTRATION',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: '/admin/dify-api-setup',
+    external: false,
+  },
+  {
     name: 'Open WebUI',
     description: 'Operator and end-user AI interface.',
     type: 'PORTAL',
     status: 'ONLINE',
     tone: 'healthy',
     href: 'https://ai.getouch.co',
+    external: true,
   },
   {
     name: 'Ollama',
@@ -621,6 +667,7 @@ export const AI_ROWS: ResourceRow[] = [
     status: 'ACTIVE',
     tone: 'active',
     href: 'https://search.getouch.co',
+    external: true,
   },
   {
     name: 'Pipelines',
@@ -669,6 +716,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
       { label: 'Coolify', href: 'https://coolify.getouch.co', external: true },
       { label: 'Getouch.co', href: 'https://getouch.co', external: true },
       { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
+      { label: 'News CMS', href: 'https://cms.news.getouch.co', external: true },
     ],
   },
   {
@@ -683,6 +731,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
     title: 'AI & Messaging',
     links: [
       { label: 'Open WebUI', href: 'https://ai.getouch.co', external: true },
+      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', external: true },
       { label: 'WhatsApp API', href: 'https://wa.getouch.co', external: true },
       { label: 'Search', href: 'https://search.getouch.co', external: true },
     ],

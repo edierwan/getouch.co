@@ -3,11 +3,20 @@
   admin off
 }
 
+:80 {
+  respond "Unknown host." 421
+}
+
 (common_headers) {
   header {
+    -Server
+    -X-Powered-By
+    Content-Security-Policy "base-uri 'self'; frame-ancestors 'self'; object-src 'none'; upgrade-insecure-requests"
+    Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options nosniff
     X-Frame-Options SAMEORIGIN
-    Referrer-Policy no-referrer-when-downgrade
+    Referrer-Policy strict-origin-when-cross-origin
   }
 }
 
@@ -90,6 +99,57 @@ http://ai.getouch.co {
 http://wa.getouch.co {
   import common_headers
   reverse_proxy wa:3001
+}
+
+http://openclaw.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+
+  # Manual bootstrap entry.
+  handle /connect {
+    root * /etc/caddy/static
+    rewrite * /openclaw-connect.html
+    file_server
+  }
+
+  # Session reset page — clears exact OpenClaw state and restarts bootstrap.
+  handle /reset {
+    root * /etc/caddy/static
+    rewrite * /openclaw-reset.html
+    file_server
+  }
+
+  # Guard direct /chat visits before the upstream app loads.
+  @chat_guard {
+    method GET
+    path /chat
+    not header Upgrade websocket
+    not header Cookie *openclaw_boot=1*
+  }
+  handle @chat_guard {
+    root * /etc/caddy/static
+    rewrite * /openclaw-chat-guard.html
+    file_server
+  }
+
+  # Bare root GET (not a WebSocket upgrade): send users to the canonical chat entry.
+  @root_redirect {
+    method GET
+    path /
+    not header Upgrade websocket
+  }
+  redir @root_redirect /chat?session=main 302
+
+  # All other requests (assets, /chat, WebSocket upgrades) → gateway
+  handle {
+    reverse_proxy openclaw-gateway:18789 {
+      flush_interval -1
+    }
+  }
 }
 
 http://s3api.getouch.co {
@@ -202,6 +262,26 @@ http://st-sso.getouch.co {
   reverse_proxy getouch-sso-studio:3000
 }
 
+http://sb-prd-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-prd-kong:8000
+}
+
+http://st-prd-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-prd-studio:3000
+}
+
+http://sb-preprod-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-preprod-kong:8000
+}
+
+http://st-preprod-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-preprod-studio:3000
+}
+
 http://auth.getouch.co {
   import common_headers
 
@@ -265,12 +345,25 @@ http://portal.getouch.co {
   }
 }
 
+http://grafana.getouch.co {
+  import common_headers
+  reverse_proxy grafana:3000
+}
+
+http://analytics.getouch.co {
+  import common_headers
+  reverse_proxy umami:3000
+}
+
+http://chatwoot.getouch.co {
+  import common_headers
+  reverse_proxy chatwoot-web:3000
+}
+
 http://bot.getouch.co,
 http://api.getouch.co,
-http://grafana.getouch.co,
 http://metrics.getouch.co,
 http://sms.getouch.co,
-http://analytics.getouch.co,
 http://billing.getouch.co,
 http://admin.getouch.co {
   import common_headers
@@ -287,5 +380,19 @@ http://stg.serapod2u.com {
 
   handle {
     reverse_proxy serapod-web-stg:3000
+  }
+}
+
+http://preprod.serapod2u.com {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control public, max-age=31536000, immutable
+
+  @html path /
+  header @html Cache-Control public, max-age=0, must-revalidate
+
+  handle {
+    reverse_proxy serapod-web-preprod:3000
   }
 }
