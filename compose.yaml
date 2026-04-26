@@ -91,6 +91,7 @@ services:
       AI_GROUP_PARTICIPANT_WINDOW_MINUTES: ${AI_GROUP_PARTICIPANT_WINDOW_MINUTES:-5}
       DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
       LOG_LEVEL: ${WA_LOG_LEVEL:-info}
+      BUILD_ID: ${BUILD_ID:-dev}
     volumes:
       - /data/getouch/wa:/app/data
     healthcheck:
@@ -532,7 +533,7 @@ services:
     depends_on:
       seaweed-master:
         condition: service_healthy
-    command: volume -port=8080 -ip.bind=0.0.0.0 -dir=/data -max=10 -mserver=seaweed-master:9333 -dataCenter=dc1
+    command: volume -port=8080 -ip.bind=0.0.0.0 -dir=/data -max=200 -mserver=seaweed-master:9333 -dataCenter=dc1
     volumes:
       - /srv/archive/seaweedfs/volume:/data
     healthcheck:
