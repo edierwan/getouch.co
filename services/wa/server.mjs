@@ -753,7 +753,16 @@ const server = http.createServer(async (req, res) => {
 
     if (path === '/' && method === 'GET') {
       const def = defaultRuntime();
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        // The admin console is generated server-side and references
+        // mutable state (status pill, sessions list). It must never be
+        // cached by the browser or by Cloudflare/Caddy in front, or
+        // operators will see a stale "LOADING" UI after we ship UI fixes.
+        'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'pragma': 'no-cache',
+        'expires': '0',
+      });
       return res.end(consoleHtml({
         connectionState: def ? def.status : 'disconnected',
         pairedPhone: def ? def.phoneNumber : null,

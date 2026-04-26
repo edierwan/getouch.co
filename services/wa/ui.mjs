@@ -951,12 +951,17 @@ async function loadOverview() {
 }
 function initDashboard() {
   loadOverview();
-  pollStatus();
-  setInterval(pollStatus, 4000);
+  // pollStatus + interval are already started at boot (public endpoint)
   startQrPoll();
 }
 
-// Boot: check if already authed
+// Boot: pollStatus() only needs the public /healthz endpoint, so paint
+// the status pill and Overview Status/Sessions/Webhook cards regardless
+// of whether the operator is signed in. This stops the dashboard from
+// being permanently stuck on "LOADING" when the wa_admin_key cookie was
+// cleared or has not been set yet for the new multi-session admin key.
+pollStatus();
+setInterval(pollStatus, 4000);
 if (getAdminKey()) {
   $('auth-overlay').style.display = 'none';
   initDashboard();
