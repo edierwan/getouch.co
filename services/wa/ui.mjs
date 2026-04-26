@@ -121,6 +121,7 @@ button{font-family:var(--font)}
 .toast-ok{background:var(--green-dim);border:1px solid var(--green-border);color:var(--green)}
 .toast-err{background:var(--red-dim);border:1px solid var(--red-border);color:var(--red)}
 .toast-info{background:var(--blue-dim);border:1px solid var(--blue-border);color:var(--blue)}
+.toast-warn{background:rgba(234,179,8,.14);border:1px solid var(--yellow);color:var(--yellow)}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 
 /* ─── QR ─── */
@@ -331,7 +332,7 @@ button{font-family:var(--font)}
     </div>
     <div class="panel">
       <div class="panel-hdr"><h3>&#x2709; Send Test Message</h3></div>
-      <div class="field"><label>Recipient</label><input type="text" id="send-to" placeholder="0192277233" maxlength="15"/></div>
+      <div class="field"><label>Recipient</label><input type="text" id="send-to" placeholder="0192277233" maxlength="15"/><div class="hint">Use a number that is NOT this gateway's own paired phone. WhatsApp does not deliver self-sent messages as notifications.</div></div>
       <div class="field"><label>Message</label><textarea id="send-text" rows="3" placeholder="Hello from Getouch!"></textarea></div>
       <button class="btn btn-primary" id="send-btn" onclick="doSend()">Send Message</button>
       <div id="send-result" style="margin-top:.5rem"></div>
@@ -759,6 +760,11 @@ async function pollStatus() {
     $('ov-status').textContent = label;
     $('ov-status').style.color = color;
     $('ov-phone').textContent = phone ? '+'+phone : 'No number paired';
+    // Track the paired phone globally so Send Test Message can warn about
+    // self-sends. WhatsApp does NOT deliver a message you send to your own
+    // number as an inbound chat — it server-acks (status=2) but never shows
+    // up as a notification. That looks like "send broken" but is expected.
+    window.__WA_PAIRED_PHONE = phone || '';
     const secs = Math.floor(d.uptime||0);
     const dd=Math.floor(secs/86400),hh=Math.floor((secs%86400)/3600),mm=Math.floor((secs%3600)/60),ss=secs%60;
     $('ov-uptime').textContent = dd>0?dd+'d '+hh+'h':hh+'h '+mm+'m '+ss+'s';
@@ -937,19 +943,72 @@ async function doReset() {
     setTimeout(()=> { pollStatus(); startQrPoll() }, 2000);
   } catch(e) { toast(e.message,'err') }
 }
+// Mirror of gateway normalizePhone() so the UI can show what JID will
+// actually be used and detect self-sends BEFORE hitting the network.
+function uiNormalizePhone(raw) {
+  var d = String(raw||'').replace(/[^0-9]/g,'');
+  if (!d || d.length < 8 || d.length > 15) return null;
+  if (d.charAt(0) === '0' && d.length >= 9 && d.length <= 12) d = '60' + d.slice(1);
+  else if (d.indexOf('60') !== 0 && d.length >= 9 && d.length <= 10) d = '60' + d;
+  if (d.length < 10 || d.length > 15) return null;
+  return d;
+}
+function renderSendResult(kind, html) {
+  // kind: 'ok' | 'err' | 'warn' | 'info'
+  var color = kind==='ok' ? 'var(--green)' : kind==='err' ? 'var(--red)' : kind==='warn' ? 'var(--yellow)' : 'var(--text2)';
+  var bg    = kind==='ok' ? 'var(--green-dim)' : kind==='err' ? 'rgba(239,68,68,.12)' : kind==='warn' ? 'rgba(234,179,8,.12)' : 'rgba(148,163,184,.12)';
+  $('send-result').innerHTML = '<div style="padding:.5rem;background:'+bg+';border:1px solid '+color+';border-radius:.5rem;color:'+color+';font-size:.82rem;line-height:1.4">'+html+'</div>';
+}
 async function doSend() {
-  const to = $('send-to').value.trim().replace(/[^0-9]/g,'');
-  const text = $('send-text').value.trim();
-  if (!to || !text) { toast('Enter recipient and message','err'); return }
+  var rawTo = $('send-to').value;
+  var to = uiNormalizePhone(rawTo);
+  var text = $('send-text').value.trim();
+  if (!to || !text) {
+    renderSendResult('err','Enter a valid recipient phone number and message text.');
+    toast('Enter recipient and message','err');
+    return;
+  }
+  // Self-send guard: WhatsApp does not deliver a message you send to your
+  // own paired number as a normal incoming chat. The gateway will report
+  // success and Baileys will return a messageId, but the recipient (you)
+  // will never see a notification. Refuse with a clear message.
+  var paired = window.__WA_PAIRED_PHONE || '';
+  if (paired && to === paired) {
+    renderSendResult('warn',
+      '<strong>Cannot test by sending to your own paired number (+'+esc(paired)+').</strong><br/>'+
+      'WhatsApp does not deliver messages you send to yourself as a notification (the gateway will report success but nothing arrives). '+
+      'Enter a different recipient (e.g. a second phone you own) to verify end-to-end delivery.');
+    toast('Self-send blocked — pick a different number','warn');
+    return;
+  }
   $('send-btn').disabled = true;
+  renderSendResult('info','Sending to +'+esc(to)+'…');
+  var status = 0, body = null, parseErr = null;
   try {
-    const r = await fetch('/api/send-text', { method:'POST', headers: hdrJson(), body: JSON.stringify({to,text}) });
-    const d = await r.json();
-    if (r.ok) {
-      $('send-result').innerHTML = '<div style="padding:.5rem;background:var(--green-dim);border:1px solid var(--green-border);border-radius:.5rem;color:var(--green);font-size:.82rem">Sent! ID: '+esc(d.messageId)+'</div>';
-      toast('Message sent','ok');
-    } else { toast(d.error||'Send failed','err') }
-  } catch(e) { toast(e.message,'err') }
+    var r = await fetch('/api/send-text', { method:'POST', headers: hdrJson(), body: JSON.stringify({to:to, text:text}) });
+    status = r.status;
+    try { body = await r.json(); } catch(pe) { parseErr = pe; }
+    console.info('[wa-admin] /api/send-text →', status, body);
+    if (r.ok && body && body.success) {
+      renderSendResult('ok',
+        '<strong>Submitted to WhatsApp gateway.</strong><br/>'+
+        'messageId: <code>'+esc(body.messageId||'?')+'</code><br/>'+
+        'jid: <code>'+esc(body.to||(to+'@s.whatsapp.net'))+'</code><br/>'+
+        '<span style="color:var(--text3)">Delivery acknowledgement (status 2) is logged in Events. Read receipts depend on the recipient.</span>');
+      toast('Message submitted (id '+(body.messageId||'?').toString().slice(0,12)+'…)','ok');
+    } else {
+      var msg = (body && (body.error && (body.error.message||body.error)))
+             || (parseErr ? 'Non-JSON response' : ('HTTP '+status));
+      renderSendResult('err',
+        '<strong>Send failed (HTTP '+status+').</strong><br/>'+esc(String(msg))+
+        (status===401 ? '<br/><span style="color:var(--text3)">The admin key in your browser may be stale. Logout and sign in again with the current WA_ADMIN_KEY.</span>' : ''));
+      toast(String(msg).slice(0,80),'err');
+    }
+  } catch(e) {
+    console.error('[wa-admin] /api/send-text exception', e);
+    renderSendResult('err','<strong>Network error.</strong><br/>'+esc(e.message||String(e)));
+    toast(e.message||'Network error','err');
+  }
   $('send-btn').disabled = false;
 }
 
