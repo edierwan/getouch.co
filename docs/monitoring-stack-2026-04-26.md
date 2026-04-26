@@ -136,6 +136,9 @@ Prometheus alert rules are defined in `infra/prometheus/alerts.yml`.
 Configured alerts:
 - `HostCpuHigh`
 - `HostMemoryHigh`
+- `HostSwapHigh`
+- `HostSwapActivityHigh`
+- `HostOomKillDetected`
 - `HostDiskHigh`
 - `PrometheusTargetDown`
 - `HttpProbeDown`
@@ -143,6 +146,68 @@ Configured alerts:
 - `ContainerRestartLoop`
 
 Notification routing is intentionally not enabled yet.
+
+## Swap Audit And Remediation
+
+Audit snapshot on 2026-04-26 before remediation:
+- Host RAM total: about `62 GiB`
+- Host RAM available: about `46-48 GiB`
+- Swap configured: `8 GiB`
+- Swap used: effectively `100%`
+- Kernel swappiness before tuning: `60`
+- `vmstat` showed near-zero steady-state `si/so` after the first sample
+
+Interpretation:
+- This was not active memory exhaustion.
+- The host had plenty of available RAM while swap remained full, which indicates stale swapped pages being retained aggressively by the kernel.
+- This becomes dangerous when swap stays high and either `MemAvailable` falls sharply, swap-in or swap-out activity stays elevated, or OOM kills start appearing.
+
+Live remediation applied on the host:
+- One-time swap reset: `sudo swapoff -a && sudo swapon -a`
+- Result after reset: swap returned to `0 B used`
+- Permanent tuning: `/etc/sysctl.d/99-swappiness.conf` now sets `vm.swappiness=10`
+- Verified runtime value after reload: `10`
+- Recent kernel log review during the audit did not show OOM-kill activity
+
+Container and workload observations from the audit:
+- At audit time, the largest resident-memory containers were `ollama` at about `2.3 GiB`, `open-webui` at about `662 MiB`, `openclaw-gateway` at about `549 MiB`, `dcgm-exporter` at about `433 MiB`, and several analytics or app containers in the `300-700 MiB` range.
+- All running Docker containers inspected on the host currently have no explicit Docker memory limit configured (`HostConfig.Memory=0`).
+- That does not prove a fault by itself, but it means the kernel is the only global memory governor.
+- If limits are introduced later, prioritize bursty or model-serving workloads first instead of adding blanket caps everywhere.
+
+Suggested first candidates for memory-limit review:
+- `ollama`
+- `open-webui`
+- `openclaw-gateway`
+- `docker-worker-1` and `docker-worker_beat-1`
+- `news-social`
+- `chatwoot-web`
+
+## How To Investigate High Swap Safely
+
+Use this sequence on the VPS:
+1. Check host memory and swap headroom with `free -h`, `swapon --show`, and `cat /proc/sys/vm/swappiness`.
+2. Check whether pressure is current or stale with `vmstat 1 10`.
+3. Inspect current container memory footprint with `docker stats --no-stream`.
+4. Inspect per-process swap from a privileged shell with `sudo sh -lc 'for f in /proc/[0-9]*/status; do ...; done | sort -k3,3nr | head'`.
+5. Review recent OOM signals with `journalctl -k --since "7 days ago" | grep -Eai "oom|out of memory|killed process"`.
+
+Treat high swap as dangerous when one or more of these are true:
+- `MemAvailable` is falling toward exhaustion
+- swap-in or swap-out stays elevated for several minutes
+- the kernel OOM killer is firing
+- user-facing latency or container restarts are increasing at the same time
+
+## How To Clear Stale Swap Safely
+
+Only do this when available RAM is comfortably larger than current swap usage.
+
+Procedure:
+1. Confirm `MemAvailable` is well above the amount of swap currently used.
+2. Confirm there is no ongoing heavy swap churn in `vmstat`.
+3. Run `sudo swapoff -a && sudo swapon -a`.
+4. Recheck `free -h`, `swapon --show`, and `vmstat 1 5`.
+5. If the host immediately starts refilling swap under load, stop treating it as stale-swap retention and investigate the responsible workload directly.
 
 ## Validation Summary
 
