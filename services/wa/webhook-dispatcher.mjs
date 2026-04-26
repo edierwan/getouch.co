@@ -105,7 +105,12 @@ export class WebhookDispatcher {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // Both header names are sent so receivers using either
+          // convention can verify the same HMAC. WAPI's webhook
+          // verifier expects 'x-wapi-signature'; the gateway-internal
+          // contract historically used 'X-WA-Signature'.
           'X-WA-Signature': signature,
+          'X-WAPI-Signature': signature,
         },
         body,
       });

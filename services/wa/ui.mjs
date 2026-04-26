@@ -253,6 +253,8 @@ button{font-family:var(--font)}
     <div class="card"><div class="card-label">Status</div><div class="card-val" id="ov-status" style="color:var(--red)">&#x2014;</div><div class="card-sub" id="ov-phone"></div></div>
     <div class="card"><div class="card-label">Uptime</div><div class="card-val" id="ov-uptime">&#x2014;</div><div class="card-sub" id="ov-since"></div></div>
     <div class="card"><div class="card-label">Messages (24h)</div><div class="card-val" id="ov-msgs24">&#x2014;</div><div class="card-sub" id="ov-msgstotal"></div></div>
+    <div class="card"><div class="card-label">Sessions</div><div class="card-val" id="ov-sessions-total">&#x2014;</div><div class="card-sub" id="ov-sessions-breakdown" style="font-size:.78rem"></div></div>
+    <div class="card"><div class="card-label">Webhook</div><div class="card-val" id="ov-webhook-state" style="font-size:1rem">&#x2014;</div><div class="card-sub" id="ov-webhook-sub" style="font-size:.78rem"></div></div>
     <div class="card"><div class="card-label">Active Keys</div><div class="card-val" id="ov-keys">&#x2014;</div><div class="card-sub" id="ov-apps"></div></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
@@ -431,18 +433,34 @@ button{font-family:var(--font)}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="panel">
       <div class="panel-hdr"><h3>&#x26A1; API Endpoints</h3></div>
+      <h4 style="margin:.4rem 0 .35rem;font-size:.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Multi-session (current contract)</h4>
       <table class="tbl">
         <thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/healthz</td><td style="font-size:.72rem;color:var(--green)">Public</td><td>Health check</td></tr>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/status</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Connection state</td></tr>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/qr-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Get QR code</td></tr>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/pairing-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Pairing code</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-text</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Send text</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-image</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Send image</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-document</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Send document</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/logout</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Logout session</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/reset</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Force-reset</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/health</td><td style="font-size:.72rem;color:var(--green)">Public</td><td>Multi-session health snapshot</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/healthz</td><td style="font-size:.72rem;color:var(--green)">Public</td><td>Liveness probe</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Create / start session</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/status</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Session status</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/qr</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Per-session QR</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/reset</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Reset that session only</td></tr>
+          <tr><td><span style="color:var(--red);font-weight:700;font-size:.72rem">DELETE</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Stop and remove session</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/messages</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Send via that session</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>List all sessions</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/webhook-stats</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Outbound webhook stats</td></tr>
+        </tbody>
+      </table>
+      <h4 style="margin:.85rem 0 .35rem;font-size:.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Legacy (deprecated &mdash; pinned to default session)</h4>
+      <table class="tbl">
+        <thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/status</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; default-session state</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/qr-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; default-session QR</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/pairing-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; pairing</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-text</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; send via default</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-image</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-document</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/logout</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/reset</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -700,24 +718,43 @@ async function pollStatus() {
   try {
     const r = await fetch('/healthz');
     const d = await r.json();
-    const st = d.whatsapp || 'unknown';
+    // The multi-session gateway reports 'connected' (new contract).
+    // Older single-session gateways used 'open'. Normalize both so the UI
+    // behaves consistently regardless of which gateway version is running.
+    const raw = d.whatsapp || d.defaultStatus || 'unknown';
+    const isConnected = raw === 'open' || raw === 'connected';
+    const isConnecting = raw === 'connecting' || raw === 'pending';
+    const label = isConnected ? 'Connected' : isConnecting ? 'Connecting' : (raw === 'unknown' ? 'Unknown' : 'Disconnected');
+    const pillCls = isConnected ? 'pill-open' : isConnecting ? 'pill-connecting' : 'pill-closed';
+    const color = isConnected ? 'var(--green)' : isConnecting ? 'var(--yellow)' : 'var(--red)';
+    const phone = d.phone || d.defaultPhone || '';
     // Top bar
     const pill = $('top-status');
-    pill.textContent = st;
-    pill.className = 'status-pill ' + (st==='open'?'pill-open':st==='connecting'?'pill-connecting':'pill-closed');
-    $('top-phone').textContent = d.phone ? '+'+d.phone : '';
+    pill.textContent = label.toLowerCase();
+    pill.className = 'status-pill ' + pillCls;
+    $('top-phone').textContent = phone ? '+'+phone : '';
     // Overview
-    $('ov-status').textContent = st==='open'?'Connected':st==='connecting'?'Connecting':'Disconnected';
-    $('ov-status').style.color = st==='open'?'var(--green)':st==='connecting'?'var(--yellow)':'var(--red)';
-    $('ov-phone').textContent = d.phone ? '+'+d.phone : 'No number paired';
+    $('ov-status').textContent = label;
+    $('ov-status').style.color = color;
+    $('ov-phone').textContent = phone ? '+'+phone : 'No number paired';
     const secs = Math.floor(d.uptime||0);
     const dd=Math.floor(secs/86400),hh=Math.floor((secs%86400)/3600),mm=Math.floor((secs%3600)/60),ss=secs%60;
     $('ov-uptime').textContent = dd>0?dd+'d '+hh+'h':hh+'h '+mm+'m '+ss+'s';
     $('ov-since').textContent = 'Since ' + new Date(Date.now()-secs*1000).toLocaleString();
     // Sessions page
-    $('ses-state').textContent = st==='open'?'Connected':st==='connecting'?'Connecting':'Disconnected';
-    $('ses-state').style.color = st==='open'?'var(--green)':st==='connecting'?'var(--yellow)':'var(--red)';
-    $('ses-phone').textContent = d.phone ? '+'+d.phone : 'Not paired';
+    $('ses-state').textContent = label;
+    $('ses-state').style.color = color;
+    $('ses-phone').textContent = phone ? '+'+phone : 'Not paired';
+    // Multi-session aggregate cards (new contract)
+    if (typeof d.sessions === 'number') {
+      $('ov-sessions-total').textContent = d.sessions;
+    }
+    if (d.webhook) {
+      const st = d.webhook.stats || {};
+      $('ov-webhook-state').textContent = d.webhook.enabled ? 'enabled' : 'disabled';
+      $('ov-webhook-state').style.color = d.webhook.enabled ? 'var(--green)' : 'var(--text3)';
+      $('ov-webhook-sub').textContent = 'q='+(d.webhook.queueSize||0)+' ok='+(st.delivered||0)+' fail='+(st.failed||0);
+    }
     if (d.lastEvent) {
       $('ov-events').innerHTML = $('ov-events').innerHTML; // keep existing
     }
@@ -764,6 +801,11 @@ async function loadSessions() {
       '<span style="color:var(--text3)">total: '+totals.total+'</span>'+
       '<span style="color:var(--text3)">default: '+esc(d.defaultSessionId||'-')+'</span>'+
       '<span style="color:var(--text3)">webhook: '+(d.webhook&&d.webhook.enabled?'enabled':'disabled')+(d.webhook?(' (q='+d.webhook.queueSize+', ok='+d.webhook.stats.delivered+', fail='+d.webhook.stats.failed+')'):'')+'</span>';
+    // Mirror onto Overview cards so multi-session is visible from the dashboard.
+    const ovTotal = $('ov-sessions-total');
+    if (ovTotal) ovTotal.textContent = totals.total;
+    const ovBreak = $('ov-sessions-breakdown');
+    if (ovBreak) ovBreak.textContent = totals.connected+' on / '+totals.pending+' pending / '+totals.disconnected+' off';
     if (!list.length) {
       $('ms-body').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:1rem">No sessions registered yet.</td></tr>';
       return;
