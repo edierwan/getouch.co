@@ -8,7 +8,7 @@
 import { isDbReady } from './db.mjs';
 
 export function consoleHtml(state = {}) {
-  const { connectionState = 'disconnected', pairedPhone = null, PORT = 3001 } = state;
+  const { connectionState = 'disconnected', pairedPhone = null, PORT = 3001, buildId = '' } = state;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -618,6 +618,28 @@ button{font-family:var(--font)}
 </div>
 
 <script>
+// Build marker — visible to the live browser to confirm which version
+// of the admin console is actually loaded. Update this when shipping
+// UI fixes; verify via DevTools: window.__WA_UI_BUILD.
+window.__WA_UI_BUILD = ${JSON.stringify(buildId || 'unknown')};
+console.info('[wa-admin] build', window.__WA_UI_BUILD);
+
+// Surface uncaught errors directly into the status pill so a future
+// JS parse/runtime error never silently freezes the dashboard on
+// "loading" again. (Round 3 root cause: an escaped \\' inside a backtick
+// template literal collapsed to '' and produced an "Unexpected string"
+// SyntaxError on line 811, halting the entire script.)
+window.addEventListener('error', function (ev) {
+  try {
+    var pill = document.getElementById('top-status');
+    if (pill) {
+      pill.textContent = 'js error';
+      pill.className = 'status-pill pill-closed';
+      pill.title = (ev && ev.message ? ev.message : 'script error') + ' @ ' + (ev && ev.filename ? ev.filename : '') + ':' + (ev && ev.lineno ? ev.lineno : '');
+    }
+  } catch (_) {}
+});
+
 // ── Globals ──────────────────────────────────────────
 const ADMIN_KEY = localStorage.getItem('wa_admin_key') || '';
 let currentPage = 'overview';
@@ -758,7 +780,19 @@ async function pollStatus() {
     if (d.lastEvent) {
       $('ov-events').innerHTML = $('ov-events').innerHTML; // keep existing
     }
-  } catch(e) {}
+  } catch(e) {
+    // Never let a transient fetch failure leave the pill stuck on
+    // 'loading' — that's how round-3 LOADING bug looked even though
+    // /healthz was healthy. Show explicit failed state.
+    try {
+      var pill = $('top-status');
+      if (pill && pill.textContent === 'loading') {
+        pill.textContent = 'health error';
+        pill.className = 'status-pill pill-closed';
+        pill.title = (e && e.message) || 'health fetch failed';
+      }
+    } catch (_) {}
+  }
 }
 
 // ── QR polling ───────────────────────────────────────
@@ -819,11 +853,11 @@ async function loadSessions() {
         '<td>'+(s.phoneNumber?('+'+esc(s.phoneNumber)):'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
         '<td style="font-size:.75rem;color:var(--text3)">'+esc(s.lastSeenAt||'-')+'</td>'+
         '<td>'+m.inbound+' in / '+m.outbound+' out</td>'+
-        '<td>'+(s.qrAvailable?'<button class="btn btn-ghost btn-sm" onclick="showSessionQr(\''+esc(s.sessionId)+'\')">View QR</button>':'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
+        '<td>'+(s.qrAvailable?'<button class="btn btn-ghost btn-sm" onclick="showSessionQr(&#39;'+esc(s.sessionId)+'&#39;)">View QR</button>':'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
         '<td style="font-size:.75rem;color:var(--red)">'+esc(s.lastError||'')+'</td>'+
         '<td style="text-align:right">'+
-          '<button class="btn btn-ghost btn-sm" onclick="resetSessionAdmin(\''+esc(s.sessionId)+'\')">Reset</button> '+
-          '<button class="btn btn-danger btn-sm" onclick="deleteSessionAdmin(\''+esc(s.sessionId)+'\')">Delete</button>'+
+          '<button class="btn btn-ghost btn-sm" onclick="resetSessionAdmin(&#39;'+esc(s.sessionId)+'&#39;)">Reset</button> '+
+          '<button class="btn btn-danger btn-sm" onclick="deleteSessionAdmin(&#39;'+esc(s.sessionId)+'&#39;)">Delete</button>'+
         '</td>'+
       '</tr>';
     }).join('');

@@ -95,6 +95,7 @@ const aiSessions = new Map();
 const groupReplyContexts = new Map();
 const groupParticipantThreads = new Map();
 const startTime = Date.now();
+const BUILD_ID = process.env.BUILD_ID || process.env.GIT_COMMIT || process.env.SOURCE_COMMIT || 'dev';
 
 // Global event ring buffer (for legacy /api/events admin display).
 const MAX_EVENTS = 80;
@@ -767,6 +768,7 @@ const server = http.createServer(async (req, res) => {
         connectionState: def ? def.status : 'disconnected',
         pairedPhone: def ? def.phoneNumber : null,
         PORT,
+        buildId: BUILD_ID,
       }));
     }
 
