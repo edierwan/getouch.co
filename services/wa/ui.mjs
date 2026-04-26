@@ -885,7 +885,7 @@ async function resetSessionAdmin(id) {
   } catch(e) { toast(e.message,'err') }
 }
 async function deleteSessionAdmin(id) {
-  if (!confirm('Delete session '+id+'? Only this session\'s files are removed.')) return;
+  if (!confirm('Delete session '+id+'? Only this session files are removed.')) return;
   const key = getAdminKey();
   try {
     const r = await fetch('/admin/sessions/'+encodeURIComponent(id), { method:'DELETE', headers: { 'X-API-Key': key } });
