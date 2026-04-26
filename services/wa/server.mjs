@@ -585,6 +585,11 @@ async function requireAuth(req, res) {
   if (!provided) { json(res, 401, { error: 'Unauthorized — missing X-API-Key header' }); return false; }
   if (API_KEY && provided === API_KEY) return true;
   if (ADMIN_KEY && provided === ADMIN_KEY) return true;
+  // WAPI calls gateway with header `x-api-key: <WAPI_SECRET>` (the
+  // shared HMAC secret used by /api/sessions/* via X-WAPI-Secret).
+  // Accept it on the legacy /api/* surface too so WAPI's OTP send
+  // path works without needing a second separate gateway API key.
+  if (WAPI_SECRET && provided === WAPI_SECRET) return true;
   if (isDbReady()) {
     try {
       const dbKey = await validateApiKey(provided);

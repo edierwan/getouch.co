@@ -24,9 +24,9 @@ export async function triggerPreprodBackup() {
   await requireAdmin();
 
   try {
-    const result = await runPreprodBackupNow();
+    await runPreprodBackupNow();
     revalidatePath(PAGE_PATH);
-    redirectWith(new URLSearchParams({ notice: `Preprod backup created: ${result.backupName}` }));
+    redirectWith(new URLSearchParams({ notice: 'Preprod backup created successfully.' }));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Backup failed.';
     redirectWith(new URLSearchParams({ error: message }));

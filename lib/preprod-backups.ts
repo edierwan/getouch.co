@@ -4,7 +4,10 @@ import path from 'node:path';
 export interface PreprodBackupEntry {
   name: string;
   path: string;
-  createdAt: string;
+  createdAtRaw: string;
+  createdAtIso: string | null;
+  createdAtSource: 'manifest' | 'folder-name' | 'unknown';
+  createdAtSourceTimeZone: string | null;
   sizeHuman: string;
   hasStorageArchive: boolean;
   isLatest: boolean;
@@ -18,6 +21,8 @@ export interface PreprodBackupOverview {
   retentionDays: number;
   cronSchedule?: string;
   backupLogTail: string[];
+  backupTimeZone: string;
+  backupTimeZoneOffset: string;
 }
 
 const PREPROD_SSH_TARGET = process.env.PREPROD_BACKUP_SSH_TARGET || 'deploy@100.84.14.93';
@@ -27,6 +32,21 @@ const PREPROD_BACKUP_SCRIPT =
 const PREPROD_RESTORE_SCRIPT =
   process.env.PREPROD_RESTORE_SCRIPT || '/home/deploy/apps/getouch.co/infra/scripts/supabase-restore.sh';
 const PREPROD_RETENTION_DAYS = Number(process.env.PREPROD_BACKUP_RETENTION_DAYS || '14');
+const PREPROD_BACKUP_SCOPE = 'serapod-preprod';
+
+function assertPreprodBackupConfig() {
+  if (path.posix.basename(PREPROD_BACKUP_ROOT) !== PREPROD_BACKUP_SCOPE) {
+    throw new Error('Manual backup controls are restricted to Serapod Preprod only.');
+  }
+
+  if (path.posix.basename(PREPROD_BACKUP_SCRIPT) !== 'supabase-backup.sh') {
+    throw new Error('Preprod backup script configuration is invalid.');
+  }
+
+  if (path.posix.basename(PREPROD_RESTORE_SCRIPT) !== 'supabase-restore.sh') {
+    throw new Error('Preprod restore script configuration is invalid.');
+  }
+}
 
 function runRemoteScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -66,6 +86,7 @@ function escapeForSingleQuotes(value: string) {
 }
 
 export async function getPreprodBackupOverview(): Promise<PreprodBackupOverview> {
+  assertPreprodBackupConfig();
   const root = escapeForSingleQuotes(PREPROD_BACKUP_ROOT);
   const payload = await runRemoteScript(`
 set -euo pipefail
@@ -75,10 +96,54 @@ import json
 import os
 import pathlib
 import subprocess
+from datetime import datetime, timezone
 
 root = pathlib.Path(os.environ['ROOT'])
 entries = []
 latest = None
+server_now = datetime.now().astimezone()
+server_tz = server_now.tzinfo
+server_tz_name = server_now.tzname() or 'UTC'
+server_tz_offset = server_now.strftime('%z')
+
+
+def normalize_iso(value):
+  if value.endswith('Z'):
+    value = value[:-1] + '+00:00'
+  parsed = datetime.fromisoformat(value)
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def read_manifest_timestamp(child):
+  manifest = child.joinpath('manifest.txt')
+  if not manifest.exists():
+    return None
+
+  try:
+    with manifest.open('r', encoding='utf-8', errors='replace') as handle:
+      for line in handle:
+        if not line.startswith('created_at='):
+          continue
+        raw_value = line.split('=', 1)[1].strip()
+        if not raw_value:
+          return None
+        return normalize_iso(raw_value)
+  except Exception:
+    return None
+
+  return None
+
+
+def parse_folder_timestamp(raw_value):
+  try:
+    parsed = datetime.strptime(raw_value, '%Y%m%d-%H%M%S')
+  except ValueError:
+    return None
+
+  aware = parsed.replace(tzinfo=server_tz)
+  return aware.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 try:
     latest_link = root.joinpath('latest').resolve(strict=True)
@@ -91,10 +156,21 @@ if root.exists():
             continue
         size = subprocess.run(['du', '-sh', str(child)], capture_output=True, text=True, check=False)
         size_human = size.stdout.split()[0] if size.returncode == 0 and size.stdout.strip() else 'unknown'
+        created_at_raw = child.name
+        created_at_iso = read_manifest_timestamp(child)
+        created_at_source = 'manifest' if created_at_iso else 'unknown'
+        if created_at_iso is None:
+            created_at_iso = parse_folder_timestamp(created_at_raw)
+            if created_at_iso:
+                created_at_source = 'folder-name'
+
         entry = {
             'name': child.name,
             'path': str(child),
-            'createdAt': child.name,
+            'createdAtRaw': created_at_raw,
+            'createdAtIso': created_at_iso,
+            'createdAtSource': created_at_source,
+            'createdAtSourceTimeZone': server_tz_name,
             'sizeHuman': size_human,
             'hasStorageArchive': child.joinpath('storage-files.tar.gz').exists(),
             'isLatest': latest_link is not None and child.resolve() == latest_link,
@@ -122,6 +198,8 @@ print(json.dumps({
     'latest': latest,
     'cronSchedule': cron_schedule,
     'backupLogTail': log_tail,
+    'backupTimeZone': server_tz_name,
+    'backupTimeZoneOffset': server_tz_offset,
 }))
 PY
 `);
@@ -131,20 +209,25 @@ PY
     latest?: PreprodBackupEntry;
     cronSchedule?: string;
     backupLogTail: string[];
+    backupTimeZone: string;
+    backupTimeZoneOffset: string;
   };
 
   return {
     sshTarget: PREPROD_SSH_TARGET,
     backupRoot: PREPROD_BACKUP_ROOT,
-    latest: parsed.latest,
+    latest: parsed.latest || parsed.entries.find((entry) => entry.isLatest),
     entries: parsed.entries,
     retentionDays: PREPROD_RETENTION_DAYS,
     cronSchedule: parsed.cronSchedule,
     backupLogTail: parsed.backupLogTail,
+    backupTimeZone: parsed.backupTimeZone,
+    backupTimeZoneOffset: parsed.backupTimeZoneOffset,
   };
 }
 
-export async function runPreprodBackupNow(): Promise<{ backupPath: string; backupName: string }> {
+export async function runPreprodBackupNow(): Promise<{ backupPath: string; backupName: string; outputLines: string[] }> {
+  assertPreprodBackupConfig();
   const scriptPath = escapeForSingleQuotes(PREPROD_BACKUP_SCRIPT);
   const latestPath = escapeForSingleQuotes(path.posix.join(PREPROD_BACKUP_ROOT, 'latest'));
   const output = await runRemoteScript(`
@@ -162,10 +245,12 @@ readlink '${latestPath}'
   return {
     backupPath,
     backupName: path.posix.basename(backupPath),
+    outputLines: lines,
   };
 }
 
 export async function queuePreprodRestore(backupPath: string): Promise<{ requestId: string; logPath: string }> {
+  assertPreprodBackupConfig();
   const escapedBackupPath = escapeForSingleQuotes(backupPath);
   const restorePath = escapeForSingleQuotes(PREPROD_RESTORE_SCRIPT);
   const root = escapeForSingleQuotes(PREPROD_BACKUP_ROOT);
