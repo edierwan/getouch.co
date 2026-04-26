@@ -67,6 +67,14 @@ services:
       WA_API_KEY: ${WA_API_KEY}
       WA_AUTH_DIR: /app/data/auth
       WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
+      # ── Multi-session / WAPI integration (Request 05) ──
+      WAPI_SECRET: ${WAPI_SECRET:-}
+      WAPI_WEBHOOK_URL: ${WAPI_WEBHOOK_URL:-https://wapi.getouch.co/api/wa/events}
+      SESSIONS_DIR: ${SESSIONS_DIR:-/app/data/sessions}
+      DEFAULT_SESSION_ID: ${DEFAULT_SESSION_ID:-default}
+      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS:-0}
+      AUTO_START_DEFAULT_SESSION: ${AUTO_START_DEFAULT_SESSION:-true}
+      AUTO_START_SESSIONS: ${AUTO_START_SESSIONS:-false}
       DIFY_BASE_URL: ${DIFY_BASE_URL:-http://dify-nginx}
       DIFY_APP_API_KEY: ${DIFY_APP_API_KEY:-}
       WA_DIFY_AUTO_REPLY_ENABLED: ${WA_DIFY_AUTO_REPLY_ENABLED:-false}
