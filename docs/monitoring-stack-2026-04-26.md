@@ -209,4 +209,5 @@ Current root URL setting:
 
 Authentication:
 - Local admin auth remains enabled
+- Default admin login is `admin@getouch.co`
 - User signup is disabled

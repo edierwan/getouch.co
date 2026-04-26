@@ -1,5 +1,5 @@
 export type StatusTone = 'healthy' | 'active' | 'warning';
-export type InfrastructureSectionId = 'servers' | 'databases' | 'reverse-proxy' | 'baas';
+export type InfrastructureSectionId = 'servers' | 'databases' | 'baas';
 
 export interface NavItem {
   label: string;
@@ -10,12 +10,14 @@ export interface NavItem {
 
 export interface NavSection {
   label: string;
+  accentRgb?: string;
   items: NavItem[];
 }
 
 export interface SummaryCard {
   label: string;
   value: string;
+  detail?: string;
   tone?: StatusTone;
   icon: string;
 }
@@ -67,54 +69,59 @@ export interface InfrastructureModule {
 export const ADMIN_NAV: NavSection[] = [
   {
     label: 'OVERVIEW',
+    accentRgb: '126, 154, 255',
     items: [{ label: 'Dashboard', href: '/admin', icon: '⌘' }],
   },
   {
     label: 'INFRASTRUCTURE',
+    accentRgb: '104, 187, 255',
     items: [
       { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
       { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
       { label: 'Preprod Backups', href: '/admin/databases', icon: '⟲' },
-      { label: 'Reverse Proxy', href: '/admin/infrastructure#reverse-proxy', icon: '◫' },
     ],
   },
   {
     label: 'PLATFORM',
+    accentRgb: '155, 167, 255',
     items: [
       { label: 'Coolify', href: 'https://coolify.getouch.co', icon: '◈', external: true },
-      { label: 'Deployments', href: '/admin/deployments', icon: '⬡' },
     ],
   },
   {
     label: 'APPLICATIONS',
+    accentRgb: '142, 202, 150',
     items: [{ label: 'App Registry', href: '/admin/app-registry', icon: '▥' }],
   },
   {
     label: 'COMMUNICATION',
+    accentRgb: '255, 179, 120',
     items: [
-      { label: 'Mail Services', href: '/admin/mail-services', icon: '✉' },
       { label: 'Messaging', href: '/admin/messaging', icon: '◌' },
     ],
   },
   {
     label: 'AI & AUTOMATION',
+    accentRgb: '92, 210, 184',
     items: [
       { label: 'AI Services', href: '/admin/ai-services', icon: '◎' },
-      { label: 'Dify API Setup', href: '/admin/dify-api-setup', icon: '◉' },
-      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', icon: '🦞', external: true },
+      { label: 'Dify', href: 'https://dify.getouch.co', icon: '◉', external: true },
+      { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
+      { label: 'MCP', href: 'https://mcp.getouch.co', icon: '⌬', external: true },
     ],
   },
   {
     label: 'MONITORING',
+    accentRgb: '246, 199, 108',
     items: [
-      { label: 'System Health', href: '/admin/system-health', icon: '∿' },
-      { label: 'Unexpected Shutdown', href: '/admin/unexpected-shutdown', icon: '⚠' },
+      { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◔', external: true },
       { label: 'Scheduled Restart', href: '/admin/scheduled-restart', icon: '↻' },
     ],
   },
   {
     label: 'ACCESS',
+    accentRgb: '196, 161, 255',
     items: [{ label: 'Quick Links', href: '/admin/quick-links', icon: '⊞' }],
   },
 ];
@@ -315,7 +322,7 @@ export const DATABASE_ROWS: ResourceRow[] = [
 export const INFRASTRUCTURE_SUMMARY: SummaryCard[] = [
   { label: 'SERVICES', value: '5', icon: '▣' },
   { label: 'DATABASES', value: '3', icon: '▤' },
-  { label: 'PROXY', value: 'Caddy', tone: 'active', icon: '◫' },
+  { label: 'BAAS', value: '3', tone: 'active', icon: '◎' },
   { label: 'STORAGE', value: '1.5 TB', icon: '◌' },
 ];
 
@@ -331,12 +338,6 @@ export const INFRASTRUCTURE_SECTION_LINKS: InfrastructureSectionLink[] = [
     label: 'Databases',
     icon: '▤',
     description: 'PostgreSQL, pgAdmin, and Supabase stacks',
-  },
-  {
-    id: 'reverse-proxy',
-    label: 'Reverse Proxy',
-    icon: '◫',
-    description: 'Cloudflare Tunnel, Caddy, TLS, and access path',
   },
   {
     id: 'baas',
@@ -522,33 +523,6 @@ export const REVERSE_PROXY_ROWS: ResourceRow[] = [
   },
 ];
 
-export const DEPLOYMENT_ROWS: ResourceRow[] = [
-  {
-    name: 'Production',
-    description: 'Branch: main. Live Coolify application serving getouch.co.',
-    type: 'MAIN',
-    status: 'ONLINE',
-    tone: 'healthy',
-    href: 'https://coolify.getouch.co',
-  },
-  {
-    name: 'Staging',
-    description: 'Branch: staging. Preview environment for validation.',
-    type: 'STAGING',
-    status: 'ACTIVE',
-    tone: 'active',
-    href: 'https://coolify.getouch.co',
-  },
-  {
-    name: 'Develop',
-    description: 'Branch: develop. Integration branch for ongoing work.',
-    type: 'DEVELOP',
-    status: 'ACTIVE',
-    tone: 'active',
-    href: 'https://coolify.getouch.co',
-  },
-];
-
 export const APP_REGISTRY_ROWS: ResourceRow[] = [
   {
     name: 'Getouch.co',
@@ -572,7 +546,8 @@ export const APP_REGISTRY_ROWS: ResourceRow[] = [
     type: 'CMS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://cms.news.getouch.co',
+    href: '/news-cms',
+    external: false,
   },
   {
     name: 'Portal Users',
@@ -636,13 +611,20 @@ export const MESSAGING_ROWS: ResourceRow[] = [
 
 export const AI_ROWS: ResourceRow[] = [
   {
-    name: 'Dify Receptionist',
-    description: 'Portal-managed Dify receptionist control plane for setup, testing, and app orchestration.',
+    name: 'Dify',
+    description: 'Standard self-hosted Dify workspace and application UI.',
     type: 'ORCHESTRATION',
     status: 'ONLINE',
     tone: 'healthy',
-    href: '/admin/dify-api-setup',
-    external: false,
+    href: 'https://dify.getouch.co',
+  },
+  {
+    name: 'MCP',
+    description: 'Remote MCP endpoint for tooling and workflow exploration.',
+    type: 'PROTOCOL',
+    status: 'ONLINE',
+    tone: 'healthy',
+    href: 'https://mcp.getouch.co',
   },
   {
     name: 'Open WebUI',
@@ -651,7 +633,6 @@ export const AI_ROWS: ResourceRow[] = [
     status: 'ONLINE',
     tone: 'healthy',
     href: 'https://ai.getouch.co',
-    external: true,
   },
   {
     name: 'Ollama',
@@ -667,7 +648,6 @@ export const AI_ROWS: ResourceRow[] = [
     status: 'ACTIVE',
     tone: 'active',
     href: 'https://search.getouch.co',
-    external: true,
   },
   {
     name: 'Pipelines',
@@ -716,7 +696,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
       { label: 'Coolify', href: 'https://coolify.getouch.co', external: true },
       { label: 'Getouch.co', href: 'https://getouch.co', external: true },
       { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
-      { label: 'News CMS', href: 'https://cms.news.getouch.co', external: true },
+      { label: 'News CMS', href: '/news-cms', external: false },
     ],
   },
   {
@@ -730,8 +710,8 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
   {
     title: 'AI & Messaging',
     links: [
+      { label: 'MCP', href: 'https://mcp.getouch.co', external: true },
       { label: 'Open WebUI', href: 'https://ai.getouch.co', external: true },
-      { label: 'OpenClaw', href: 'https://openclaw.getouch.co', external: true },
       { label: 'WhatsApp API', href: 'https://wa.getouch.co', external: true },
       { label: 'Search', href: 'https://search.getouch.co', external: true },
     ],

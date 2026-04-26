@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { triggerPreprodBackup, triggerPreprodRestore } from './actions';
+import type { PreprodBackupOverview } from '@/lib/preprod-backups';
+import { triggerPreprodRestore } from './actions';
 
 function SubmitButton({ idleLabel, pendingLabel, className }: { idleLabel: string; pendingLabel: string; className: string }) {
   const { pending } = useFormStatus();
@@ -14,10 +15,75 @@ function SubmitButton({ idleLabel, pendingLabel, className }: { idleLabel: strin
   );
 }
 
-export function BackupNowForm() {
+type BackupResponse =
+  | {
+      ok: true;
+      message: string;
+      backupId: string;
+      overview: PreprodBackupOverview;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+export function BackupNowForm({
+  onStart,
+  onSuccess,
+  onError,
+}: {
+  onStart?: () => void;
+  onSuccess: (payload: { message: string; backupId: string; overview: PreprodBackupOverview }) => void;
+  onError: (message: string) => void;
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    onStart?.();
+
+    try {
+      const response = await fetch('/api/admin/preprod-backups', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      const payload = (await response.json().catch(() => null)) as BackupResponse | null;
+
+      if (!response.ok || !payload?.ok) {
+        onError(payload && 'error' in payload ? payload.error : 'Preprod backup failed.');
+        return;
+      }
+
+      onSuccess({ message: payload.message, backupId: payload.backupId, overview: payload.overview });
+    } catch {
+      onError('Preprod backup failed before the server responded.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <form action={triggerPreprodBackup}>
-      <SubmitButton idleLabel="Create Backup Now" pendingLabel="Creating Backup..." className="portal-admin-btn portal-admin-btn-primary" />
+    <form onSubmit={handleSubmit}>
+      <button type="submit" className="portal-admin-btn portal-admin-btn-primary" disabled={isSubmitting}>
+        <span className="portal-admin-btn-content">
+          {isSubmitting ? <span className="portal-inline-spinner" aria-hidden="true" /> : null}
+          <span>{isSubmitting ? 'Creating Backup...' : 'Create Backup Now'}</span>
+        </span>
+      </button>
+      {isSubmitting ? (
+        <p className="portal-inline-status" aria-live="polite">
+          Running the preprod backup script and refreshing history when it completes.
+        </p>
+      ) : null}
     </form>
   );
 }
@@ -25,11 +91,11 @@ export function BackupNowForm() {
 export function RestoreBackupDialog({
   backupName,
   backupPath,
-  createdAt,
+  createdAtLabel,
 }: {
   backupName: string;
   backupPath: string;
-  createdAt: string;
+  createdAtLabel: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -53,8 +119,10 @@ export function RestoreBackupDialog({
 
             <div className="portal-modal-body">
               <p className="portal-modal-copy">
-                This will restore Serapod Preprod from backup <strong>{createdAt}</strong>.
+                This will restore Serapod Preprod from <strong>{createdAtLabel}</strong>.
               </p>
+
+              <p className="portal-inline-status">Backup ID {backupName}</p>
 
               <div className="portal-warning-box">
                 <div className="portal-warning-title">This action cannot be undone</div>

@@ -54,7 +54,7 @@ http://getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 
@@ -96,9 +96,63 @@ http://ai.getouch.co {
   reverse_proxy open-webui:8080
 }
 
+http://dify.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+  reverse_proxy host.docker.internal:18080 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
 http://wa.getouch.co {
   import common_headers
   reverse_proxy wa:3001
+}
+
+http://wapi.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy nql6rdsjrcmlvcee1o2dz8wd-183603359318:3000
+  }
+}
+
+http://wapi-dev.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy t1xhkiq5wah66nss0onb7fpf-183423542974:3000
+  }
+}
+
+http://mcp.getouch.co {
+  import common_headers
+  import admin_auth
+
+  @mcp_endpoint path /mcp /mcp/* /healthz
+  handle @mcp_endpoint {
+    reverse_proxy mcp-gateway:8000
+  }
+
+  handle {
+    respond "Getouch MCP endpoint. Connect with Streamable HTTP at /mcp." 200
+  }
 }
 
 http://openclaw.getouch.co {
@@ -292,7 +346,7 @@ http://auth.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 
@@ -312,6 +366,11 @@ http://news.getouch.co {
 }
 
 http://cms.news.getouch.co {
+  import common_headers
+  reverse_proxy news-cms:1337
+}
+
+http://cms-news.getouch.co {
   import common_headers
   reverse_proxy news-cms:1337
 }
@@ -341,7 +400,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 

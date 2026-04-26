@@ -240,10 +240,24 @@ export async function createApiKey(label, scopes, appId) {
   const hash = hashApiKey(raw);
   const prefix = raw.slice(0, 8);
   const sc = JSON.stringify(scopes || ['send', 'read']);
-  const r = await pool.query(
-    `INSERT INTO api_keys (key_hash,key_prefix,label,scopes,app_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [hash, prefix, label || 'Unnamed Key', sc, appId || null]);
-  return { ...r.rows[0], raw_key: raw };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `INSERT INTO api_keys (key_hash,key_prefix,label,scopes,app_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [hash, prefix, label || 'Unnamed Key', sc, appId || null]);
+    const key = r.rows[0];
+    if (appId) {
+      await syncAppKeyAssignment(client, key.id, appId);
+    }
+    await client.query('COMMIT');
+    return { ...key, app_id: appId || null, raw_key: raw };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function listApiKeys() {
@@ -286,12 +300,28 @@ export async function regenerateApiKey(id) {
 }
 
 export async function assignKeyToApp(keyId, appId) {
-  const r = await pool.query(
-    `UPDATE api_keys SET app_id=$1 WHERE id=$2 RETURNING *`, [appId || null, keyId]);
-  return r.rows[0] || null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query(`SELECT * FROM api_keys WHERE id=$1`, [keyId]);
+    if (!existing.rows[0]) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    await syncAppKeyAssignment(client, keyId, appId || null);
+    const updated = await client.query(`SELECT * FROM api_keys WHERE id=$1`, [keyId]);
+    await client.query('COMMIT');
+    return updated.rows[0] || null;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteApiKey(id) {
+  await pool.query('UPDATE connected_apps SET api_key_id=NULL, updated_at=now() WHERE api_key_id=$1', [id]);
   await pool.query('DELETE FROM api_keys WHERE id=$1', [id]);
 }
 
@@ -312,18 +342,40 @@ export async function validateApiKey(raw) {
 // Connected Apps CRUD
 // ---------------------------------------------------------------------------
 export async function createApp({ name, domain, description, apiKeyId, webhookUrl, settings }) {
-  const r = await pool.query(
-    `INSERT INTO connected_apps (name,domain,description,api_key_id,webhook_url,settings)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [name, domain || null, description || null, apiKeyId || null, webhookUrl || null,
-     JSON.stringify(settings || {})]);
-  return r.rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `INSERT INTO connected_apps (name,domain,description,api_key_id,webhook_url,settings)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [name, domain || null, description || null, apiKeyId || null, webhookUrl || null,
+       JSON.stringify(settings || {})]);
+    const app = r.rows[0];
+    if (apiKeyId) {
+      await syncAppKeyAssignment(client, apiKeyId, app.id);
+    }
+    await client.query('COMMIT');
+    return { ...app, api_key_id: apiKeyId || null };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function listApps() {
   const r = await pool.query(`
-    SELECT a.*, k.label AS key_label, k.key_prefix, k.status AS key_status
-    FROM connected_apps a LEFT JOIN api_keys k ON a.api_key_id = k.id
+    SELECT a.*, COALESCE(a.api_key_id, k.id) AS api_key_id,
+           k.label AS key_label, k.key_prefix, k.status AS key_status
+    FROM connected_apps a
+    LEFT JOIN LATERAL (
+      SELECT id, label, key_prefix, status
+      FROM api_keys
+      WHERE id = a.api_key_id OR (a.api_key_id IS NULL AND app_id = a.id)
+      ORDER BY CASE WHEN id = a.api_key_id THEN 0 ELSE 1 END, created_at DESC
+      LIMIT 1
+    ) k ON true
     ORDER BY a.created_at DESC`);
   return r.rows;
 }
@@ -335,28 +387,114 @@ export async function toggleAppStatus(id) {
 }
 
 export async function getApp(id) {
-  const r = await pool.query('SELECT * FROM connected_apps WHERE id=$1', [id]);
+  const r = await pool.query(
+    `SELECT a.*, COALESCE(a.api_key_id, k.id) AS api_key_id
+     FROM connected_apps a
+     LEFT JOIN LATERAL (
+       SELECT id
+       FROM api_keys
+       WHERE id = a.api_key_id OR (a.api_key_id IS NULL AND app_id = a.id)
+       ORDER BY CASE WHEN id = a.api_key_id THEN 0 ELSE 1 END, created_at DESC
+       LIMIT 1
+     ) k ON true
+     WHERE a.id=$1`,
+    [id]);
   return r.rows[0] || null;
 }
 
 export async function updateApp(id, fields) {
-  const sets = []; const params = []; let idx = 1;
+  const nextFields = { ...fields };
+  const apiKeyId = Object.prototype.hasOwnProperty.call(nextFields, 'api_key_id') ? nextFields.api_key_id : undefined;
+  delete nextFields.api_key_id;
+
+  const client = await pool.connect();
   for (const [k, v] of Object.entries(fields)) {
-    if (['name','domain','description','status','api_key_id','webhook_url','settings'].includes(k)) {
+    if (['name','domain','description','status','webhook_url','settings'].includes(k)) {
       sets.push(`${k} = $${idx++}`);
       params.push(k === 'settings' ? JSON.stringify(v) : v);
     }
   }
-  if (!sets.length) return null;
-  sets.push(`updated_at = now()`);
-  params.push(id);
-  const r = await pool.query(
-    `UPDATE connected_apps SET ${sets.join(',')} WHERE id=$${idx} RETURNING *`, params);
-  return r.rows[0] || null;
+  try {
+    await client.query('BEGIN');
+    let updated = null;
+    if (sets.length) {
+      sets.push(`updated_at = now()`);
+      params.push(id);
+      const r = await client.query(
+        `UPDATE connected_apps SET ${sets.join(',')} WHERE id=$${idx} RETURNING *`, params);
+      updated = r.rows[0] || null;
+    } else {
+      const existing = await client.query('SELECT * FROM connected_apps WHERE id=$1', [id]);
+      updated = existing.rows[0] || null;
+    }
+    if (!updated) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    if (apiKeyId !== undefined) {
+      await syncAppKeyAssignment(client, apiKeyId || null, id);
+      const synced = await client.query(
+        `SELECT a.*, COALESCE(a.api_key_id, k.id) AS api_key_id
+         FROM connected_apps a
+         LEFT JOIN LATERAL (
+           SELECT id
+           FROM api_keys
+           WHERE id = a.api_key_id OR (a.api_key_id IS NULL AND app_id = a.id)
+           ORDER BY CASE WHEN id = a.api_key_id THEN 0 ELSE 1 END, created_at DESC
+           LIMIT 1
+         ) k ON true
+         WHERE a.id=$1`,
+        [id]);
+      updated = synced.rows[0] || updated;
+    }
+    await client.query('COMMIT');
+    return updated;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteApp(id) {
+  await pool.query('UPDATE api_keys SET app_id=NULL WHERE app_id=$1', [id]);
   await pool.query('DELETE FROM connected_apps WHERE id=$1', [id]);
+}
+
+async function syncAppKeyAssignment(client, keyId, appId) {
+  if (appId) {
+    const app = await client.query('SELECT id FROM connected_apps WHERE id=$1', [appId]);
+    if (!app.rows[0]) throw new Error('App not found');
+  }
+  if (keyId) {
+    const key = await client.query('SELECT id FROM api_keys WHERE id=$1', [keyId]);
+    if (!key.rows[0]) throw new Error('Key not found');
+  }
+
+  if (keyId) {
+    await client.query('UPDATE connected_apps SET api_key_id=NULL, updated_at=now() WHERE api_key_id=$1', [keyId]);
+    await client.query('UPDATE api_keys SET app_id=NULL WHERE id!=$1 AND app_id=$2', [keyId, appId || null]);
+  }
+  if (appId) {
+    await client.query('UPDATE api_keys SET app_id=NULL WHERE app_id=$1 AND id!=$2', [appId, keyId || null]);
+    await client.query('UPDATE connected_apps SET api_key_id=NULL, updated_at=now() WHERE id=$1 AND api_key_id IS NOT NULL AND api_key_id!=$2', [appId, keyId || null]);
+  }
+
+  if (keyId && appId) {
+    await client.query('UPDATE api_keys SET app_id=$1 WHERE id=$2', [appId, keyId]);
+    await client.query('UPDATE connected_apps SET api_key_id=$1, updated_at=now() WHERE id=$2', [keyId, appId]);
+    return;
+  }
+
+  if (keyId && !appId) {
+    await client.query('UPDATE api_keys SET app_id=NULL WHERE id=$1', [keyId]);
+    return;
+  }
+
+  if (!keyId && appId) {
+    await client.query('UPDATE connected_apps SET api_key_id=NULL, updated_at=now() WHERE id=$1', [appId]);
+  }
 }
 
 // ---------------------------------------------------------------------------

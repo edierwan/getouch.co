@@ -38,6 +38,7 @@ export function SummaryGrid({ cards }: { cards: SummaryCard[] }) {
             <span className="portal-summary-icon">{card.icon}</span>
           </div>
           <div className={`portal-summary-value${card.tone ? ` portal-summary-value-${card.tone}` : ''}`}>{card.value}</div>
+          {card.detail ? <div className="portal-summary-detail">{card.detail}</div> : null}
         </section>
       ))}
     </div>
@@ -85,20 +86,32 @@ export function ServicePanel({ title, rows }: { title: string; rows: ResourceRow
             </>
           );
 
-          return row.href ? (
-            <a
-              key={row.name}
-              href={row.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="portal-resource-row portal-resource-row-link"
-            >
+          if (!row.href) {
+            return (
+              <div key={row.name} className="portal-resource-row">
+                {inner}
+              </div>
+            );
+          }
+
+          if (row.external !== false) {
+            return (
+              <a
+                key={row.name}
+                href={row.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="portal-resource-row portal-resource-row-link"
+              >
+                {inner}
+              </a>
+            );
+          }
+
+          return (
+            <Link key={row.name} href={row.href} className="portal-resource-row portal-resource-row-link">
               {inner}
-            </a>
-          ) : (
-            <div key={row.name} className="portal-resource-row">
-              {inner}
-            </div>
+            </Link>
           );
         })}
       </div>

@@ -15,6 +15,8 @@ services:
       ADMIN_AUTH_HASH: ${ADMIN_AUTH_HASH}
     ports:
       - 127.0.0.1:80:80
+    extra_hosts:
+      - host.docker.internal:host-gateway
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider --header='Host: getouch.co' http://127.0.0.1/ || exit 1"]
       interval: 15s
@@ -304,8 +306,6 @@ services:
     networks:
       - edge
 
-  # ────────────────────────────────────────────────────────
-
   grafana:
     image: grafana/grafana-oss:11.6.1
     container_name: grafana
@@ -315,8 +315,8 @@ services:
     environment:
       GF_SERVER_ROOT_URL: https://grafana.getouch.co
       GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-getouch2026}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin@getouch.co}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-Turun@2020}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     volumes:
       - /data/getouch/grafana:/var/lib/grafana
@@ -418,6 +418,8 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: utility
     networks:
       - edge
+
+  # ────────────────────────────────────────────────────────
   # Open WebUI Pipelines — extensible AI middleware
   # ────────────────────────────────────────────────────────
   pipelines:
@@ -467,6 +469,36 @@ services:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # MCP Gateway — minimal remote MCP endpoint for exploration
+  # Exposes an isolated filesystem sandbox over Streamable HTTP.
+  # ────────────────────────────────────────────────────────
+  mcp-gateway:
+    image: node:22-alpine
+    container_name: mcp-gateway
+    restart: unless-stopped
+    command:
+      - sh
+      - -lc
+      - >-
+        npx -y supergateway
+        --stdio "npx -y @modelcontextprotocol/server-filesystem /workspace"
+        --outputTransport streamableHttp
+        --streamableHttpPath /mcp
+        --port 8000
+        --healthEndpoint /healthz
+    volumes:
+      - /data/getouch/mcp/workspace:/workspace
+      - /data/getouch/mcp/npm-cache:/root/.npm
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/healthz | grep -q ok || exit 1"]
+      interval: 30s
+      timeout: 10s
       retries: 5
       start_period: 20s
     networks:
