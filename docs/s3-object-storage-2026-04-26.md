@@ -134,6 +134,22 @@ consuming service (WAPI, news CMS, openclaw, getouch portal, scheduled-backups,
 etc.) gets its own least-privilege identity scoped to its own bucket(s) or
 prefixes. A consumer must never be issued `Admin`.
 
+**Provisioning record (2026-04-27)**: a `wapi-app` identity has been added per
+the procedure in §5.1. Final identity table:
+
+| Name       | Actions                                                    | Scope            |
+|------------|------------------------------------------------------------|------------------|
+| `admin`    | Admin, Read, Write, List, Tagging, Lock                    | global           |
+| `wapi-app` | Read, Write, List, Tagging (all `:wapi-assets`-scoped)     | `wapi-assets`    |
+
+Bucket `wapi-assets` was created the same day. Cross-bucket isolation has been
+verified: the `wapi-app` key gets `AccessDenied` when listing or reading
+`news-media`, `myfiles`, or `test-bucket`. The `wapi-app` access key + secret
+are stored on the host at `/home/deploy/.secrets/wapi-s3-accesskey` and
+`/home/deploy/.secrets/wapi-s3-secretkey` (mode 600, owner `deploy`); the same
+values must be set as `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` in WAPI's
+Coolify environment when wiring it to the live endpoint.
+
 ### 5.1 Procedure to add a per-service identity
 
 (Documented but **not auto-executed**. Operator-only step.)
@@ -259,16 +275,20 @@ extension: nightly `weed s3 sync` of `wapi-assets` + Postgres dumps to
 
 ## 10. Known follow-ups
 
+- **Rotate `admin` and `wapi-app` secret keys**: the current values were
+  surfaced in tool output during the 2026-04-27 provisioning round. They are
+  still confined to the host (`s3.json`) and the operator-only mirror at
+  `/home/deploy/.secrets/wapi-s3-{access,secret}key`, but should be rotated
+  before any external traffic. Procedure: edit `s3.json` → restart
+  `seaweed-s3` → update consumer env (Coolify) → re-run the smoke test.
 - Move `seaweed-s3` filer-state from anonymous Docker volume to a bind mount on
   `/srv/archive/seaweedfs/s3-state` so the SATA disk holds all SeaweedFS state.
-- Schedule `admin` credential rotation (viewed during today's audit; non-urgent
-  because admin is operator-only).
-- Provision per-service identities (`wapi-app`, etc.) when the consuming
-  service is ready to wire up. Procedure in §5.1.
 - Wire metrics: SeaweedFS exposes Prometheus metrics on `:9333/metrics` and
   `:8333/metrics`; add to monitoring stack.
 - Add an `admin_auth` Caddy gate on `s3.getouch.co` once Filestash sees real
   user data (currently it only fronts demo `myfiles`).
+- Lifecycle policy for `tenants/{tenantId}/_meta/` pruning of stale tenants
+  (cleanup runs only when an operator explicitly purges via WAPI's admin UI).
 
 ## 11. Operational commands
 
