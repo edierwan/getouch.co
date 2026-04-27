@@ -47,6 +47,11 @@ export async function proxy(request: NextRequest) {
     portalHost && pathname.startsWith('/api/') && !isPublicDiagnostic;
 
   if (portalHost) {
+    // Public diagnostic — let it through without any auth/redirect logic.
+    if (isPublicDiagnostic) {
+      return NextResponse.next();
+    }
+
     if (pathname.startsWith('/portal')) {
       return NextResponse.redirect(getMainPortalUrl(request));
     }
