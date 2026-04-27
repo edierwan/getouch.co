@@ -1,0 +1,457 @@
+{
+  auto_https off
+  admin off
+}
+
+:80 {
+  respond "Unknown host." 421
+}
+
+(common_headers) {
+  header {
+    -Server
+    -X-Powered-By
+    Content-Security-Policy "base-uri 'self'; frame-ancestors 'self'; object-src 'none'; upgrade-insecure-requests"
+    Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options nosniff
+    X-Frame-Options SAMEORIGIN
+    Referrer-Policy strict-origin-when-cross-origin
+  }
+}
+
+(admin_auth) {
+  basic_auth {
+    {$ADMIN_AUTH_USER} {$ADMIN_AUTH_HASH}
+  }
+}
+
+http://getouch.co {
+  import common_headers
+
+  @portal_admin path /admin /admin/*
+  redir @portal_admin https://portal.getouch.co 308
+
+  # Coolify webhook proxy — bypasses Cloudflare Access on coolify.getouch.co
+  handle /webhooks/source/* {
+    reverse_proxy coolify:8080 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+
+  handle /services {
+    root * /etc/caddy/static
+    rewrite * /services.html
+    file_server
+  }
+
+  # Immutable hashed assets — cache aggressively
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  # HTML pages — always revalidate
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web:3000
+  }
+}
+
+http://dev.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-dev:3000
+  }
+}
+
+http://stg.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web-stg:3000
+  }
+}
+
+http://ai.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+  reverse_proxy open-webui:8080
+}
+
+http://dify.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+  reverse_proxy host.docker.internal:18080 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
+http://wa.getouch.co {
+  import common_headers
+  reverse_proxy wa:3001
+}
+
+http://wapi.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy nql6rdsjrcmlvcee1o2dz8wd-183603359318:3000
+  }
+}
+
+http://wapi-dev.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy t1xhkiq5wah66nss0onb7fpf-183423542974:3000
+  }
+}
+
+http://mcp.getouch.co {
+  import common_headers
+  import admin_auth
+
+  @mcp_endpoint path /mcp /mcp/* /healthz
+  handle @mcp_endpoint {
+    reverse_proxy mcp-gateway:8000
+  }
+
+  handle {
+    respond "Getouch MCP endpoint. Connect with Streamable HTTP at /mcp." 200
+  }
+}
+
+http://openclaw.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+
+  # Manual bootstrap entry.
+  handle /connect {
+    root * /etc/caddy/static
+    rewrite * /openclaw-connect.html
+    file_server
+  }
+
+  # Session reset page — clears exact OpenClaw state and restarts bootstrap.
+  handle /reset {
+    root * /etc/caddy/static
+    rewrite * /openclaw-reset.html
+    file_server
+  }
+
+  # Guard direct /chat visits before the upstream app loads.
+  @chat_guard {
+    method GET
+    path /chat
+    not header Upgrade websocket
+    not header Cookie *openclaw_boot=1*
+  }
+  handle @chat_guard {
+    root * /etc/caddy/static
+    rewrite * /openclaw-chat-guard.html
+    file_server
+  }
+
+  # Bare root GET (not a WebSocket upgrade): send users to the canonical chat entry.
+  @root_redirect {
+    method GET
+    path /
+    not header Upgrade websocket
+  }
+  redir @root_redirect /chat?session=main 302
+
+  # All other requests (assets, /chat, WebSocket upgrades) → gateway
+  handle {
+    reverse_proxy openclaw-gateway:18789 {
+      flush_interval -1
+    }
+  }
+}
+
+http://s3api.getouch.co {
+  import common_headers
+  reverse_proxy seaweed-s3:8333
+}
+
+http://s3.getouch.co {
+  import common_headers
+
+  # Serve custom login page at root and /login to inject SeaweedFS endpoint
+  @login {
+    not path /api/* /files/* /assets/* /custom.css /admin/* /favicon.ico /sw_cache.js /manifest.json /overrides/*
+    not header Cookie *cookie=*
+  }
+  handle @login {
+    root * /etc/caddy/static
+    rewrite * /s3-login.html
+    file_server
+  }
+
+  handle {
+    reverse_proxy filestash:8334 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+}
+
+http://search.getouch.co {
+  import common_headers
+  import admin_auth
+  reverse_proxy searxng:8080
+}
+
+http://db.getouch.co {
+  import common_headers
+  reverse_proxy pgadmin:80
+}
+
+http://coolify.getouch.co {
+  import common_headers
+
+  # WebSocket path for Soketi real-time service
+  @websocket {
+    path /app/*
+    header Connection *Upgrade*
+    header Upgrade websocket
+  }
+  handle @websocket {
+    reverse_proxy coolify-realtime:6001
+  }
+
+  # Soketi REST API paths
+  handle /apps/* {
+    reverse_proxy coolify-realtime:6001
+  }
+
+  # GitHub webhook callbacks — no auth required
+  handle /webhooks/* {
+    reverse_proxy coolify:8080 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+
+  # Auth handled by Cloudflare Access — no basic auth needed
+  handle {
+    reverse_proxy coolify:8080 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+}
+
+http://sb-stg-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-stg-kong:8000
+}
+
+http://st-stg-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-stg-studio:3000
+}
+
+http://sb-dev-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-dev-kong:8000
+}
+
+http://st-dev-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-dev-studio:3000
+}
+
+http://sb-prd-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-prd-kong:8000
+}
+
+http://st-prd-qrsys.getouch.co {
+  import common_headers
+  reverse_proxy qrsys-prd-studio:3000
+}
+
+http://sb-sso.getouch.co {
+  import common_headers
+  reverse_proxy getouch-sso-kong:8000
+}
+
+http://st-sso.getouch.co {
+  import common_headers
+  reverse_proxy getouch-sso-studio:3000
+}
+
+http://sb-prd-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-prd-kong:8000
+}
+
+http://st-prd-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-prd-studio:3000
+}
+
+http://sb-preprod-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-preprod-kong:8000
+}
+
+http://st-preprod-serapod.getouch.co {
+  import common_headers
+  reverse_proxy serapod-preprod-studio:3000
+}
+
+http://auth.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web:3000
+  }
+}
+
+# ── News Stack ──────────────────────────────────────────
+http://news.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy news-web:3000
+  }
+}
+
+http://cms.news.getouch.co {
+  import common_headers
+  reverse_proxy news-cms:1337
+}
+
+http://cms-news.getouch.co {
+  import common_headers
+  reverse_proxy news-cms:1337
+}
+
+http://flow.news.getouch.co {
+  import common_headers
+  reverse_proxy news-flow:5678
+}
+
+http://rss.news.getouch.co {
+  import common_headers
+  reverse_proxy news-rss:1200
+}
+
+http://social.news.getouch.co {
+  import common_headers
+  reverse_proxy news-social:5000
+}
+
+http://portal.getouch.co {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path /
+  header @html Cache-Control "public, max-age=0, must-revalidate"
+
+  handle {
+    reverse_proxy getouch-web:3000
+  }
+}
+
+http://grafana.getouch.co {
+  import common_headers
+  reverse_proxy grafana:3000
+}
+
+http://analytics.getouch.co {
+  import common_headers
+  reverse_proxy umami:3000
+}
+
+http://chatwoot.getouch.co {
+  import common_headers
+  reverse_proxy chatwoot-web:3000
+}
+
+http://bot.getouch.co,
+http://api.getouch.co,
+http://metrics.getouch.co,
+http://sms.getouch.co,
+http://billing.getouch.co,
+http://admin.getouch.co {
+  import common_headers
+  respond "Not configured on this server." 404
+}
+http://stg.serapod2u.com {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control public, max-age=31536000, immutable
+
+  @html path /
+  header @html Cache-Control public, max-age=0, must-revalidate
+
+  handle {
+    reverse_proxy serapod-web-stg:3000
+  }
+}
+
+http://preprod.serapod2u.com {
+  import common_headers
+
+  @static path /_next/static/*
+  header @static Cache-Control public, max-age=31536000, immutable
+
+  @html path /
+  header @html Cache-Control public, max-age=0, must-revalidate
+
+  handle {
+    reverse_proxy serapod-web-preprod:3000
+  }
+}

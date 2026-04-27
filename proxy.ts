@@ -40,6 +40,7 @@ const getSecret = () => {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const portalHost = isPortalHost(request);
+  const portalApiRequest = portalHost && pathname.startsWith('/api/');
 
   if (portalHost) {
     if (pathname.startsWith('/portal')) {
@@ -54,6 +55,23 @@ export async function proxy(request: NextRequest) {
     }
 
     const token = request.cookies.get('session')?.value;
+
+    if (portalApiRequest) {
+      if (!token) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      try {
+        const { payload } = await jwtVerify(token, getSecret());
+        if (payload.role !== 'admin') {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        return NextResponse.next();
+      } catch {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
 
     if (pathname.startsWith('/auth/') && !pathname.startsWith('/auth/verify')) {
       if (token) {

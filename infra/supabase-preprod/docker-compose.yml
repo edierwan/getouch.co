@@ -11,7 +11,7 @@
 services:
   # ───────────────────── PostgreSQL ─────────────────────
   db:
-    image: supabase/postgres:15.6.1.145
+    image: supabase/postgres:17.6.1.104
     container_name: serapod-preprod-db
     restart: unless-stopped
     environment:

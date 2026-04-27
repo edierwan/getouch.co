@@ -1,0 +1,92 @@
+groups:
+  - name: infrastructure-alerts
+    rules:
+      - alert: HostCpuHigh
+        expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High CPU usage on {{ $labels.instance }}'
+          description: 'CPU usage has been above 85% for 5 minutes.'
+
+      - alert: HostMemoryHigh
+        expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High memory usage on {{ $labels.instance }}'
+          description: 'RAM usage has been above 90% for 5 minutes.'
+
+      - alert: HostSwapHigh
+        expr: node_memory_SwapTotal_bytes > 0 and ((1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High swap usage on {{ $labels.instance }}'
+          description: 'Swap usage has remained above 80% for 10 minutes.'
+
+      - alert: HostSwapActivityHigh
+        expr: rate(node_vmstat_pswpin[5m]) + rate(node_vmstat_pswpout[5m]) > 200
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Sustained swap activity on {{ $labels.instance }}'
+          description: 'Combined swap-in and swap-out activity has remained above 200 pages per second for 10 minutes.'
+
+      - alert: HostOomKillDetected
+        expr: increase(node_vmstat_oom_kill[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'OOM kill detected on {{ $labels.instance }}'
+          description: 'The kernel OOM killer fired within the last 15 minutes.'
+
+      - alert: HostDiskHigh
+        expr: 100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="rootfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="rootfs"})) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High disk usage on {{ $labels.instance }}'
+          description: 'Root filesystem usage has been above 85% for 5 minutes.'
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Prometheus target down: {{ $labels.job }} / {{ $labels.instance }}'
+          description: 'The scrape target has been down for more than 2 minutes.'
+
+      - alert: HttpProbeDown
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Website probe failed: {{ $labels.instance }}'
+          description: 'Blackbox HTTP probing has failed for more than 2 minutes.'
+
+      - alert: GpuTemperatureHigh
+        expr: DCGM_FI_DEV_GPU_TEMP > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High GPU temperature on GPU {{ $labels.gpu }}'
+          description: 'GPU temperature has been above 80C for 5 minutes.'
+
+      - alert: ContainerRestartLoop
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Container restart loop detected: {{ $labels.name }}'
+          description: 'The container start time changed more than twice in 15 minutes.'

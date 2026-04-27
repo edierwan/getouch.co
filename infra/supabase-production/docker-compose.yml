@@ -1,8 +1,8 @@
 ###############################################################################
 # Supabase Production — Isolated Self-Hosted Stack
-# Project : Serapod Production
-# Domains : sb-prd-serapod.getouch.co  (API + Auth + REST + Realtime)
-#           st-prd-serapod.getouch.co  (Studio dashboard)
+# Project : Serapod Development-home
+# Domains : sb-dev-serapod.getouch.co  (API + Auth + REST + Realtime)
+#           st-dev-serapod.getouch.co  (Studio dashboard)
 #
 # IMPORTANT: This stack is fully isolated from the Getouch platform.
 #            It has its own PostgreSQL, network, and volumes.
@@ -11,7 +11,7 @@
 services:
   # ───────────────────── PostgreSQL ─────────────────────
   db:
-    image: supabase/postgres:15.6.1.145
+    image: supabase/postgres:17.6.1.104
     container_name: serapod-prd-db
     restart: unless-stopped
     environment:
@@ -272,7 +272,7 @@ services:
       PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS:-1000}
       PGRST_DB_EXTRA_SEARCH_PATH: ${PGRST_DB_EXTRA_SEARCH_PATH:-public}
       DEFAULT_ORGANIZATION_NAME: Serapod
-      DEFAULT_PROJECT_NAME: "Serapod Production"
+      DEFAULT_PROJECT_NAME: "Serapod Development-home"
       SUPABASE_URL: http://kong:8000
       SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
       SUPABASE_ANON_KEY: ${ANON_KEY}

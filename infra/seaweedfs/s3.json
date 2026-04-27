@@ -16,6 +16,21 @@
         "Tagging",
         "Lock"
       ]
+    },
+    {
+      "name": "wapi-app",
+      "credentials": [
+        {
+          "accessKey": "aa21f43cf641f4dc5df8",
+          "secretKey": "7eb70b4d70a51bfcf8d1d68fb6293ec42bd3b2e4e7c0ef64"
+        }
+      ],
+      "actions": [
+        "Read:wapi-assets",
+        "Write:wapi-assets",
+        "List:wapi-assets",
+        "Tagging:wapi-assets"
+      ]
     }
   ]
 }

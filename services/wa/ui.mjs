@@ -8,7 +8,7 @@
 import { isDbReady } from './db.mjs';
 
 export function consoleHtml(state = {}) {
-  const { connectionState = 'disconnected', pairedPhone = null, PORT = 3001 } = state;
+  const { connectionState = 'disconnected', pairedPhone = null, PORT = 3001, buildId = '' } = state;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -121,6 +121,7 @@ button{font-family:var(--font)}
 .toast-ok{background:var(--green-dim);border:1px solid var(--green-border);color:var(--green)}
 .toast-err{background:var(--red-dim);border:1px solid var(--red-border);color:var(--red)}
 .toast-info{background:var(--blue-dim);border:1px solid var(--blue-border);color:var(--blue)}
+.toast-warn{background:rgba(234,179,8,.14);border:1px solid var(--yellow);color:var(--yellow)}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 
 /* ─── QR ─── */
@@ -253,6 +254,8 @@ button{font-family:var(--font)}
     <div class="card"><div class="card-label">Status</div><div class="card-val" id="ov-status" style="color:var(--red)">&#x2014;</div><div class="card-sub" id="ov-phone"></div></div>
     <div class="card"><div class="card-label">Uptime</div><div class="card-val" id="ov-uptime">&#x2014;</div><div class="card-sub" id="ov-since"></div></div>
     <div class="card"><div class="card-label">Messages (24h)</div><div class="card-val" id="ov-msgs24">&#x2014;</div><div class="card-sub" id="ov-msgstotal"></div></div>
+    <div class="card"><div class="card-label">Sessions</div><div class="card-val" id="ov-sessions-total">&#x2014;</div><div class="card-sub" id="ov-sessions-breakdown" style="font-size:.78rem"></div></div>
+    <div class="card"><div class="card-label">Webhook</div><div class="card-val" id="ov-webhook-state" style="font-size:1rem">&#x2014;</div><div class="card-sub" id="ov-webhook-sub" style="font-size:.78rem"></div></div>
     <div class="card"><div class="card-label">Active Keys</div><div class="card-val" id="ov-keys">&#x2014;</div><div class="card-sub" id="ov-apps"></div></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
@@ -272,6 +275,27 @@ button{font-family:var(--font)}
 
 <!-- ════════════ SESSIONS ════════════ -->
 <div class="page" id="p-sessions">
+  <!-- Multi-tenant sessions table (Request 05 multi-session refactor, 2026-04-26) -->
+  <div class="panel" style="margin-bottom:1rem">
+    <div class="panel-hdr">
+      <h3>&#x1F310; Multi-tenant Sessions</h3>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input type="text" id="new-session-id" placeholder="sessionId (e.g. tenant-xyz)" style="padding:.4rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:.4rem;color:var(--text);font-size:.8rem"/>
+        <button class="btn btn-primary btn-sm" onclick="createSession()">+ Start session</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadSessions()">Refresh</button>
+      </div>
+    </div>
+    <div id="ms-summary" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;font-size:.75rem;color:var(--text2)"></div>
+    <table class="tbl" id="ms-table">
+      <thead><tr>
+        <th>Session ID</th><th>Status</th><th>Phone</th><th>Last seen</th><th>Msgs 24h</th><th>QR</th><th>Last error</th><th style="text-align:right">Actions</th>
+      </tr></thead>
+      <tbody id="ms-body"><tr><td colspan="8" style="text-align:center;color:var(--text3);padding:1rem">Loading sessions&#x2026;</td></tr></tbody>
+    </table>
+    <div style="font-size:.7rem;color:var(--text3);margin-top:.5rem">
+      Default session is auto-managed and used by legacy <code>/api/*</code> endpoints. New WAPI session contract: <code>/api/sessions/:id</code> with <code>X-WAPI-Secret</code>.
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="panel">
       <div class="panel-hdr"><h3>&#x1F4F1; WhatsApp Session</h3></div>
@@ -308,7 +332,7 @@ button{font-family:var(--font)}
     </div>
     <div class="panel">
       <div class="panel-hdr"><h3>&#x2709; Send Test Message</h3></div>
-      <div class="field"><label>Recipient</label><input type="text" id="send-to" placeholder="0192277233" maxlength="15"/></div>
+      <div class="field"><label>Recipient</label><input type="text" id="send-to" placeholder="0192277233" maxlength="15"/><div class="hint">Use a number that is NOT this gateway's own paired phone. WhatsApp does not deliver self-sent messages as notifications.</div></div>
       <div class="field"><label>Message</label><textarea id="send-text" rows="3" placeholder="Hello from Getouch!"></textarea></div>
       <button class="btn btn-primary" id="send-btn" onclick="doSend()">Send Message</button>
       <div id="send-result" style="margin-top:.5rem"></div>
@@ -410,18 +434,34 @@ button{font-family:var(--font)}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="panel">
       <div class="panel-hdr"><h3>&#x26A1; API Endpoints</h3></div>
+      <h4 style="margin:.4rem 0 .35rem;font-size:.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Multi-session (current contract)</h4>
       <table class="tbl">
         <thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/healthz</td><td style="font-size:.72rem;color:var(--green)">Public</td><td>Health check</td></tr>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/status</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Connection state</td></tr>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/qr-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Get QR code</td></tr>
-          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/pairing-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Pairing code</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-text</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Send text</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-image</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Send image</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-document</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Send document</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/logout</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Logout session</td></tr>
-          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/reset</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td>Force-reset</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/health</td><td style="font-size:.72rem;color:var(--green)">Public</td><td>Multi-session health snapshot</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/healthz</td><td style="font-size:.72rem;color:var(--green)">Public</td><td>Liveness probe</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Create / start session</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/status</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Session status</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/qr</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Per-session QR</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/reset</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Reset that session only</td></tr>
+          <tr><td><span style="color:var(--red);font-weight:700;font-size:.72rem">DELETE</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Stop and remove session</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions/:id/messages</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Send via that session</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/sessions</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>List all sessions</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/webhook-stats</td><td style="font-size:.72rem;color:var(--yellow)">X-WAPI-Secret</td><td>Outbound webhook stats</td></tr>
+        </tbody>
+      </table>
+      <h4 style="margin:.85rem 0 .35rem;font-size:.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Legacy (deprecated &mdash; pinned to default session)</h4>
+      <table class="tbl">
+        <thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/status</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; default-session state</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/qr-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; default-session QR</td></tr>
+          <tr><td><span style="color:var(--green);font-weight:700;font-size:.72rem">GET</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/pairing-code</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; pairing</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-text</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span> &mdash; send via default</td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-image</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/send-document</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/logout</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
+          <tr><td><span style="color:var(--blue);font-weight:700;font-size:.72rem">POST</span></td><td style="font-family:var(--mono);font-size:.78rem">/api/reset</td><td style="font-size:.72rem;color:var(--yellow)">API Key</td><td><span style="color:var(--text3)">deprecated</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -579,6 +619,28 @@ button{font-family:var(--font)}
 </div>
 
 <script>
+// Build marker — visible to the live browser to confirm which version
+// of the admin console is actually loaded. Update this when shipping
+// UI fixes; verify via DevTools: window.__WA_UI_BUILD.
+window.__WA_UI_BUILD = ${JSON.stringify(buildId || 'unknown')};
+console.info('[wa-admin] build', window.__WA_UI_BUILD);
+
+// Surface uncaught errors directly into the status pill so a future
+// JS parse/runtime error never silently freezes the dashboard on
+// "loading" again. (Round 3 root cause: an escaped \\' inside a backtick
+// template literal collapsed to '' and produced an "Unexpected string"
+// SyntaxError on line 811, halting the entire script.)
+window.addEventListener('error', function (ev) {
+  try {
+    var pill = document.getElementById('top-status');
+    if (pill) {
+      pill.textContent = 'js error';
+      pill.className = 'status-pill pill-closed';
+      pill.title = (ev && ev.message ? ev.message : 'script error') + ' @ ' + (ev && ev.filename ? ev.filename : '') + ':' + (ev && ev.lineno ? ev.lineno : '');
+    }
+  } catch (_) {}
+});
+
 // ── Globals ──────────────────────────────────────────
 const ADMIN_KEY = localStorage.getItem('wa_admin_key') || '';
 let currentPage = 'overview';
@@ -679,28 +741,64 @@ async function pollStatus() {
   try {
     const r = await fetch('/healthz');
     const d = await r.json();
-    const st = d.whatsapp || 'unknown';
+    // The multi-session gateway reports 'connected' (new contract).
+    // Older single-session gateways used 'open'. Normalize both so the UI
+    // behaves consistently regardless of which gateway version is running.
+    const raw = d.whatsapp || d.defaultStatus || 'unknown';
+    const isConnected = raw === 'open' || raw === 'connected';
+    const isConnecting = raw === 'connecting' || raw === 'pending';
+    const label = isConnected ? 'Connected' : isConnecting ? 'Connecting' : (raw === 'unknown' ? 'Unknown' : 'Disconnected');
+    const pillCls = isConnected ? 'pill-open' : isConnecting ? 'pill-connecting' : 'pill-closed';
+    const color = isConnected ? 'var(--green)' : isConnecting ? 'var(--yellow)' : 'var(--red)';
+    const phone = d.phone || d.defaultPhone || '';
     // Top bar
     const pill = $('top-status');
-    pill.textContent = st;
-    pill.className = 'status-pill ' + (st==='open'?'pill-open':st==='connecting'?'pill-connecting':'pill-closed');
-    $('top-phone').textContent = d.phone ? '+'+d.phone : '';
+    pill.textContent = label.toLowerCase();
+    pill.className = 'status-pill ' + pillCls;
+    $('top-phone').textContent = phone ? '+'+phone : '';
     // Overview
-    $('ov-status').textContent = st==='open'?'Connected':st==='connecting'?'Connecting':'Disconnected';
-    $('ov-status').style.color = st==='open'?'var(--green)':st==='connecting'?'var(--yellow)':'var(--red)';
-    $('ov-phone').textContent = d.phone ? '+'+d.phone : 'No number paired';
+    $('ov-status').textContent = label;
+    $('ov-status').style.color = color;
+    $('ov-phone').textContent = phone ? '+'+phone : 'No number paired';
+    // Track the paired phone globally so Send Test Message can warn about
+    // self-sends. WhatsApp does NOT deliver a message you send to your own
+    // number as an inbound chat — it server-acks (status=2) but never shows
+    // up as a notification. That looks like "send broken" but is expected.
+    window.__WA_PAIRED_PHONE = phone || '';
     const secs = Math.floor(d.uptime||0);
     const dd=Math.floor(secs/86400),hh=Math.floor((secs%86400)/3600),mm=Math.floor((secs%3600)/60),ss=secs%60;
     $('ov-uptime').textContent = dd>0?dd+'d '+hh+'h':hh+'h '+mm+'m '+ss+'s';
     $('ov-since').textContent = 'Since ' + new Date(Date.now()-secs*1000).toLocaleString();
     // Sessions page
-    $('ses-state').textContent = st==='open'?'Connected':st==='connecting'?'Connecting':'Disconnected';
-    $('ses-state').style.color = st==='open'?'var(--green)':st==='connecting'?'var(--yellow)':'var(--red)';
-    $('ses-phone').textContent = d.phone ? '+'+d.phone : 'Not paired';
+    $('ses-state').textContent = label;
+    $('ses-state').style.color = color;
+    $('ses-phone').textContent = phone ? '+'+phone : 'Not paired';
+    // Multi-session aggregate cards (new contract)
+    if (typeof d.sessions === 'number') {
+      $('ov-sessions-total').textContent = d.sessions;
+    }
+    if (d.webhook) {
+      const st = d.webhook.stats || {};
+      $('ov-webhook-state').textContent = d.webhook.enabled ? 'enabled' : 'disabled';
+      $('ov-webhook-state').style.color = d.webhook.enabled ? 'var(--green)' : 'var(--text3)';
+      $('ov-webhook-sub').textContent = 'q='+(d.webhook.queueSize||0)+' ok='+(st.delivered||0)+' fail='+(st.failed||0);
+    }
     if (d.lastEvent) {
       $('ov-events').innerHTML = $('ov-events').innerHTML; // keep existing
     }
-  } catch(e) {}
+  } catch(e) {
+    // Never let a transient fetch failure leave the pill stuck on
+    // 'loading' — that's how round-3 LOADING bug looked even though
+    // /healthz was healthy. Show explicit failed state.
+    try {
+      var pill = $('top-status');
+      if (pill && pill.textContent === 'loading') {
+        pill.textContent = 'health error';
+        pill.className = 'status-pill pill-closed';
+        pill.title = (e && e.message) || 'health fetch failed';
+      }
+    } catch (_) {}
+  }
 }
 
 // ── QR polling ───────────────────────────────────────
@@ -724,6 +822,94 @@ async function fetchQR() {
 }
 function refreshQR() { fetchQR(); toast('QR refreshed', 'info') }
 startQrPoll();
+
+// ── Multi-session admin (Request 05) ────────────────────────────
+let msTimer = null;
+async function loadSessions() {
+  const key = getAdminKey();
+  if (!key) return;
+  try {
+    const r = await fetch('/admin/sessions', { headers: { 'X-API-Key': key } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const list = d.sessions || [];
+    const totals = list.reduce((a,s)=>{ a.total++; if(s.status==='connected')a.connected++; else if(s.qrAvailable||s.status==='connecting'||s.status==='pending')a.pending++; else a.disconnected++; return a; }, {total:0,connected:0,pending:0,disconnected:0});
+    $('ms-summary').innerHTML =
+      '<span class="status-pill pill-open">'+totals.connected+' connected</span>'+
+      '<span class="status-pill pill-connecting">'+totals.pending+' pending</span>'+
+      '<span class="status-pill pill-closed">'+totals.disconnected+' disconnected</span>'+
+      '<span style="color:var(--text3)">total: '+totals.total+'</span>'+
+      '<span style="color:var(--text3)">default: '+esc(d.defaultSessionId||'-')+'</span>'+
+      '<span style="color:var(--text3)">webhook: '+(d.webhook&&d.webhook.enabled?'enabled':'disabled')+(d.webhook?(' (q='+d.webhook.queueSize+', ok='+d.webhook.stats.delivered+', fail='+d.webhook.stats.failed+')'):'')+'</span>';
+    // Mirror onto Overview cards so multi-session is visible from the dashboard.
+    const ovTotal = $('ov-sessions-total');
+    if (ovTotal) ovTotal.textContent = totals.total;
+    const ovBreak = $('ov-sessions-breakdown');
+    if (ovBreak) ovBreak.textContent = totals.connected+' on / '+totals.pending+' pending / '+totals.disconnected+' off';
+    if (!list.length) {
+      $('ms-body').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:1rem">No sessions registered yet.</td></tr>';
+      return;
+    }
+    $('ms-body').innerHTML = list.map(s => {
+      const cls = s.status==='connected'?'pill-open':s.status==='connecting'||s.status==='pending'?'pill-connecting':'pill-closed';
+      const m = s.messages24h||{inbound:0,outbound:0};
+      return '<tr>'+
+        '<td><strong>'+esc(s.sessionId)+'</strong></td>'+
+        '<td><span class="status-pill '+cls+'">'+esc(s.status||'-')+'</span></td>'+
+        '<td>'+(s.phoneNumber?('+'+esc(s.phoneNumber)):'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
+        '<td style="font-size:.75rem;color:var(--text3)">'+esc(s.lastSeenAt||'-')+'</td>'+
+        '<td>'+m.inbound+' in / '+m.outbound+' out</td>'+
+        '<td>'+(s.qrAvailable?'<button class="btn btn-ghost btn-sm" onclick="showSessionQr(&#39;'+esc(s.sessionId)+'&#39;)">View QR</button>':'<span style="color:var(--text3)">&#x2014;</span>')+'</td>'+
+        '<td style="font-size:.75rem;color:var(--red)">'+esc(s.lastError||'')+'</td>'+
+        '<td style="text-align:right">'+
+          '<button class="btn btn-ghost btn-sm" onclick="resetSessionAdmin(&#39;'+esc(s.sessionId)+'&#39;)">Reset</button> '+
+          '<button class="btn btn-danger btn-sm" onclick="deleteSessionAdmin(&#39;'+esc(s.sessionId)+'&#39;)">Delete</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('');
+  } catch(e) {}
+}
+async function createSession() {
+  const id = ($('new-session-id').value||'').trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) { toast('Invalid sessionId (alnum, _-, 1-128)','err'); return; }
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions', { method:'POST', headers: { 'X-API-Key': key, 'Content-Type':'application/json' }, body: JSON.stringify({ sessionId: id }) });
+    const d = await r.json();
+    toast(r.ok ? ('Started '+id) : (d.error||'Failed'), r.ok?'ok':'err');
+    if (r.ok) { $('new-session-id').value=''; loadSessions(); }
+  } catch(e) { toast(e.message,'err') }
+}
+async function resetSessionAdmin(id) {
+  if (!confirm('Reset session '+id+'? Clears its auth dir only.')) return;
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions/'+encodeURIComponent(id)+'/reset', { method:'POST', headers: { 'X-API-Key': key } });
+    const d = await r.json();
+    toast(r.ok ? ('Reset '+id) : (d.error||'Failed'), r.ok?'ok':'err');
+    loadSessions();
+  } catch(e) { toast(e.message,'err') }
+}
+async function deleteSessionAdmin(id) {
+  if (!confirm('Delete session '+id+'? Only this session files are removed.')) return;
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions/'+encodeURIComponent(id), { method:'DELETE', headers: { 'X-API-Key': key } });
+    const d = await r.json();
+    toast(r.ok ? ('Deleted '+id) : (d.error||'Failed'), r.ok?'ok':'err');
+    loadSessions();
+  } catch(e) { toast(e.message,'err') }
+}
+async function showSessionQr(id) {
+  const key = getAdminKey();
+  try {
+    const r = await fetch('/admin/sessions/'+encodeURIComponent(id)+'/qr', { headers: { 'X-API-Key': key } });
+    const d = await r.json();
+    if (d.qr) { window.open(d.qr, '_blank'); } else { toast('No QR available for '+id,'info'); }
+  } catch(e) { toast(e.message,'err') }
+}
+function startSessionsPoll() { clearInterval(msTimer); loadSessions(); msTimer = setInterval(loadSessions, 5000); }
+startSessionsPoll();
 
 // ── Session actions ──────────────────────────────────
 async function doPair() {
@@ -757,19 +943,72 @@ async function doReset() {
     setTimeout(()=> { pollStatus(); startQrPoll() }, 2000);
   } catch(e) { toast(e.message,'err') }
 }
+// Mirror of gateway normalizePhone() so the UI can show what JID will
+// actually be used and detect self-sends BEFORE hitting the network.
+function uiNormalizePhone(raw) {
+  var d = String(raw||'').replace(/[^0-9]/g,'');
+  if (!d || d.length < 8 || d.length > 15) return null;
+  if (d.charAt(0) === '0' && d.length >= 9 && d.length <= 12) d = '60' + d.slice(1);
+  else if (d.indexOf('60') !== 0 && d.length >= 9 && d.length <= 10) d = '60' + d;
+  if (d.length < 10 || d.length > 15) return null;
+  return d;
+}
+function renderSendResult(kind, html) {
+  // kind: 'ok' | 'err' | 'warn' | 'info'
+  var color = kind==='ok' ? 'var(--green)' : kind==='err' ? 'var(--red)' : kind==='warn' ? 'var(--yellow)' : 'var(--text2)';
+  var bg    = kind==='ok' ? 'var(--green-dim)' : kind==='err' ? 'rgba(239,68,68,.12)' : kind==='warn' ? 'rgba(234,179,8,.12)' : 'rgba(148,163,184,.12)';
+  $('send-result').innerHTML = '<div style="padding:.5rem;background:'+bg+';border:1px solid '+color+';border-radius:.5rem;color:'+color+';font-size:.82rem;line-height:1.4">'+html+'</div>';
+}
 async function doSend() {
-  const to = $('send-to').value.trim().replace(/[^0-9]/g,'');
-  const text = $('send-text').value.trim();
-  if (!to || !text) { toast('Enter recipient and message','err'); return }
+  var rawTo = $('send-to').value;
+  var to = uiNormalizePhone(rawTo);
+  var text = $('send-text').value.trim();
+  if (!to || !text) {
+    renderSendResult('err','Enter a valid recipient phone number and message text.');
+    toast('Enter recipient and message','err');
+    return;
+  }
+  // Self-send guard: WhatsApp does not deliver a message you send to your
+  // own paired number as a normal incoming chat. The gateway will report
+  // success and Baileys will return a messageId, but the recipient (you)
+  // will never see a notification. Refuse with a clear message.
+  var paired = window.__WA_PAIRED_PHONE || '';
+  if (paired && to === paired) {
+    renderSendResult('warn',
+      '<strong>Cannot test by sending to your own paired number (+'+esc(paired)+').</strong><br/>'+
+      'WhatsApp does not deliver messages you send to yourself as a notification (the gateway will report success but nothing arrives). '+
+      'Enter a different recipient (e.g. a second phone you own) to verify end-to-end delivery.');
+    toast('Self-send blocked — pick a different number','warn');
+    return;
+  }
   $('send-btn').disabled = true;
+  renderSendResult('info','Sending to +'+esc(to)+'…');
+  var status = 0, body = null, parseErr = null;
   try {
-    const r = await fetch('/api/send-text', { method:'POST', headers: hdrJson(), body: JSON.stringify({to,text}) });
-    const d = await r.json();
-    if (r.ok) {
-      $('send-result').innerHTML = '<div style="padding:.5rem;background:var(--green-dim);border:1px solid var(--green-border);border-radius:.5rem;color:var(--green);font-size:.82rem">Sent! ID: '+esc(d.messageId)+'</div>';
-      toast('Message sent','ok');
-    } else { toast(d.error||'Send failed','err') }
-  } catch(e) { toast(e.message,'err') }
+    var r = await fetch('/api/send-text', { method:'POST', headers: hdrJson(), body: JSON.stringify({to:to, text:text}) });
+    status = r.status;
+    try { body = await r.json(); } catch(pe) { parseErr = pe; }
+    console.info('[wa-admin] /api/send-text →', status, body);
+    if (r.ok && body && body.success) {
+      renderSendResult('ok',
+        '<strong>Submitted to WhatsApp gateway.</strong><br/>'+
+        'messageId: <code>'+esc(body.messageId||'?')+'</code><br/>'+
+        'jid: <code>'+esc(body.to||(to+'@s.whatsapp.net'))+'</code><br/>'+
+        '<span style="color:var(--text3)">Delivery acknowledgement (status 2) is logged in Events. Read receipts depend on the recipient.</span>');
+      toast('Message submitted (id '+(body.messageId||'?').toString().slice(0,12)+'…)','ok');
+    } else {
+      var msg = (body && (body.error && (body.error.message||body.error)))
+             || (parseErr ? 'Non-JSON response' : ('HTTP '+status));
+      renderSendResult('err',
+        '<strong>Send failed (HTTP '+status+').</strong><br/>'+esc(String(msg))+
+        (status===401 ? '<br/><span style="color:var(--text3)">The admin key in your browser may be stale. Logout and sign in again with the current WA_ADMIN_KEY.</span>' : ''));
+      toast(String(msg).slice(0,80),'err');
+    }
+  } catch(e) {
+    console.error('[wa-admin] /api/send-text exception', e);
+    renderSendResult('err','<strong>Network error.</strong><br/>'+esc(e.message||String(e)));
+    toast(e.message||'Network error','err');
+  }
   $('send-btn').disabled = false;
 }
 
@@ -805,12 +1044,17 @@ async function loadOverview() {
 }
 function initDashboard() {
   loadOverview();
-  pollStatus();
-  setInterval(pollStatus, 4000);
+  // pollStatus + interval are already started at boot (public endpoint)
   startQrPoll();
 }
 
-// Boot: check if already authed
+// Boot: pollStatus() only needs the public /healthz endpoint, so paint
+// the status pill and Overview Status/Sessions/Webhook cards regardless
+// of whether the operator is signed in. This stops the dashboard from
+// being permanently stuck on "LOADING" when the wa_admin_key cookie was
+// cleared or has not been set yet for the new multi-session admin key.
+pollStatus();
+setInterval(pollStatus, 4000);
 if (getAdminKey()) {
   $('auth-overlay').style.display = 'none';
   initDashboard();
