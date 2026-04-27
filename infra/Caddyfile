@@ -96,6 +96,19 @@ http://ai.getouch.co {
   reverse_proxy open-webui:8080
 }
 
+http://llm.getouch.co {
+  import common_headers
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+
+  reverse_proxy getouch-web:3000 {
+    flush_interval -1
+  }
+}
+
 http://dify.getouch.co {
   import common_headers
   header {

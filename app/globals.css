@@ -2715,6 +2715,13 @@ a.portal-resource-row-link:hover {
   margin-top: 1rem;
 }
 
+.portal-ai-gateway-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
 .portal-ai-runtime-card,
 .portal-ai-runtime-section {
   border-radius: 18px;
@@ -2779,6 +2786,16 @@ a.portal-resource-row-link:hover {
 
 .portal-ai-runtime-modal-warning {
   margin-bottom: 1rem;
+}
+
+.portal-ai-gateway-docs {
+  margin-top: 1rem;
+}
+
+.portal-ai-code-block {
+  margin-top: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -2846,7 +2863,11 @@ a.portal-resource-row-link:hover {
 
   .portal-dify-grid,
   .portal-restart-grid,
-  .portal-ai-form-grid {
+  .portal-ai-form-grid,
+  .portal-ai-runtime-grid,
+  .portal-ai-runtime-detail-grid,
+  .portal-ai-runtime-card-grid,
+  .portal-ai-gateway-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2893,7 +2914,10 @@ a.portal-resource-row-link:hover {
   .portal-dify-form-grid,
   .portal-section-pills,
   .portal-module-grid,
-  .portal-detail-grid {
+  .portal-detail-grid,
+  .portal-ai-runtime-card-grid,
+  .portal-ai-gateway-grid,
+  .portal-ai-runtime-detail-grid {
     grid-template-columns: 1fr;
   }
 

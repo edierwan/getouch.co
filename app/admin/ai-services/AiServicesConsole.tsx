@@ -99,6 +99,50 @@ type ActionResponse = {
   status: AiRuntimeStatus;
 };
 
+type GatewayStatus = {
+  checkedAt: string;
+  publicBaseUrl: string;
+  publicHealthUrl: string;
+  publicReadyUrl: string;
+  docsUrl: string;
+  status: 'Not configured' | 'Ready' | 'Backend unavailable' | 'Active';
+  enabled: boolean;
+  backend: {
+    type: 'disabled' | 'vllm' | 'ollama';
+    baseUrl: string | null;
+    ready: boolean;
+    message: string;
+  };
+  auth: {
+    required: true;
+    keyCount: number;
+    adminTestKeyConfigured: boolean;
+  };
+  exposure: {
+    publicGateway: true;
+    backendPrivate: boolean;
+    backendDirectPublicExposure: false;
+  };
+  limits: {
+    maxBodyBytes: number;
+    timeoutMs: number;
+    maxTokens: number;
+    rateLimitRequests: number;
+    rateLimitWindowSeconds: number;
+  };
+  models: Array<{
+    alias: string;
+    backendModel: string;
+  }>;
+};
+
+type GatewayActionResponse = {
+  ok: boolean;
+  message: string;
+  status: GatewayStatus;
+  statusCode?: number;
+};
+
 type SummaryCardShape = {
   label: string;
   value: string;
@@ -115,6 +159,20 @@ type RuntimeAction = {
   route: string;
   confirmLabel: string;
   tone: 'primary' | 'secondary' | 'danger';
+};
+
+type ServiceRow = {
+  name: string;
+  description: string;
+  type: string;
+  status: string;
+  tone: 'healthy' | 'active' | 'warning';
+  href?: string;
+  detail: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 };
 
 const ACTIONS: Record<ActionKey, RuntimeAction> = {
@@ -212,6 +270,18 @@ function toneForVllm(status: AiRuntimeStatus['vllm']['status']) {
   return 'warning' as const;
 }
 
+function toneForGateway(status: GatewayStatus['status']) {
+  if (status === 'Active') return 'active' as const;
+  if (status === 'Ready') return 'healthy' as const;
+  return 'warning' as const;
+}
+
+function labelForBackendType(type: GatewayStatus['backend']['type']) {
+  if (type === 'vllm') return 'vLLM';
+  if (type === 'ollama') return 'Ollama';
+  return 'Disabled';
+}
+
 function buttonClass(tone: RuntimeAction['tone']) {
   if (tone === 'danger') return 'portal-admin-btn portal-admin-btn-danger';
   if (tone === 'secondary') return 'portal-admin-btn portal-admin-btn-secondary';
@@ -220,6 +290,7 @@ function buttonClass(tone: RuntimeAction['tone']) {
 
 export function AiServicesConsole() {
   const [status, setStatus] = useState<AiRuntimeStatus | null>(null);
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -227,28 +298,40 @@ export function AiServicesConsole() {
   const [confirmArmed, setConfirmArmed] = useState(false);
   const [isRefreshing, startRefreshing] = useTransition();
   const [isRunningAction, startRunningAction] = useTransition();
+  const [isGatewayRefreshing, startGatewayRefreshing] = useTransition();
+  const [isGatewayTesting, startGatewayTesting] = useTransition();
 
-  async function loadStatus() {
+  async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(url, { cache: 'no-store', ...init });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : `Unable to load ${url}`);
+    }
+
+    return payload as T;
+  }
+
+  async function loadAllStatus() {
     setError('');
 
     try {
-      const response = await fetch('/api/admin/ai-runtime/status', { cache: 'no-store' });
-      const payload = await response.json().catch(() => null);
+      const [runtimePayload, gatewayPayload] = await Promise.all([
+        fetchJson<AiRuntimeStatus>('/api/admin/ai-runtime/status'),
+        fetchJson<GatewayStatus>('/api/admin/ai-gateway/status'),
+      ]);
 
-      if (!response.ok) {
-        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Unable to load AI runtime status');
-      }
-
-      setStatus(payload);
+      setStatus(runtimePayload);
+      setGatewayStatus(gatewayPayload);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load AI runtime status');
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load AI services status');
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadStatus();
+    loadAllStatus();
   }, []);
 
   const summaryCards = useMemo<SummaryCardShape[]>(() => {
@@ -288,10 +371,19 @@ export function AiServicesConsole() {
     ];
   }, [status]);
 
-  const serviceRows = useMemo(() => {
-    if (!status) return [];
+  const serviceRows = useMemo<ServiceRow[]>(() => {
+    if (!status || !gatewayStatus) return [];
 
     return [
+      {
+        name: 'AI API Gateway',
+        description: 'Stable OpenAI-compatible gateway endpoint for future external and internal app access.',
+        type: 'API GATEWAY',
+        status: gatewayStatus.status.toUpperCase(),
+        tone: toneForGateway(gatewayStatus.status),
+        detail: `${gatewayStatus.publicBaseUrl} · ${labelForBackendType(gatewayStatus.backend.type)} backend · API key required`,
+        action: { label: 'Manage', onClick: () => scrollToGatewaySection() },
+      },
       {
         name: 'Dify',
         description: 'Standard self-hosted Dify workspace and application UI.',
@@ -362,7 +454,7 @@ export function AiServicesConsole() {
         detail: 'Pipeline routing stays on the existing Open WebUI path.',
       },
     ];
-  }, [status]);
+  }, [status, gatewayStatus]);
 
   function openModal(key: ActionKey) {
     setPendingAction(ACTIONS[key]);
@@ -380,6 +472,10 @@ export function AiServicesConsole() {
     document.getElementById('inference-control-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function scrollToGatewaySection() {
+    document.getElementById('ai-api-gateway-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   async function runAction(action: RuntimeAction) {
     const response = await fetch(action.route, { method: 'POST' });
     const payload = await response.json().catch(() => null);
@@ -393,6 +489,37 @@ export function AiServicesConsole() {
     setMessage(result.message);
     setError('');
     closeModal();
+  }
+
+  async function runGatewayAction(route: string) {
+    const response = await fetch(route, { method: 'POST' });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : typeof payload?.message === 'string' ? payload.message : 'Unable to run gateway action');
+    }
+
+    const result = payload as GatewayActionResponse;
+    setGatewayStatus(result.status);
+    setMessage(result.message);
+    setError('');
+  }
+
+  async function refreshGatewayStatus() {
+    const payload = await fetchJson<GatewayStatus>('/api/admin/ai-gateway/status');
+    setGatewayStatus(payload);
+  }
+
+  async function copyGatewayBaseUrl() {
+    if (!gatewayStatus) return;
+
+    try {
+      await navigator.clipboard.writeText(gatewayStatus.publicBaseUrl);
+      setMessage(`Copied ${gatewayStatus.publicBaseUrl}`);
+      setError('');
+    } catch {
+      setError('Unable to copy gateway base URL from this browser session.');
+    }
   }
 
   function handleConfirmAction() {
@@ -410,7 +537,7 @@ export function AiServicesConsole() {
     });
   }
 
-  if (loading || !status) {
+  if (loading || !status || !gatewayStatus) {
     return <section className="portal-panel">Loading AI runtime controls…</section>;
   }
 
@@ -440,7 +567,7 @@ export function AiServicesConsole() {
               <p className="portal-page-sub">See the current inference backend, GPU pressure, Open WebUI provider readiness, and gated maintenance actions for future vLLM trials.</p>
             </div>
             <div className="portal-action-row">
-              <button type="button" className="portal-action-link" onClick={() => startRefreshing(() => loadStatus())}>
+              <button type="button" className="portal-action-link" onClick={() => startRefreshing(() => loadAllStatus())}>
                 {isRefreshing ? 'Refreshing…' : 'Refresh Status'}
               </button>
               <a href={status.links.openWebUi} target="_blank" rel="noopener noreferrer" className="portal-action-link">Open Open WebUI</a>
@@ -555,6 +682,126 @@ export function AiServicesConsole() {
           </div>
         </section>
       </div>
+
+      <section id="ai-api-gateway-panel" className="portal-panel portal-panel-fill">
+        <div className="portal-panel-head portal-panel-head-inline">
+          <div>
+            <h3 className="portal-panel-title">AI API Gateway</h3>
+            <p className="portal-page-sub">Public OpenAI-compatible API foundation for `llm.getouch.co`, with gateway-side API key enforcement, backend abstraction, and a stable model alias.</p>
+          </div>
+          <div className="portal-action-row">
+            <button type="button" className="portal-action-link" onClick={() => startGatewayRefreshing(() => refreshGatewayStatus())}>
+              {isGatewayRefreshing ? 'Refreshing…' : 'Refresh Gateway Status'}
+            </button>
+            <button type="button" className="portal-action-link" onClick={copyGatewayBaseUrl}>Copy Base URL</button>
+            <a href="#ai-api-gateway-docs" className="portal-action-link">Open API Docs</a>
+            <button type="button" className="portal-action-link" onClick={() => startGatewayTesting(() => runGatewayAction('/api/admin/ai-gateway/test-health'))}>
+              {isGatewayTesting ? 'Testing…' : 'Test Gateway Health'}
+            </button>
+            <button
+              type="button"
+              className="portal-action-link"
+              onClick={() => startGatewayTesting(() => runGatewayAction('/api/admin/ai-gateway/test-models'))}
+              disabled={!gatewayStatus.auth.adminTestKeyConfigured || isGatewayTesting}
+            >
+              Test Authenticated Models
+            </button>
+          </div>
+        </div>
+
+        <div className="portal-ai-gateway-grid">
+          <div className="portal-ai-runtime-card">
+            <div className="portal-ai-status-label">Public API Base URL</div>
+            <div className="portal-ai-runtime-value portal-ai-runtime-value-small">{gatewayStatus.publicBaseUrl}</div>
+            <div className="portal-ai-note">All `/v1/*` calls require `Authorization: Bearer &lt;GETOUCH_AI_API_KEY&gt;`.</div>
+          </div>
+          <div className="portal-ai-runtime-card">
+            <div className="portal-ai-status-label">Gateway Status</div>
+            <div className="portal-ai-runtime-value portal-ai-runtime-value-small">{gatewayStatus.status}</div>
+            <div className="portal-ai-note">{gatewayStatus.backend.message}</div>
+          </div>
+          <div className="portal-ai-runtime-card">
+            <div className="portal-ai-status-label">Backend Provider</div>
+            <div className="portal-ai-runtime-value portal-ai-runtime-value-small">{labelForBackendType(gatewayStatus.backend.type)}</div>
+            <div className="portal-ai-note">Gateway public, backend private.</div>
+          </div>
+          <div className="portal-ai-runtime-card">
+            <div className="portal-ai-status-label">Last Health Check</div>
+            <div className="portal-ai-runtime-value portal-ai-runtime-value-small">{formatDateTime(gatewayStatus.checkedAt)}</div>
+            <div className="portal-ai-note">Direct vLLM public exposure remains disabled.</div>
+          </div>
+        </div>
+
+        <div className="portal-ai-runtime-detail-grid">
+          <section className="portal-ai-runtime-section">
+            <h4 className="portal-panel-label">GATEWAY STATUS</h4>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Status</span><span className="portal-info-table-value">{gatewayStatus.status}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Health URL</span><span className="portal-info-table-value portal-ai-runtime-wrap">{gatewayStatus.publicHealthUrl}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Ready URL</span><span className="portal-info-table-value portal-ai-runtime-wrap">{gatewayStatus.publicReadyUrl}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Authentication</span><span className="portal-info-table-value">API key required</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Configured keys</span><span className="portal-info-table-value">{gatewayStatus.auth.keyCount}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Admin test key</span><span className="portal-info-table-value">{gatewayStatus.auth.adminTestKeyConfigured ? 'Configured server-side' : 'Not configured'}</span></div>
+            </div>
+          </section>
+
+          <section className="portal-ai-runtime-section">
+            <h4 className="portal-panel-label">BACKEND</h4>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Provider</span><span className="portal-info-table-value">{labelForBackendType(gatewayStatus.backend.type)}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Internal URL</span><span className="portal-info-table-value portal-ai-runtime-wrap">{gatewayStatus.backend.baseUrl || 'Not configured'}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Backend readiness</span><span className="portal-info-table-value">{gatewayStatus.backend.ready ? 'Ready' : 'Unavailable'}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Public exposure</span><span className="portal-info-table-value">Gateway public, backend private</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Direct backend route</span><span className="portal-info-table-value">No</span></div>
+            </div>
+          </section>
+
+          <section className="portal-ai-runtime-section">
+            <h4 className="portal-panel-label">MODEL POLICY</h4>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Allowed alias</span><span className="portal-info-table-value portal-ai-runtime-wrap">{gatewayStatus.models.map((entry) => entry.alias).join(', ')}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Backend model</span><span className="portal-info-table-value portal-ai-runtime-wrap">{gatewayStatus.models.map((entry) => entry.backendModel).join(', ')}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Unknown models</span><span className="portal-info-table-value">400 rejected by gateway</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Backend unavailable</span><span className="portal-info-table-value">Chat requests return clean 503</span></div>
+            </div>
+          </section>
+
+          <section className="portal-ai-runtime-section">
+            <h4 className="portal-panel-label">SAFETY LIMITS</h4>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Max body</span><span className="portal-info-table-value">{gatewayStatus.limits.maxBodyBytes.toLocaleString()} bytes</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Timeout</span><span className="portal-info-table-value">{Math.round(gatewayStatus.limits.timeoutMs / 1000)} seconds</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Max tokens cap</span><span className="portal-info-table-value">{gatewayStatus.limits.maxTokens}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Rate limit</span><span className="portal-info-table-value">{gatewayStatus.limits.rateLimitRequests} / {gatewayStatus.limits.rateLimitWindowSeconds}s</span></div>
+            </div>
+          </section>
+        </div>
+
+        <div className="portal-banner portal-banner-info">
+          API key management UI is coming next. Current gateway keys are managed via server env or secrets and are never shown back in full in the browser.
+        </div>
+
+        <section id="ai-api-gateway-docs" className="portal-ai-runtime-section portal-ai-gateway-docs">
+          <h4 className="portal-panel-label">API DOCS</h4>
+          <div className="portal-ai-runtime-inline-copy">Client apps should call the public alias `getouch-qwen3-14b`. The gateway maps that alias to the current backend model.</div>
+          <div className="portal-dify-code-block portal-ai-code-block">{`curl ${gatewayStatus.publicBaseUrl}/models \
+  -H "Authorization: Bearer <GETOUCH_AI_API_KEY>"`}</div>
+          <div className="portal-dify-code-block portal-ai-code-block">{`curl ${gatewayStatus.publicBaseUrl}/chat/completions \
+  -H "Authorization: Bearer <GETOUCH_AI_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "getouch-qwen3-14b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply only: GETOUCH AI API OK"
+      }
+    ],
+    "max_tokens": 50,
+    "temperature": 0.2
+  }'`}</div>
+        </section>
+      </section>
 
       <section className="portal-panel portal-panel-fill">
         <h3 className="portal-panel-label">AI & AUTOMATION</h3>
