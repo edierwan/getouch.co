@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-COPY server.mjs db.mjs ./
+COPY server.mjs db.mjs ui.mjs ./
 
 # Auth data persisted via Docker volume at /app/data
 RUN mkdir -p /app/data
