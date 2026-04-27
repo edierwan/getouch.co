@@ -717,4 +717,11 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
       { label: 'Search', href: 'https://search.getouch.co', external: true },
     ],
   },
+  {
+    title: 'Storage',
+    links: [
+      { label: 'Object Storage Dashboard', href: '/admin/object-storage', external: false },
+      { label: 'S3 Storage Console', href: 'https://s3.getouch.co', external: true },
+    ],
+  },
 ];
