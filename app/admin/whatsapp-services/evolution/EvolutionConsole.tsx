@@ -32,6 +32,17 @@ interface Session {
   qrStatus: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
   createdAt: string; updatedAt: string;
 }
+interface SessionQrResponse {
+  ok: boolean;
+  qr?: string | null;
+  qrCode?: string | null;
+  pairingCode?: string | null;
+  qrCount?: number | null;
+  state?: string | null;
+  detail?: string | null;
+  connected?: boolean;
+  waitRecommended?: boolean;
+}
 interface TenantBinding {
   id: string; tenantId: string; tenantName: string | null; tenantDomain: string | null;
   instanceId: string | null;
@@ -113,6 +124,14 @@ function planBadge(plan: string): string {
   if (p === 'pro') return 'evo-pill evo-pill-cyan';
   if (p === 'starter') return 'evo-pill evo-pill-good';
   return 'evo-pill evo-pill-amber';
+}
+
+function formatQrState(state: string | null | undefined): string {
+  if (!state) return 'Unknown';
+  if (state === 'open') return 'Connected';
+  if (state === 'close') return 'Closed';
+  if (state === 'qr') return 'QR Ready';
+  return state.charAt(0).toUpperCase() + state.slice(1);
 }
 
 /* ─── Top-level component ─────────────────────────────── */
@@ -582,7 +601,19 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
   const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
   const [showCreate, setShowCreate] = useState(false);
   const [busy, startTransition] = useTransition();
-  const [qrModal, setQrModal] = useState<{ id: string; qr: string | null; pairing: string | null; detail: string | null } | null>(null);
+  const [qrModal, setQrModal] = useState<{
+    id: string;
+    sessionName: string;
+    instanceName: string;
+    provider: string;
+    qr: string | null;
+    pairing: string | null;
+    detail: string | null;
+    state: string | null;
+    lastCheckedAt: string;
+    pollAttempt: number;
+    pollStatus: 'idle' | 'polling' | 'ready' | 'connected' | 'timeout' | 'failed';
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -600,6 +631,67 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     setLoading(false);
   }, [filter]);
   useEffect(() => { void reload(); }, [reload]);
+
+  async function requestQr(id: string, actionName: 'connect' | 'reconnect' | 'qr'): Promise<SessionQrResponse> {
+    const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: actionName }),
+    });
+    const json = await response.json();
+    if (!response.ok) throw new Error(json.error ?? `Failed (${response.status})`);
+    return json as SessionQrResponse;
+  }
+
+  useEffect(() => {
+    if (!qrModal) return;
+    if (qrModal.qr || qrModal.pairing) return;
+    if (qrModal.pollStatus === 'connected' || qrModal.pollStatus === 'failed' || qrModal.pollStatus === 'timeout') return;
+    if (qrModal.pollAttempt >= 10) {
+      setQrModal((current) => current && current.id === qrModal.id ? {
+        ...current,
+        pollStatus: 'timeout',
+        detail: current.detail ?? 'Timed out waiting for Evolution to emit a QR code.',
+      } : current);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const result = await requestQr(qrModal.id, 'qr');
+        setQrModal((current) => {
+          if (!current || current.id !== qrModal.id) return current;
+          const nextAttempt = current.pollAttempt + 1;
+          return {
+            ...current,
+            qr: result.qr ?? null,
+            pairing: result.pairingCode ?? null,
+            detail: result.detail ?? current.detail,
+            state: result.state ?? current.state,
+            lastCheckedAt: new Date().toISOString(),
+            pollAttempt: nextAttempt,
+            pollStatus: result.connected
+              ? 'connected'
+              : result.qr || result.pairingCode
+                ? 'ready'
+                : result.waitRecommended
+                  ? 'polling'
+                  : 'failed',
+          };
+        });
+        await reload();
+        onChange();
+      } catch (pollError) {
+        setQrModal((current) => current && current.id === qrModal.id ? {
+          ...current,
+          pollStatus: 'failed',
+          detail: pollError instanceof Error ? pollError.message : 'Failed to poll QR status.',
+          lastCheckedAt: new Date().toISOString(),
+        } : current);
+      }
+    }, 3000);
+
+    return () => window.clearTimeout(timeout);
+  }, [onChange, qrModal, reload]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setErr(null);
@@ -619,13 +711,34 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
   async function action(id: string, a: 'connect' | 'reconnect' | 'disconnect' | 'qr') {
     if (a === 'disconnect' && !confirm('Disconnect this session?')) return;
-    const r = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: a }),
-    });
-    const j = await r.json();
-    if ((a === 'connect' || a === 'reconnect' || a === 'qr') && r.ok) {
-      setQrModal({ id, qr: j.qr ?? null, pairing: j.pairingCode ?? null, detail: j.detail ?? null });
+    if (a === 'connect' || a === 'reconnect' || a === 'qr') {
+      const session = rows.find((row) => row.id === id);
+      const instance = instances.find((row) => row.id === session?.instanceId);
+      const result = await requestQr(id, a);
+      setQrModal({
+        id,
+        sessionName: session?.sessionName ?? 'Unknown session',
+        instanceName: instance?.name ?? 'Unknown instance',
+        provider: 'Evolution API',
+        qr: result.qr ?? null,
+        pairing: result.pairingCode ?? null,
+        detail: result.detail ?? null,
+        state: result.state ?? null,
+        lastCheckedAt: new Date().toISOString(),
+        pollAttempt: 0,
+        pollStatus: result.connected
+          ? 'connected'
+          : result.qr || result.pairingCode
+            ? 'ready'
+            : result.waitRecommended
+              ? 'polling'
+              : 'failed',
+      });
+    } else {
+      await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: a }),
+      });
     }
     await reload(); onChange();
   }
@@ -702,6 +815,14 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         <div className="evo-modal-back" onClick={() => setQrModal(null)}>
           <div className="evo-modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="evo-panel-title">Connect WhatsApp Session</h3>
+            <div className="evo-qr-meta">
+              <div><strong>Session:</strong> {qrModal.sessionName}</div>
+              <div><strong>Provider:</strong> {qrModal.provider}</div>
+              <div><strong>Instance:</strong> {qrModal.instanceName}</div>
+              <div><strong>State:</strong> {formatQrState(qrModal.state)}</div>
+              <div><strong>Last checked:</strong> {timeAgo(qrModal.lastCheckedAt)}</div>
+              <div><strong>Polling:</strong> {qrModal.pollStatus === 'polling' ? `Waiting (${qrModal.pollAttempt}/10)` : qrModal.pollStatus}</div>
+            </div>
             {qrModal.qr ? (
               <img alt="QR code" src={qrModal.qr} className="evo-qr" />
             ) : qrModal.pairing ? (
@@ -709,7 +830,20 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
             ) : (
               <div className="evo-empty-row">{qrModal.detail ?? 'No QR returned by backend.'}</div>
             )}
+            {qrModal.pollStatus === 'connected' ? <div className="evo-qr-status evo-qr-status-good">Session connected.</div> : null}
+            {qrModal.pollStatus === 'polling' ? <div className="evo-qr-status">Session is connecting. Waiting for Evolution to emit QR...</div> : null}
+            {qrModal.pollStatus === 'timeout' ? <div className="evo-qr-status evo-qr-status-bad">Timed out waiting for QR. Retry to request a fresh check.</div> : null}
+            {qrModal.pollStatus === 'failed' ? <div className="evo-qr-status evo-qr-status-bad">{qrModal.detail ?? 'QR polling failed.'}</div> : null}
+            <div className="evo-row-actions evo-row-actions-end">
+              <button
+                className="evo-btn evo-btn-primary"
+                type="button"
+                onClick={() => setQrModal((current) => current ? { ...current, pollAttempt: 0, pollStatus: 'polling', lastCheckedAt: new Date().toISOString() } : current)}
+              >
+                Retry Polling
+              </button>
             <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
@@ -1259,6 +1393,7 @@ function EvolutionStyles() {
 .evo-pill-cyan { background: rgba(6,182,212,0.20); color: #67e8f9; }
 .evo-pill-amber { background: rgba(245,158,11,0.20); color: #fcd34d; }
 .evo-row-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.evo-row-actions-end { justify-content: flex-end; }
 .evo-input { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 7px; padding: 0.5rem 0.65rem; color: var(--text); font-size: 0.85rem; width: 100%; }
 .evo-input:focus { outline: 2px solid #8b5cf6; outline-offset: -1px; }
 .evo-input-sm { padding: 0.32rem 0.5rem; font-size: 0.78rem; width: auto; }
@@ -1306,7 +1441,11 @@ function EvolutionStyles() {
 .evo-health-label { color: var(--text-secondary); }
 .evo-modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 80; display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .evo-modal { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; max-width: 420px; width: 100%; display: flex; flex-direction: column; gap: 0.8rem; }
+.evo-qr-meta { display: grid; gap: 0.35rem; font-size: 0.92rem; color: var(--text-dim); }
 .evo-qr { width: 100%; max-width: 280px; margin: 0 auto; background: white; padding: 0.5rem; border-radius: 8px; }
+.evo-qr-status { font-size: 0.92rem; color: var(--text-dim); }
+.evo-qr-status-good { color: #22c55e; }
+.evo-qr-status-bad { color: #f87171; }
 .evo-pairing { font-size: 1.4rem; text-align: center; font-family: ui-monospace, monospace; }
 .evo-bars { display: flex; align-items: flex-end; gap: 0.3rem; height: 140px; padding: 0.4rem 0; }
 .evo-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; min-width: 24px; }

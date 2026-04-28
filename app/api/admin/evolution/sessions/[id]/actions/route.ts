@@ -20,6 +20,10 @@ type EvolutionQrPayload = {
   instance?: { state?: string };
 };
 
+type EvolutionConnectionStatePayload = {
+  instance?: { state?: string };
+};
+
 function normalizeQrPayload(data: EvolutionQrPayload | undefined) {
   const nested = data?.qrcode;
   return {
@@ -29,6 +33,56 @@ function normalizeQrPayload(data: EvolutionQrPayload | undefined) {
     qrCount: nested?.count ?? data?.count ?? null,
     state: data?.instance?.state ?? null,
   };
+}
+
+function mapBackendStateToSessionStatus(state: string | null): typeof evolutionSessions.$inferInsert.status {
+  switch (state) {
+    case 'open':
+      return 'connected';
+    case 'connecting':
+    case 'qr':
+      return 'qr_pending';
+    case 'close':
+    case 'disconnected':
+      return 'disconnected';
+    case 'failed':
+    case 'refused':
+      return 'error';
+    default:
+      return 'qr_pending';
+  }
+}
+
+async function fetchConnectionState(remoteId: string): Promise<string | null> {
+  const state = await evolutionFetch<EvolutionConnectionStatePayload>(
+    `/instance/connectionState/${encodeURIComponent(remoteId)}`,
+    { method: 'GET', timeoutMs: 5000 },
+  );
+  if (!state.ok) return null;
+  return state.data?.instance?.state ?? null;
+}
+
+function getDetailForState(input: {
+  state: string | null;
+  qr: string | null;
+  qrCode: string | null;
+  pairingCode: string | null;
+  qrCount: number | null;
+}): string | null {
+  if (input.qr || input.qrCode || input.pairingCode) return null;
+  if (input.state === 'open') return 'Session is already connected.';
+  if (input.state === 'connecting' || input.state === 'qr') {
+    return input.qrCount === 0
+      ? 'Session is connecting. Waiting for Evolution to emit QR...'
+      : 'Waiting for Evolution to emit QR...';
+  }
+  if (input.state === 'close' || input.state === 'disconnected') {
+    return 'Session is disconnected. Retry QR to request a new connection.';
+  }
+  if (input.state === 'failed' || input.state === 'refused') {
+    return 'Evolution reported a failed connection state.';
+  }
+  return 'Backend did not return QR data.';
 }
 
 export async function POST(req: NextRequest, ctx: Ctx) {
@@ -55,9 +109,15 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     );
     if (r.ok) {
       const qr = normalizeQrPayload(r.data);
+      const state = qr.state ?? await fetchConnectionState(remoteId);
+      const sessionStatus = mapBackendStateToSessionStatus(state);
+      const detail = getDetailForState({ ...qr, state });
       await db.update(evolutionSessions).set({
-        status: 'qr_pending', qrStatus: 'pending', updatedAt: new Date(),
-        qrExpiresAt: new Date(Date.now() + 60 * 1000),
+        status: sessionStatus,
+        qrStatus: qr.qr || qr.qrCode || qr.pairingCode ? 'pending' : null,
+        updatedAt: new Date(),
+        qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(Date.now() + 60 * 1000) : null,
+        lastConnectedAt: state === 'open' ? new Date() : row.lastConnectedAt,
       }).where(eq(evolutionSessions.id, id));
       await recordEvent({
         eventType: `session.${action}_requested`,
@@ -71,12 +131,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         qrCode: qr.qrCode,
         pairingCode: qr.pairingCode,
         qrCount: qr.qrCount,
-        state: qr.state,
-        detail: qr.qr || qr.qrCode || qr.pairingCode
-          ? null
-          : qr.qrCount === 0
-            ? 'Backend is connecting but has not emitted a QR yet.'
-            : 'Backend did not return QR data.',
+        state,
+        connected: state === 'open',
+        waitRecommended: !qr.qr && !qr.qrCode && !qr.pairingCode && (state === 'connecting' || state === 'qr' || state === null),
+        detail,
       });
     }
     return NextResponse.json({ ok: false, status: r.status, error: r.error ?? 'backend_error' }, { status: 502 });
