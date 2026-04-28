@@ -16,6 +16,22 @@ import {
 export const userRole = pgEnum('user_role', ['admin', 'user', 'pending']);
 export const difySetupStatus = pgEnum('dify_setup_status', ['active', 'inactive', 'draft']);
 export const scheduledRestartType = pgEnum('scheduled_restart_type', ['one-time', 'daily', 'weekly']);
+export const apiKeyEnvironment = pgEnum('central_api_key_environment', ['live', 'test']);
+export const apiKeyStatusEnum = pgEnum('central_api_key_status', [
+  'active',
+  'disabled',
+  'revoked',
+  'rotating',
+  'expired',
+]);
+export const apiKeyValidationSource = pgEnum('central_api_key_validation_source', [
+  'central',
+  'legacy_wa',
+  'env',
+  'manual',
+  'unknown',
+]);
+export const apiSecretStatus = pgEnum('central_api_secret_status', ['configured', 'missing', 'unknown']);
 
 /* ─── Users (central identity master) ─── */
 export const users = pgTable('users', {
@@ -157,5 +173,105 @@ export const scheduledRestartLogs = pgTable(
   (table) => [
     index('scheduled_restart_logs_target_host_idx').on(table.targetHost),
     index('scheduled_restart_logs_created_at_idx').on(table.createdAt),
+  ],
+);
+
+/* ─── Centralized API Key Manager ─────────────────────────────
+ * Stored as hash only. Plaintext is shown ONCE at creation and
+ * never persisted. Services + scopes are kept as jsonb arrays
+ * to keep the foundation small; can be normalized later.
+ * ─────────────────────────────────────────────────────────── */
+export const apiKeys = pgTable(
+  'central_api_keys',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id'),
+    name: varchar('name', { length: 200 }).notNull(),
+    environment: apiKeyEnvironment('environment').default('live').notNull(),
+    keyPrefix: varchar('key_prefix', { length: 32 }).notNull().unique(),
+    keyHash: text('key_hash').notNull(),
+    status: apiKeyStatusEnum('status').default('active').notNull(),
+    services: jsonb('services').$type<string[]>().default([]).notNull(),
+    scopes: jsonb('scopes').$type<string[]>().default([]).notNull(),
+    allowedOrigins: jsonb('allowed_origins').$type<string[]>().default([]).notNull(),
+    rateLimitCount: integer('rate_limit_count'),
+    rateLimitWindowSeconds: integer('rate_limit_window_seconds'),
+    burstLimit: integer('burst_limit'),
+    validationSource: apiKeyValidationSource('validation_source').default('central').notNull(),
+    notes: text('notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdByEmail: varchar('created_by_email', { length: 255 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    lastUsedIp: varchar('last_used_ip', { length: 64 }),
+    lastUsedService: varchar('last_used_service', { length: 64 }),
+    rotatedFromId: uuid('rotated_from_id'),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedByEmail: varchar('revoked_by_email', { length: 255 }),
+  },
+  (table) => [
+    index('central_api_keys_status_idx').on(table.status),
+    index('central_api_keys_tenant_idx').on(table.tenantId),
+    index('central_api_keys_created_at_idx').on(table.createdAt),
+  ],
+);
+
+export const apiKeyUsageLogs = pgTable(
+  'central_api_key_usage_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    apiKeyId: uuid('api_key_id').references(() => apiKeys.id, { onDelete: 'cascade' }),
+    keyPrefix: varchar('key_prefix', { length: 32 }),
+    service: varchar('service', { length: 64 }),
+    route: varchar('route', { length: 255 }),
+    statusCode: integer('status_code'),
+    requestId: varchar('request_id', { length: 80 }),
+    ipHash: varchar('ip_hash', { length: 80 }),
+    userAgentHash: varchar('user_agent_hash', { length: 80 }),
+    latencyMs: integer('latency_ms'),
+    errorCode: varchar('error_code', { length: 64 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('central_api_key_usage_logs_key_idx').on(table.apiKeyId),
+    index('central_api_key_usage_logs_created_at_idx').on(table.createdAt),
+  ],
+);
+
+export const apiKeyAuditLogs = pgTable(
+  'central_api_key_audit_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    apiKeyId: uuid('api_key_id').references(() => apiKeys.id, { onDelete: 'set null' }),
+    keyPrefix: varchar('key_prefix', { length: 32 }),
+    action: varchar('action', { length: 40 }).notNull(),
+    actorEmail: varchar('actor_email', { length: 255 }),
+    summary: varchar('summary', { length: 255 }),
+    details: jsonb('details').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('central_api_key_audit_logs_key_idx').on(table.apiKeyId),
+    index('central_api_key_audit_logs_created_at_idx').on(table.createdAt),
+  ],
+);
+
+export const apiSecretInventory = pgTable(
+  'central_api_secret_inventory',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    serviceName: varchar('service_name', { length: 120 }).notNull(),
+    envName: varchar('env_name', { length: 200 }).notNull(),
+    secretType: varchar('secret_type', { length: 80 }),
+    status: apiSecretStatus('status').default('unknown').notNull(),
+    managedBy: varchar('managed_by', { length: 40 }).default('coolify').notNull(),
+    notes: text('notes'),
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('central_api_secret_inventory_service_env_idx').on(table.serviceName, table.envName),
   ],
 );

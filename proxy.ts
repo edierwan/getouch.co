@@ -39,9 +39,18 @@ const getSecret = () => {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const portalHost = isPortalHost(request);
-  const portalApiRequest = portalHost && pathname.startsWith('/api/');
+  // Public diagnostic endpoint — must work without auth so operators can
+  // verify which build is actually live (commit SHA, nav labels, etc).
+  const isPublicDiagnostic = pathname === '/api/build-info';
+  const portalApiRequest =
+    portalHost && pathname.startsWith('/api/') && !isPublicDiagnostic;
 
   if (portalHost) {
+    // Public diagnostic — let it through without any auth/redirect logic.
+    if (isPublicDiagnostic) {
+      return NextResponse.next();
+    }
+
     if (pathname.startsWith('/portal')) {
       return NextResponse.redirect(getMainPortalUrl(request));
     }

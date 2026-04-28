@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ADMIN_NAV } from './data';
 
 const SIDEBAR_SCROLL_STORAGE_KEY = 'getouch.admin.sidebar.scrollTop';
-const SIDEBAR_EXPANDED_SECTIONS_KEY = 'getouch.admin.sidebar.expandedSections';
+const SIDEBAR_EXPANDED_SECTIONS_KEY = 'getouch.admin.sidebar.expandedSections.v2';
 
 /* Convert an internal /admin/* path to a public portal path. */
 function toPublicPath(href: string): string {
@@ -97,9 +97,12 @@ export default function SidebarNav({ isPortal }: { isPortal: boolean }) {
   useEffect(() => {
     const stored = window.localStorage.getItem(SIDEBAR_EXPANDED_SECTIONS_KEY);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
+    // First visit (no stored preference): expand every section so all nav
+    // items are immediately discoverable. Returning visitors keep the
+    // sections they explicitly collapsed/expanded.
     const next = Array.isArray(parsed)
       ? parsed.filter((value): value is string => typeof value === 'string')
-      : [];
+      : ADMIN_NAV.map((section) => section.label);
 
     if (activeSectionLabel && !next.includes(activeSectionLabel)) {
       next.push(activeSectionLabel);

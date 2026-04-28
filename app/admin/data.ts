@@ -79,6 +79,7 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
       { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
+      { label: 'Object Storage', href: '/admin/object-storage', icon: '▦' },
       { label: 'Preprod Backups', href: '/admin/databases', icon: '⟲' },
     ],
   },
@@ -109,6 +110,15 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Dify', href: 'https://dify.getouch.co', icon: '◉', external: true },
       { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
       { label: 'MCP', href: 'https://mcp.getouch.co', icon: '⌬', external: true },
+    ],
+  },
+  {
+    label: 'DEVELOPER PLATFORM',
+    accentRgb: '184, 156, 255',
+    items: [
+      { label: 'API Keys', href: '/admin/api-keys', icon: '⚿' },
+      { label: 'Webhooks', href: '/admin/api-keys#webhooks', icon: '↺' },
+      { label: 'SDK & Docs', href: '/admin/api-keys#docs', icon: '⌥' },
     ],
   },
   {
@@ -714,6 +724,13 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
       { label: 'Open WebUI', href: 'https://ai.getouch.co', external: true },
       { label: 'WhatsApp API', href: 'https://wa.getouch.co', external: true },
       { label: 'Search', href: 'https://search.getouch.co', external: true },
+    ],
+  },
+  {
+    title: 'Storage',
+    links: [
+      { label: 'Object Storage Dashboard', href: '/admin/object-storage', external: false },
+      { label: 'S3 Storage Console', href: 'https://s3.getouch.co', external: true },
     ],
   },
 ];
