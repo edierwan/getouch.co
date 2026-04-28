@@ -211,3 +211,11 @@ Open WebUI currently shows only local Ollama models because no OpenAI-compatible
 - public protected: `https://vllm.getouch.co/v1` (with `GETOUCH_VLLM_API_KEY`),
 
 …the chat aliases (e.g. `getouch-qwen3-14b`) will appear under the External / OpenAI-compatible tab. The embedding alias `getouch-embed` will not appear as a chat model.
+
+## Changelog 2026-04-27/28
+
+- Confirmed `https://vllm.getouch.co/v1` is the only public vLLM API surface; `https://llm.getouch.co` is **reserved** for future LiteLLM and intentionally has no Caddy vhost in this milestone.
+- Added Caddy vhost for `vllm.getouch.co` routing only `/v1/*`, `/health`, `/ready` to the portal app; everything else returns 404 at the edge.
+- Reaffirmed: vLLM container is **not** deployed in this milestone (the prior `vllm-qwen3-14b-fp8-probe` exited on engine init — separate 16GB-GPU validation task).
+- Reaffirmed: vLLM is **not** added to Open WebUI's External provider list automatically; operator must add it manually after the backend is validated.
+- `CENTRAL_API_KEY_PEPPER` is unrelated to the gateway key path today (gateway uses `GETOUCH_VLLM_GATEWAY_KEYS`); central-key→gateway wiring is documented as a deferred follow-up in `docs/ai-api-gateway-2026-04-27.md`.

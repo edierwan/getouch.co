@@ -187,3 +187,15 @@ The following steps are deployment-time only and are not in the application repo
 - `/v1/models` no longer lists aliases with `status: blocked`.
 - Confirmed vLLM is still not visible in Open WebUI until the operator manually adds it as an OpenAI-compatible provider.
 - No raw vLLM public exposure. API key protection is enforced gateway-side.
+
+### 2026-04-27/28 — Auth Ordering + Pepper Alignment
+
+- **Auth ordering fix** in `lib/ai-gateway.ts::authenticateGatewayRequest`: missing/invalid token now returns `401` **before** the `enabled` flag is checked. Prior order returned `503` to anonymous probes when the backend was disabled, which leaked backend state. New order: missing-key → 401 → invalid-key → 401 → backend-disabled → 503 → rate-limit → 429.
+- Verified live (`https://vllm.getouch.co`):
+  - `/v1/models` (no key) → `401 missing_api_key`
+  - `/v1/models` (wrong key) → `401`
+  - `/health` → `200`
+  - `/ready` → `503` (backend not running, expected)
+  - `/foo` → `404`
+- **Central key wiring deferred.** The gateway still authenticates against the env-based `GETOUCH_VLLM_GATEWAY_KEYS` list. Wiring central API keys (`central_api_keys` table managed by `lib/api-keys.ts`) into the vLLM gateway is intentionally a follow-up task; it is not required for the 2026-04-27 milestone and would conflate two distinct key namespaces (admin/portal central keys vs. external AI consumer keys). The follow-up should add a gateway-key scope (e.g. `vllm:invoke`) to the central key model and route the gateway through `lib/api-keys.ts::verifyApiKey` when that scope is present, while keeping `GETOUCH_VLLM_GATEWAY_KEYS` as a bootstrap fallback.
+- `CENTRAL_API_KEY_PEPPER` (separate from `AUTH_SECRET`) now peppers HMAC for central API keys; legacy `AUTH_SECRET` remains as a one-time fallback with a one-shot prod warning. See `docs/api-key-manager.md`.
