@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 
 interface Ctx { params: Promise<{ id: string }> }
 const ACTIONS = new Set(['connect', 'reconnect', 'disconnect', 'qr']);
+const EVOLUTION_DEPENDENCY_FAILURE_STATUS = 424;
 
 type EvolutionQrPayload = {
   qrcode?: { code?: string; base64?: string; pairingCode?: string; count?: number };
@@ -215,7 +216,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
             data: created.data,
             remoteId: row.sessionName,
           })}`,
-        }, { status: 502 });
+        }, { status: EVOLUTION_DEPENDENCY_FAILURE_STATUS });
       }
 
       resolvedRemoteId = created.data?.instance?.instanceName ?? row.sessionName;
@@ -271,7 +272,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         data: r.data,
         remoteId: resolvedRemoteId,
       }),
-    }, { status: 502 });
+    }, { status: EVOLUTION_DEPENDENCY_FAILURE_STATUS });
   }
 
   if (action === 'disconnect') {
