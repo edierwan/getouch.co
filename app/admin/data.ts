@@ -103,6 +103,13 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
+    label: 'WHATSAPP SERVICES',
+    accentRgb: '111, 213, 153',
+    items: [
+      { label: 'Evolution Gateway', href: '/admin/whatsapp-services/evolution', icon: '◈' },
+    ],
+  },
+  {
     label: 'AI & AUTOMATION',
     accentRgb: '92, 210, 184',
     items: [

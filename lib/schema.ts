@@ -282,3 +282,227 @@ export const apiSecretInventory = pgTable(
     uniqueIndex('central_api_secret_inventory_service_env_idx').on(table.serviceName, table.envName),
   ],
 );
+
+/* ─── Evolution WhatsApp Gateway (multi-tenant) ───────────
+ * Control-plane metadata for the Evolution API backend.
+ * Lives alongside central_* in the portal DB. Evolution's own
+ * runtime state (Baileys auth, QR cache, etc.) lives inside the
+ * Evolution container's own database, independent of these tables.
+ * ─────────────────────────────────────────────────────────── */
+
+export const evolutionInstanceStatus = pgEnum('evolution_instance_status', [
+  'active', 'stopped', 'error', 'maintenance', 'unknown',
+]);
+
+export const evolutionSessionStatus = pgEnum('evolution_session_status', [
+  'connected', 'connecting', 'disconnected', 'expired', 'error', 'qr_pending',
+]);
+
+export const evolutionWebhookStatus = pgEnum('evolution_webhook_status', [
+  'active', 'paused', 'failing',
+]);
+
+export const evolutionTemplateStatus = pgEnum('evolution_template_status', [
+  'draft', 'pending', 'approved', 'rejected', 'archived',
+]);
+
+export const evolutionMessageDirection = pgEnum('evolution_message_direction', [
+  'inbound', 'outbound',
+]);
+
+export const evolutionMessageStatus = pgEnum('evolution_message_status', [
+  'queued', 'sent', 'delivered', 'read', 'failed', 'received',
+]);
+
+export const evolutionTenantPlan = pgEnum('evolution_tenant_plan', [
+  'trial', 'starter', 'pro', 'business', 'enterprise',
+]);
+
+export const evolutionTenantBindingStatus = pgEnum('evolution_tenant_binding_status', [
+  'active', 'suspended', 'pending',
+]);
+
+export const evolutionInstances = pgTable(
+  'evolution_instances',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: varchar('name', { length: 120 }).notNull(),
+    slug: varchar('slug', { length: 120 }).notNull().unique(),
+    internalUrl: text('internal_url').notNull(),
+    publicUrl: text('public_url'),
+    status: evolutionInstanceStatus('status').default('unknown').notNull(),
+    version: varchar('version', { length: 40 }),
+    region: varchar('region', { length: 60 }),
+    notes: text('notes'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    lastHealthCheckAt: timestamp('last_health_check_at', { withTimezone: true }),
+    lastHealthStatus: varchar('last_health_status', { length: 40 }),
+    lastHealthMessage: text('last_health_message'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('evolution_instances_status_idx').on(table.status),
+  ],
+);
+
+export const evolutionTenantBindings = pgTable(
+  'evolution_tenant_bindings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id').notNull().unique(),
+    tenantName: varchar('tenant_name', { length: 160 }),
+    tenantDomain: varchar('tenant_domain', { length: 255 }),
+    instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
+    defaultSessionId: uuid('default_session_id'),
+    plan: evolutionTenantPlan('plan').default('trial').notNull(),
+    status: evolutionTenantBindingStatus('status').default('active').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('evolution_tenant_bindings_instance_idx').on(table.instanceId),
+    index('evolution_tenant_bindings_status_idx').on(table.status),
+  ],
+);
+
+export const evolutionSessions = pgTable(
+  'evolution_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
+    tenantId: uuid('tenant_id'),
+    sessionName: varchar('session_name', { length: 120 }).notNull(),
+    phoneNumber: varchar('phone_number', { length: 40 }),
+    status: evolutionSessionStatus('status').default('disconnected').notNull(),
+    qrStatus: varchar('qr_status', { length: 40 }),
+    qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
+    evolutionRemoteId: varchar('evolution_remote_id', { length: 160 }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    lastConnectedAt: timestamp('last_connected_at', { withTimezone: true }),
+    lastDisconnectedAt: timestamp('last_disconnected_at', { withTimezone: true }),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('evolution_sessions_instance_name_unique').on(table.instanceId, table.sessionName),
+    index('evolution_sessions_tenant_idx').on(table.tenantId),
+    index('evolution_sessions_status_idx').on(table.status),
+    index('evolution_sessions_phone_idx').on(table.phoneNumber),
+  ],
+);
+
+export const evolutionWebhooks = pgTable(
+  'evolution_webhooks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id'),
+    instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
+    sessionId: uuid('session_id').references(() => evolutionSessions.id, { onDelete: 'set null' }),
+    label: varchar('label', { length: 120 }),
+    url: text('url').notNull(),
+    events: jsonb('events').$type<string[]>().default([]).notNull(),
+    secretHash: text('secret_hash'),
+    secretPrefix: varchar('secret_prefix', { length: 16 }),
+    status: evolutionWebhookStatus('status').default('active').notNull(),
+    lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+    lastDeliveryStatus: integer('last_delivery_status'),
+    lastError: text('last_error'),
+    deliveryCount: integer('delivery_count').default(0).notNull(),
+    failureCount: integer('failure_count').default(0).notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('evolution_webhooks_tenant_idx').on(table.tenantId),
+    index('evolution_webhooks_status_idx').on(table.status),
+  ],
+);
+
+export const evolutionTemplates = pgTable(
+  'evolution_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id'),
+    name: varchar('name', { length: 160 }).notNull(),
+    category: varchar('category', { length: 60 }),
+    language: varchar('language', { length: 20 }).default('en').notNull(),
+    status: evolutionTemplateStatus('status').default('draft').notNull(),
+    body: text('body').notNull(),
+    variables: jsonb('variables').$type<string[]>().default([]).notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdByEmail: varchar('created_by_email', { length: 255 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('evolution_templates_tenant_idx').on(table.tenantId),
+    index('evolution_templates_status_idx').on(table.status),
+  ],
+);
+
+export const evolutionMessageLogs = pgTable(
+  'evolution_message_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id'),
+    instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
+    sessionId: uuid('session_id').references(() => evolutionSessions.id, { onDelete: 'set null' }),
+    direction: evolutionMessageDirection('direction').notNull(),
+    toNumber: varchar('to_number', { length: 40 }),
+    fromNumber: varchar('from_number', { length: 40 }),
+    messageType: varchar('message_type', { length: 40 }).default('text').notNull(),
+    status: evolutionMessageStatus('status').notNull(),
+    providerMessageId: varchar('provider_message_id', { length: 160 }),
+    preview: varchar('preview', { length: 280 }),
+    errorCode: varchar('error_code', { length: 80 }),
+    errorMessage: text('error_message'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('evolution_message_logs_tenant_idx').on(table.tenantId),
+    index('evolution_message_logs_session_idx').on(table.sessionId),
+    index('evolution_message_logs_created_at_idx').on(table.createdAt),
+    index('evolution_message_logs_status_idx').on(table.status),
+  ],
+);
+
+export const evolutionEvents = pgTable(
+  'evolution_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id'),
+    instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
+    sessionId: uuid('session_id').references(() => evolutionSessions.id, { onDelete: 'set null' }),
+    eventType: varchar('event_type', { length: 80 }).notNull(),
+    severity: varchar('severity', { length: 20 }).default('info').notNull(),
+    summary: varchar('summary', { length: 255 }),
+    actorEmail: varchar('actor_email', { length: 255 }),
+    payloadSummary: jsonb('payload_summary').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('evolution_events_created_at_idx').on(table.createdAt),
+    index('evolution_events_event_type_idx').on(table.eventType),
+    index('evolution_events_tenant_idx').on(table.tenantId),
+  ],
+);
+
+export const evolutionSettings = pgTable('evolution_settings', {
+  id: integer('id').primaryKey().default(1),
+  defaultWebhookEvents: jsonb('default_webhook_events').$type<string[]>()
+    .default(['message.received', 'message.sent', 'session.connected', 'session.disconnected', 'qr.updated'])
+    .notNull(),
+  retryMaxAttempts: integer('retry_max_attempts').default(5).notNull(),
+  rateLimitPerMinute: integer('rate_limit_per_minute').default(60).notNull(),
+  sessionLimitPerTenant: integer('session_limit_per_tenant').default(5).notNull(),
+  tenantIsolationStrict: boolean('tenant_isolation_strict').default(true).notNull(),
+  maintenanceMode: boolean('maintenance_mode').default(false).notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedByEmail: varchar('updated_by_email', { length: 255 }),
+});
