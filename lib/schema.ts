@@ -16,22 +16,22 @@ import {
 export const userRole = pgEnum('user_role', ['admin', 'user', 'pending']);
 export const difySetupStatus = pgEnum('dify_setup_status', ['active', 'inactive', 'draft']);
 export const scheduledRestartType = pgEnum('scheduled_restart_type', ['one-time', 'daily', 'weekly']);
-export const apiKeyEnvironment = pgEnum('api_key_environment', ['live', 'test']);
-export const apiKeyStatusEnum = pgEnum('api_key_status', [
+export const apiKeyEnvironment = pgEnum('central_api_key_environment', ['live', 'test']);
+export const apiKeyStatusEnum = pgEnum('central_api_key_status', [
   'active',
   'disabled',
   'revoked',
   'rotating',
   'expired',
 ]);
-export const apiKeyValidationSource = pgEnum('api_key_validation_source', [
+export const apiKeyValidationSource = pgEnum('central_api_key_validation_source', [
   'central',
   'legacy_wa',
   'env',
   'manual',
   'unknown',
 ]);
-export const apiSecretStatus = pgEnum('api_secret_status', ['configured', 'missing', 'unknown']);
+export const apiSecretStatus = pgEnum('central_api_secret_status', ['configured', 'missing', 'unknown']);
 
 /* ─── Users (central identity master) ─── */
 export const users = pgTable('users', {
@@ -182,7 +182,7 @@ export const scheduledRestartLogs = pgTable(
  * to keep the foundation small; can be normalized later.
  * ─────────────────────────────────────────────────────────── */
 export const apiKeys = pgTable(
-  'api_keys',
+  'central_api_keys',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     tenantId: uuid('tenant_id'),
@@ -211,14 +211,14 @@ export const apiKeys = pgTable(
     revokedByEmail: varchar('revoked_by_email', { length: 255 }),
   },
   (table) => [
-    index('api_keys_status_idx').on(table.status),
-    index('api_keys_tenant_idx').on(table.tenantId),
-    index('api_keys_created_at_idx').on(table.createdAt),
+    index('central_api_keys_status_idx').on(table.status),
+    index('central_api_keys_tenant_idx').on(table.tenantId),
+    index('central_api_keys_created_at_idx').on(table.createdAt),
   ],
 );
 
 export const apiKeyUsageLogs = pgTable(
-  'api_key_usage_logs',
+  'central_api_key_usage_logs',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     apiKeyId: uuid('api_key_id').references(() => apiKeys.id, { onDelete: 'cascade' }),
@@ -234,13 +234,13 @@ export const apiKeyUsageLogs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    index('api_key_usage_logs_key_idx').on(table.apiKeyId),
-    index('api_key_usage_logs_created_at_idx').on(table.createdAt),
+    index('central_api_key_usage_logs_key_idx').on(table.apiKeyId),
+    index('central_api_key_usage_logs_created_at_idx').on(table.createdAt),
   ],
 );
 
 export const apiKeyAuditLogs = pgTable(
-  'api_key_audit_logs',
+  'central_api_key_audit_logs',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     apiKeyId: uuid('api_key_id').references(() => apiKeys.id, { onDelete: 'set null' }),
@@ -252,13 +252,13 @@ export const apiKeyAuditLogs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    index('api_key_audit_logs_key_idx').on(table.apiKeyId),
-    index('api_key_audit_logs_created_at_idx').on(table.createdAt),
+    index('central_api_key_audit_logs_key_idx').on(table.apiKeyId),
+    index('central_api_key_audit_logs_created_at_idx').on(table.createdAt),
   ],
 );
 
 export const apiSecretInventory = pgTable(
-  'api_secret_inventory',
+  'central_api_secret_inventory',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     serviceName: varchar('service_name', { length: 120 }).notNull(),
@@ -272,6 +272,6 @@ export const apiSecretInventory = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex('api_secret_inventory_service_env_idx').on(table.serviceName, table.envName),
+    uniqueIndex('central_api_secret_inventory_service_env_idx').on(table.serviceName, table.envName),
   ],
 );

@@ -51,7 +51,9 @@ If `AUTH_SECRET` rotates, all keys must be re-issued. This is documented as a de
 
 ## Schema
 
-See [lib/schema.ts](../lib/schema.ts) (`apiKeys`, `apiKeyUsageLogs`, `apiKeyAuditLogs`, `apiSecretInventory`) and migration [drizzle/0006_api_keys.sql](../drizzle/0006_api_keys.sql).
+See [lib/schema.ts](../lib/schema.ts) (`apiKeys` exported as TS, table name `central_api_keys`; plus `central_api_key_usage_logs`, `central_api_key_audit_logs`, `central_api_secret_inventory`) and migration [drizzle/0006_api_keys.sql](../drizzle/0006_api_keys.sql).
+
+> Tables are prefixed `central_*` to avoid colliding with the pre-existing legacy `api_keys` table (integer id, FK from `connected_apps`) used by the WhatsApp app integration. The legacy table is left fully intact.
 
 `services` and `scopes` are stored as JSONB string arrays (not normalized child tables) for foundation simplicity. They can be normalized later without breaking the public API surface.
 
