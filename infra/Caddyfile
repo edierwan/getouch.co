@@ -39,12 +39,6 @@ http://getouch.co {
     }
   }
 
-  handle /services {
-    root * /etc/caddy/static
-    rewrite * /services.html
-    file_server
-  }
-
   # Immutable hashed assets — cache aggressively
   @static path /_next/static/*
   header @static Cache-Control "public, max-age=31536000, immutable"
@@ -415,7 +409,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web:3000
+    reverse_proxy getouch-web-prod:3000
   }
 }
 
