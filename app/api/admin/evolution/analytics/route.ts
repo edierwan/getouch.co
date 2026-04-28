@@ -11,7 +11,7 @@ export async function GET() {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
-  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const [series, byTenant, byStatus, sessionTrend, webhookHealth] = await Promise.all([
     // messages per day, last 7d

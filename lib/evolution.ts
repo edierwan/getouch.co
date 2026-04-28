@@ -8,7 +8,7 @@
  */
 
 import crypto from 'node:crypto';
-import { and, count, desc, eq, gte, sql as dsql } from 'drizzle-orm';
+import { and, count, desc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from './db';
 import {
   evolutionEvents,
@@ -213,9 +213,9 @@ export interface OverviewStats {
 }
 
 export async function getOverviewStats(): Promise<OverviewStats> {
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const [instances, sessions, tenants, msgs24, msgs48, healthRows] = await Promise.all([
     db.select({
@@ -234,9 +234,9 @@ export async function getOverviewStats(): Promise<OverviewStats> {
       total: count(),
       newWeek: dsql<number>`count(*) filter (where created_at >= ${since7d})`,
     }).from(evolutionTenantBindings),
-    db.select({ c: count() }).from(evolutionMessageLogs).where(gte(evolutionMessageLogs.createdAt, since24h)),
+    db.select({ c: count() }).from(evolutionMessageLogs).where(dsql`created_at >= ${since24h}`),
     db.select({ c: count() }).from(evolutionMessageLogs).where(
-      and(gte(evolutionMessageLogs.createdAt, since48h), dsql`created_at < ${since24h}`),
+      dsql`created_at >= ${since48h} and created_at < ${since24h}`,
     ),
     db.select({
       ok: dsql<number>`count(*) filter (where last_health_status = 'ok')`,
