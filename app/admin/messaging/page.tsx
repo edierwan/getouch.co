@@ -1,11 +1,13 @@
-import { MESSAGING_ROWS } from '../data';
-import { PageIntro, ServicePanel } from '../ui';
+import { redirect } from 'next/navigation';
+
+/**
+ * The old Communication → Messaging menu was removed. WhatsApp/Baileys is now
+ * managed under SERVICE ENDPOINTS → Baileys Gateway. Redirect any deep links
+ * (and bookmarks) to the new console.
+ */
+export const dynamic = 'force-dynamic';
 
 export default function MessagingPage() {
-  return (
-    <div className="portal-body">
-      <PageIntro title="Messaging" subtitle="WhatsApp delivery, support communication, and verification messaging." />
-      <ServicePanel title="MESSAGING SERVICES" rows={MESSAGING_ROWS} />
-    </div>
-  );
+  redirect('/admin/service-endpoints/baileys');
 }
+

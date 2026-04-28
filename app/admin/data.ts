@@ -97,19 +97,12 @@ export const ADMIN_NAV: NavSection[] = [
     items: [{ label: 'App Registry', href: '/admin/app-registry', icon: '▥' }],
   },
   {
-    label: 'COMMUNICATION',
-    accentRgb: '255, 179, 120',
-    items: [
-      { label: 'Messaging', href: '/admin/messaging', icon: '◌' },
-    ],
-  },
-  {
     label: 'SERVICE ENDPOINTS',
     accentRgb: '78, 206, 199',
     items: [
       { label: 'vLLM AI Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
       { label: 'Evolution Gateway', href: '/admin/service-endpoints/evolution', icon: '◈' },
-      { label: 'Baileys Gateway', href: '#', icon: '◌', disabled: true },
+      { label: 'Baileys Gateway', href: '/admin/service-endpoints/baileys', icon: '◌' },
       { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
       { label: 'Chatwoot', href: 'https://chatwoot.getouch.co', icon: '◌', external: true },
       { label: 'Voice API', href: '#', icon: '◍', disabled: true },

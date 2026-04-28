@@ -1371,7 +1371,7 @@ function SettingsTab() {
 }
 
 /* ─── Styles (scoped to this page; keeps portal globals untouched) ── */
-function EvolutionStyles() {
+export function EvolutionStyles() {
   return (
     <style>{`
 .evo-shell { display: flex; flex-direction: column; gap: 1.25rem; }
