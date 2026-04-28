@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import {
   createApiKey,
   getApiKeyStats,
+  getApiKeyPepperStatus,
   getGatewayServices,
   getSecretInventory,
   listApiKeys,
@@ -64,6 +65,7 @@ export async function GET() {
       secretInventory: getSecretInventory(),
       scopeCatalog: SCOPE_CATALOG,
       services: ['ai', 'whatsapp', 'voice', 'webhooks', 'internal'],
+      hashing: getApiKeyPepperStatus(),
     });
   } catch (err) {
     console.error('[api-keys][GET] failed:', err);

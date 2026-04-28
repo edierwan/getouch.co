@@ -36,8 +36,24 @@ The first 8 chars after `gtc_<env>_` form the **public prefix** used for display
 ## Storage model
 
 - Plaintext is **never persisted** — shown ONCE at creation time only.
-- Stored value is `HMAC-SHA256(plaintext, AUTH_SECRET)` (the same `AUTH_SECRET` used to sign sessions). This pepper means a DB leak alone is insufficient to brute-force keys.
+- Stored value is `HMAC-SHA256(plaintext, CENTRAL_API_KEY_PEPPER)`. This pepper means a DB leak alone is insufficient to brute-force keys.
 - Reverse lookup is exact-match against `keyHash`. No bcrypt/argon hashing in validation path → constant-time DB hit, no per-request CPU cost.
+- Each key row records `hash_algorithm`, `hash_version`, and `pepper_version` so future pepper rotation can be done without ambiguity (see [drizzle/0007_central_api_keys_pepper_metadata.sql](../drizzle/0007_central_api_keys_pepper_metadata.sql)).
+
+### Pepper env variable — `CENTRAL_API_KEY_PEPPER`
+
+| Env var | Used for | Rotation impact |
+|---------|----------|-----------------|
+| `AUTH_SECRET` | App/session auth (NextAuth, JWT signing). | Invalidates user sessions only. **Does NOT invalidate API keys.** |
+| `CENTRAL_API_KEY_PEPPER` | HMAC pepper for central API key hashing. | Rotation requires planned API key re-issue (all existing keys become invalid). |
+
+Order of precedence in `lib/api-keys.ts → resolvePepper()`:
+
+1. `CENTRAL_API_KEY_PEPPER` — preferred, dedicated.
+2. `AUTH_SECRET` — legacy fallback (DEPRECATED, emits a one-shot warn in production).
+3. `dev-only-secret-not-for-production` — non-production safety default.
+
+> **Operational rule:** in any environment carrying real keys, set `CENTRAL_API_KEY_PEPPER` and treat it as a long-lived secret. Rotating `AUTH_SECRET` for session-key hygiene must NOT touch this variable.
 
 ### Why HMAC vs bcrypt?
 
@@ -45,9 +61,11 @@ bcrypt is for passwords (low-entropy, human-chosen). API keys are 192-bit random
 
 - O(1) DB lookup — no scan of all hashes
 - No CPU cost in the hot validation path
-- DB leak alone is not enough; attacker also needs `AUTH_SECRET`
+- DB leak alone is not enough; attacker also needs `CENTRAL_API_KEY_PEPPER`
 
-If `AUTH_SECRET` rotates, all keys must be re-issued. This is documented as a deliberate constraint.
+If `CENTRAL_API_KEY_PEPPER` rotates, all keys must be re-issued. This is documented as a deliberate constraint and is now decoupled from `AUTH_SECRET`.
+
+> **Test/sandbox keys created before this change** (when `AUTH_SECRET` was the pepper) should be regenerated. Production was at zero central keys at the time of the migration, so no live keys are affected.
 
 ## Schema
 

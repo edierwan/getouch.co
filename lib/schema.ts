@@ -209,11 +209,18 @@ export const apiKeys = pgTable(
     rotatedFromId: uuid('rotated_from_id'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     revokedByEmail: varchar('revoked_by_email', { length: 255 }),
+    // Pepper metadata — see drizzle/0007_central_api_keys_pepper_metadata.sql.
+    // Records the hash algorithm + pepper version used at mint time so we can
+    // rotate CENTRAL_API_KEY_PEPPER safely in future without ambiguity.
+    hashAlgorithm: varchar('hash_algorithm', { length: 32 }).default('hmac-sha256').notNull(),
+    hashVersion: integer('hash_version').default(1).notNull(),
+    pepperVersion: integer('pepper_version').default(1).notNull(),
   },
   (table) => [
     index('central_api_keys_status_idx').on(table.status),
     index('central_api_keys_tenant_idx').on(table.tenantId),
     index('central_api_keys_created_at_idx').on(table.createdAt),
+    index('central_api_keys_pepper_version_idx').on(table.pepperVersion),
   ],
 );
 

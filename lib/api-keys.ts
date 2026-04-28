@@ -11,6 +11,9 @@ export type GeneratedKey = {
   plaintext: string;
   prefix: string;
   hash: string;
+  hashAlgorithm: 'hmac-sha256';
+  hashVersion: 1;
+  pepperVersion: 1;
 };
 
 export type ApiKeyEnvironment = 'live' | 'test';
@@ -18,19 +21,73 @@ export type ApiKeyStatus = 'active' | 'disabled' | 'revoked' | 'rotating' | 'exp
 
 const PREFIX_PUBLIC_LEN = 8; // chars after `gtc_<env>_` shown in UI
 const RAW_BYTES = 24; // 24 random bytes -> 32-char base64url
+export const CENTRAL_API_KEY_HASH_ALGORITHM = 'hmac-sha256' as const;
+export const CENTRAL_API_KEY_HASH_VERSION = 1 as const;
+export const CENTRAL_API_KEY_PEPPER_VERSION = 1 as const;
 
 function randomBase64Url(bytes = RAW_BYTES): string {
   return crypto.randomBytes(bytes).toString('base64url');
 }
 
 /**
+ * Resolve the pepper used for central API key HMAC.
+ *
+ * Order of precedence:
+ *   1. CENTRAL_API_KEY_PEPPER  (dedicated, preferred)
+ *   2. AUTH_SECRET             (legacy fallback — DEPRECATED for key hashing)
+ *
+ * AUTH_SECRET is for app/session auth only. Rotating AUTH_SECRET MUST NOT
+ * invalidate central API keys. The fallback exists only for backward
+ * compatibility with keys minted before this change; new deployments must
+ * set CENTRAL_API_KEY_PEPPER and remove the fallback by leaving AUTH_SECRET
+ * unrelated to key hashing.
+ */
+function resolvePepper(): { pepper: string; source: 'central' | 'auth_secret_legacy' | 'dev_default' } {
+  const central = process.env.CENTRAL_API_KEY_PEPPER?.trim();
+  if (central) return { pepper: central, source: 'central' };
+  const auth = process.env.AUTH_SECRET?.trim();
+  if (auth) {
+    if (process.env.NODE_ENV === 'production' && process.env.CENTRAL_API_KEY_PEPPER_WARN_ONCE !== '1') {
+      // One-shot warn to avoid log spam.
+      process.env.CENTRAL_API_KEY_PEPPER_WARN_ONCE = '1';
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[api-keys] CENTRAL_API_KEY_PEPPER not set; falling back to AUTH_SECRET for central key HMAC. ' +
+        'This is DEPRECATED. Set CENTRAL_API_KEY_PEPPER and rotate keys.',
+      );
+    }
+    return { pepper: auth, source: 'auth_secret_legacy' };
+  }
+  return { pepper: 'dev-only-secret-not-for-production', source: 'dev_default' };
+}
+
+/**
  * Stable, deterministic hash for stored API keys.
- * Uses HMAC-SHA256 with AUTH_SECRET as pepper so a DB leak alone is
- * insufficient to brute-force keys (attacker would also need the pepper).
+ * HMAC-SHA256 with CENTRAL_API_KEY_PEPPER (dedicated pepper, separate from
+ * AUTH_SECRET). DB leak alone is insufficient to brute-force keys.
  */
 export function hashApiKey(plaintext: string): string {
-  const pepper = process.env.AUTH_SECRET || 'dev-only-secret-not-for-production';
+  const { pepper } = resolvePepper();
   return crypto.createHmac('sha256', pepper).update(plaintext).digest('hex');
+}
+
+/**
+ * Reports which pepper source is in effect. Safe for diagnostics — never
+ * returns the pepper value itself.
+ */
+export function getApiKeyPepperStatus(): {
+  source: 'central' | 'auth_secret_legacy' | 'dev_default';
+  algorithm: typeof CENTRAL_API_KEY_HASH_ALGORITHM;
+  hashVersion: typeof CENTRAL_API_KEY_HASH_VERSION;
+  pepperVersion: typeof CENTRAL_API_KEY_PEPPER_VERSION;
+} {
+  const { source } = resolvePepper();
+  return {
+    source,
+    algorithm: CENTRAL_API_KEY_HASH_ALGORITHM,
+    hashVersion: CENTRAL_API_KEY_HASH_VERSION,
+    pepperVersion: CENTRAL_API_KEY_PEPPER_VERSION,
+  };
 }
 
 export function generateApiKey(env: ApiKeyEnvironment = 'live'): GeneratedKey {
@@ -39,12 +96,19 @@ export function generateApiKey(env: ApiKeyEnvironment = 'live'): GeneratedKey {
   // Public prefix shown in UI: `gtc_live_xxxxxxxx`
   const publicPrefix = `gtc_${env}_${random.slice(0, PREFIX_PUBLIC_LEN)}`;
   const hash = hashApiKey(plaintext);
-  return { plaintext, prefix: publicPrefix, hash };
+  return {
+    plaintext,
+    prefix: publicPrefix,
+    hash,
+    hashAlgorithm: CENTRAL_API_KEY_HASH_ALGORITHM,
+    hashVersion: CENTRAL_API_KEY_HASH_VERSION,
+    pepperVersion: CENTRAL_API_KEY_PEPPER_VERSION,
+  };
 }
 
 export function ipHash(ip: string | null | undefined): string | null {
   if (!ip) return null;
-  const pepper = process.env.AUTH_SECRET || 'dev-only-secret-not-for-production';
+  const { pepper } = resolvePepper();
   return crypto.createHmac('sha256', pepper).update(ip).digest('hex').slice(0, 32);
 }
 
@@ -338,7 +402,8 @@ export interface CreateApiKeyInput {
 }
 
 export async function createApiKey(input: CreateApiKeyInput) {
-  const { plaintext, prefix, hash } = generateApiKey(input.environment);
+  const generated = generateApiKey(input.environment);
+  const { plaintext, prefix, hash } = generated;
 
   const [row] = await db
     .insert(apiKeys)
@@ -348,6 +413,9 @@ export async function createApiKey(input: CreateApiKeyInput) {
       tenantId: input.tenantId ?? null,
       keyPrefix: prefix,
       keyHash: hash,
+      hashAlgorithm: generated.hashAlgorithm,
+      hashVersion: generated.hashVersion,
+      pepperVersion: generated.pepperVersion,
       services: input.services,
       scopes: input.scopes,
       allowedOrigins: input.allowedOrigins ?? [],
@@ -409,7 +477,8 @@ export async function rotateApiKey(opts: { id: string; actorEmail: string | null
   // Mark existing as rotating, mint a new key linked via rotated_from_id
   await db.update(apiKeys).set({ status: 'rotating' }).where(eq(apiKeys.id, existing.id));
 
-  const { plaintext, prefix, hash } = generateApiKey(existing.environment as ApiKeyEnvironment);
+  const generated = generateApiKey(existing.environment as ApiKeyEnvironment);
+  const { plaintext, prefix, hash } = generated;
   const [fresh] = await db
     .insert(apiKeys)
     .values({
@@ -418,6 +487,9 @@ export async function rotateApiKey(opts: { id: string; actorEmail: string | null
       tenantId: existing.tenantId,
       keyPrefix: prefix,
       keyHash: hash,
+      hashAlgorithm: generated.hashAlgorithm,
+      hashVersion: generated.hashVersion,
+      pepperVersion: generated.pepperVersion,
       services: existing.services as string[],
       scopes: existing.scopes as string[],
       allowedOrigins: existing.allowedOrigins as string[],
