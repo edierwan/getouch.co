@@ -172,21 +172,14 @@ http://openclaw.getouch.co {
     Expires "0"
   }
 
-  # Manual bootstrap entry.
   handle /connect {
-    root * /etc/caddy/static
-    rewrite * /openclaw-connect.html
-    file_server
+    reverse_proxy getouch-web:3000
   }
 
-  # Session reset page — clears exact OpenClaw state and restarts bootstrap.
   handle /reset {
-    root * /etc/caddy/static
-    rewrite * /openclaw-reset.html
-    file_server
+    reverse_proxy getouch-web:3000
   }
 
-  # Guard direct /chat visits before the upstream app loads.
   @chat_guard {
     method GET
     path /chat
@@ -194,9 +187,7 @@ http://openclaw.getouch.co {
     not header Cookie *openclaw_boot=1*
   }
   handle @chat_guard {
-    root * /etc/caddy/static
-    rewrite * /openclaw-chat-guard.html
-    file_server
+    reverse_proxy getouch-web:3000
   }
 
   # Bare root GET (not a WebSocket upgrade): send users to the canonical chat entry.
