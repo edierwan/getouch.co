@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw – Resetting…</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #0a0a0a;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <span>Clearing OpenClaw session data…</span>
+  <script>
+    (function () {
+      var explicitKeys = [
+        'openclaw-device-identity-v1',
+        'openclaw.device.auth.v1',
+        'openclaw.control.settings.v1',
+        'openclaw.control.settings.v1:wss://openclaw.getouch.co',
+        'openclaw.control.settings.v1:wss://openclaw.getouch.co/chat',
+        'openclaw.control.token.v1',
+        'openclaw.control.token.v1:wss://openclaw.getouch.co',
+        'openclaw.control.token.v1:wss://openclaw.getouch.co/chat'
+      ];
+
+      try {
+        explicitKeys.forEach(function (key) {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+        });
+
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf('openclaw') === 0) keys.push(k);
+        }
+        keys.forEach(function (k) { localStorage.removeItem(k); });
+      } catch (_) {}
+
+      document.cookie = 'openclaw_boot=; Max-Age=0; Path=/; SameSite=Lax';
+      window.location.replace('/chat?session=main');
+    })();
+  </script>
+</body>
+</html>

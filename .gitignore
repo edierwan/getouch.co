@@ -145,6 +145,7 @@ news/.env
 infra/pgadmin/pgpass
 /data/
 services/wa/data/
+docs/serapod2u-production-selfhosted.env
 .DS_Store
 __pycache__/
 *.pyc

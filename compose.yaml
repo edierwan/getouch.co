@@ -9,11 +9,14 @@ services:
       - pgadmin
       - open-webui
       - searxng
+      - grafana
     environment:
       ADMIN_AUTH_USER: ${ADMIN_AUTH_USER:-getouchadmin}
       ADMIN_AUTH_HASH: ${ADMIN_AUTH_HASH}
     ports:
       - 127.0.0.1:80:80
+    extra_hosts:
+      - host.docker.internal:host-gateway
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider --header='Host: getouch.co' http://127.0.0.1/ || exit 1"]
       interval: 15s
@@ -34,8 +37,19 @@ services:
       dockerfile: Dockerfile
     container_name: getouch-web
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret-not-for-production}
+      PORTAL_ADMIN_URL: https://portal.getouch.co
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
+    volumes:
+      - /home/deploy/.ssh/id_ed25519:/tmp/ssh-keys/id_ed25519:ro
+      - /home/deploy/.ssh/known_hosts:/tmp/ssh-keys/known_hosts:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -56,8 +70,28 @@ services:
       WA_API_KEY: ${WA_API_KEY}
       WA_AUTH_DIR: /app/data/auth
       WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
-      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch}
+      # ── Multi-session / WAPI integration (Request 05) ──
+      WAPI_SECRET: ${WAPI_SECRET:-}
+      WAPI_WEBHOOK_URL: ${WAPI_WEBHOOK_URL:-https://wapi.getouch.co/api/wa/events}
+      SESSIONS_DIR: ${SESSIONS_DIR:-/app/data/sessions}
+      DEFAULT_SESSION_ID: ${DEFAULT_SESSION_ID:-default}
+      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS:-0}
+      AUTO_START_DEFAULT_SESSION: ${AUTO_START_DEFAULT_SESSION:-true}
+      AUTO_START_SESSIONS: ${AUTO_START_SESSIONS:-false}
+      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://dify-nginx}
+      DIFY_APP_API_KEY: ${DIFY_APP_API_KEY:-}
+      WA_DIFY_AUTO_REPLY_ENABLED: ${WA_DIFY_AUTO_REPLY_ENABLED:-false}
+      WA_ACTIVE_RESPONDER: ${WA_ACTIVE_RESPONDER:-true}
+      WA_DEPLOYMENT_LABEL: ${WA_DEPLOYMENT_LABEL:-getouch.co}
+      WA_DIFY_APP_NAME: ${WA_DIFY_APP_NAME:-Serapod Receptionist Bot}
+      WA_ASSISTANT_MODEL_HINT: ${WA_ASSISTANT_MODEL_HINT:-llama3.1:8b}
+      AI_TRIGGER_NAME: ${AI_TRIGGER_NAME:-Sera}
+      AI_SESSION_TIMEOUT_MINUTES: ${AI_SESSION_TIMEOUT_MINUTES:-30}
+      AI_GROUP_REPLY_CONTEXT_MINUTES: ${AI_GROUP_REPLY_CONTEXT_MINUTES:-10}
+      AI_GROUP_PARTICIPANT_WINDOW_MINUTES: ${AI_GROUP_PARTICIPANT_WINDOW_MINUTES:-5}
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
       LOG_LEVEL: ${WA_LOG_LEVEL:-info}
+      BUILD_ID: ${BUILD_ID:-dev}
     volumes:
       - /data/getouch/wa:/app/data
     healthcheck:
@@ -73,13 +107,13 @@ services:
     container_name: getouch-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${APP_DB_NAME:-getouch}
+      POSTGRES_DB: ${APP_DB_NAME:-getouch.co}
       POSTGRES_USER: ${APP_DB_USER:-getouch}
       POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - /data/getouch/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-getouch} -d ${APP_DB_NAME:-getouch}"]
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-getouch} -d ${APP_DB_NAME:-getouch.co}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -134,7 +168,7 @@ services:
       - edge
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.12
+    image: ghcr.io/open-webui/open-webui:v0.9.2
     container_name: open-webui
     restart: unless-stopped
     depends_on:
@@ -273,6 +307,119 @@ services:
     networks:
       - edge
 
+  grafana:
+    image: grafana/grafana-oss:11.6.1
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SERVER_ROOT_URL: https://grafana.getouch.co
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin@getouch.co}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-Turun@2020}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - /data/getouch/grafana:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - edge
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    restart: unless-stopped
+    user: "0:0"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - /data/getouch/prometheus:/prometheus
+    depends_on:
+      node-exporter:
+        condition: service_started
+      cadvisor:
+        condition: service_started
+      blackbox-exporter:
+        condition: service_started
+      dcgm-exporter:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containers/.+)($|/)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|mqueue|nsfs|overlay|proc|pstore|rpc_pipefs|securityfs|squashfs|sysfs|tracefs)$
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9100/metrics | grep -q node_exporter_build_info || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+    networks:
+      - edge
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
+    volumes:
+      - ./infra/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - edge
+
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.9-3.6.1-ubuntu22.04
+    container_name: dcgm-exporter
+    restart: unless-stopped
+    runtime: nvidia
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: utility
+    networks:
+      - edge
+
   # ────────────────────────────────────────────────────────
   # Open WebUI Pipelines — extensible AI middleware
   # ────────────────────────────────────────────────────────
@@ -289,6 +436,72 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # OpenClaw — Personal AI Gateway
+  # Control UI at openclaw.getouch.co
+  # Powered by local Ollama models (no cloud API key required)
+  # ────────────────────────────────────────────────────────
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    env_file: /data/getouch/openclaw/config/.env
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      TZ: Asia/Kuala_Lumpur
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
+    volumes:
+      - /data/getouch/openclaw/config:/home/node/.openclaw
+      - /data/getouch/openclaw/workspace:/home/node/.openclaw/workspace
+    command:
+      - node
+      - dist/index.js
+      - gateway
+      - --bind
+      - lan
+      - --port
+      - "18789"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - edge
+
+  # ────────────────────────────────────────────────────────
+  # MCP Gateway — minimal remote MCP endpoint for exploration
+  # Exposes an isolated filesystem sandbox over Streamable HTTP.
+  # ────────────────────────────────────────────────────────
+  mcp-gateway:
+    image: node:22-alpine
+    container_name: mcp-gateway
+    restart: unless-stopped
+    command:
+      - sh
+      - -lc
+      - >-
+        npx -y supergateway
+        --stdio "npx -y @modelcontextprotocol/server-filesystem /workspace"
+        --outputTransport streamableHttp
+        --streamableHttpPath /mcp
+        --port 8000
+        --healthEndpoint /healthz
+    volumes:
+      - /data/getouch/mcp/workspace:/workspace
+      - /data/getouch/mcp/npm-cache:/root/.npm
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/healthz | grep -q ok || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     networks:
       - edge
 
@@ -320,7 +533,7 @@ services:
     depends_on:
       seaweed-master:
         condition: service_healthy
-    command: volume -port=8080 -ip.bind=0.0.0.0 -dir=/data -max=10 -mserver=seaweed-master:9333 -dataCenter=dc1
+    command: volume -port=8080 -ip.bind=0.0.0.0 -dir=/data -max=200 -mserver=seaweed-master:9333 -dataCenter=dc1
     volumes:
       - /srv/archive/seaweedfs/volume:/data
     healthcheck:

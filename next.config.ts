@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig & { allowedDevOrigins?: string[] } = {
   output: 'standalone',
+  poweredByHeader: false,
   serverExternalPackages: ['nodemailer'],
   // Allow common local dev origins to request /_next/* without cross-origin warnings
   // allow both bare hostnames and common http origins with port used during dev

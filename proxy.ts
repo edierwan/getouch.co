@@ -39,8 +39,18 @@ const getSecret = () => {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const portalHost = isPortalHost(request);
+  // Public diagnostic endpoint — must work without auth so operators can
+  // verify which build is actually live (commit SHA, nav labels, etc).
+  const isPublicDiagnostic = pathname === '/api/build-info';
+  const portalApiRequest =
+    portalHost && pathname.startsWith('/api/') && !isPublicDiagnostic;
 
   if (portalHost) {
+    // Public diagnostic — let it through without any auth/redirect logic.
+    if (isPublicDiagnostic) {
+      return NextResponse.next();
+    }
+
     if (pathname.startsWith('/portal')) {
       return NextResponse.redirect(getMainPortalUrl(request));
     }
@@ -53,6 +63,23 @@ export async function proxy(request: NextRequest) {
     }
 
     const token = request.cookies.get('session')?.value;
+
+    if (portalApiRequest) {
+      if (!token) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      try {
+        const { payload } = await jwtVerify(token, getSecret());
+        if (payload.role !== 'admin') {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        return NextResponse.next();
+      } catch {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
 
     if (pathname.startsWith('/auth/') && !pathname.startsWith('/auth/verify')) {
       if (token) {

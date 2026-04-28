@@ -50,7 +50,7 @@ if [[ ! -f "${platform_env}" ]]; then
 CLOUDFLARED_TOKEN=${CLOUDFLARED_TOKEN}
 ADMIN_AUTH_USER=${admin_email}
 ADMIN_AUTH_HASH=${admin_hash}
-APP_DB_NAME=getouch
+APP_DB_NAME=getouch.co
 APP_DB_USER=getouch
 APP_DB_PASSWORD=${app_db_password}
 PGADMIN_DEFAULT_EMAIL=${admin_email}
@@ -70,7 +70,7 @@ Caddy admin username: ${admin_email}
 Caddy admin password: ${admin_password}
 pgAdmin email: ${admin_email}
 pgAdmin password: ${admin_password}
-PostgreSQL database: getouch
+PostgreSQL database: getouch.co
 PostgreSQL user: getouch
 PostgreSQL password: ${app_db_password}
 WhatsApp API key: ${wa_api_key}

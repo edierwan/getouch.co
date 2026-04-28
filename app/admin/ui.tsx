@@ -38,6 +38,7 @@ export function SummaryGrid({ cards }: { cards: SummaryCard[] }) {
             <span className="portal-summary-icon">{card.icon}</span>
           </div>
           <div className={`portal-summary-value${card.tone ? ` portal-summary-value-${card.tone}` : ''}`}>{card.value}</div>
+          {card.detail ? <div className="portal-summary-detail">{card.detail}</div> : null}
         </section>
       ))}
     </div>
@@ -70,23 +71,49 @@ export function ServicePanel({ title, rows }: { title: string; rows: ResourceRow
     <section className="portal-panel portal-panel-fill">
       <h3 className="portal-panel-label">{title}</h3>
       <div className="portal-resource-list">
-        {rows.map((row) => (
-          <div key={row.name} className="portal-resource-row">
-            <div className="portal-resource-copy">
-              <div className="portal-resource-name">{row.name}</div>
-              <div className="portal-resource-desc">{row.description}</div>
-            </div>
-            <div className="portal-resource-meta">
-              <span className="portal-resource-type">{row.type}</span>
-              <span className={statusClassName(row.tone)}>{row.status}</span>
-              {row.href ? (
-                <a href={row.href} target="_blank" rel="noopener noreferrer" className="portal-resource-link">
-                  ↗
-                </a>
-              ) : null}
-            </div>
-          </div>
-        ))}
+        {rows.map((row) => {
+          const inner = (
+            <>
+              <div className="portal-resource-copy">
+                <div className="portal-resource-name">{row.name}</div>
+                <div className="portal-resource-desc">{row.description}</div>
+              </div>
+              <div className="portal-resource-meta">
+                <span className="portal-resource-type">{row.type}</span>
+                <span className={statusClassName(row.tone)}>{row.status}</span>
+                {row.href ? <span className="portal-resource-link">↗</span> : null}
+              </div>
+            </>
+          );
+
+          if (!row.href) {
+            return (
+              <div key={row.name} className="portal-resource-row">
+                {inner}
+              </div>
+            );
+          }
+
+          if (row.external !== false) {
+            return (
+              <a
+                key={row.name}
+                href={row.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="portal-resource-row portal-resource-row-link"
+              >
+                {inner}
+              </a>
+            );
+          }
+
+          return (
+            <Link key={row.name} href={row.href} className="portal-resource-row portal-resource-row-link">
+              {inner}
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
