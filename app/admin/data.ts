@@ -104,19 +104,14 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
-    label: 'WHATSAPP SERVICES',
-    accentRgb: '111, 213, 153',
-    items: [
-      { label: 'Evolution Gateway', href: '/admin/whatsapp-services/evolution', icon: '◈' },
-    ],
-  },
-  {
     label: 'SERVICE ENDPOINTS',
     accentRgb: '78, 206, 199',
     items: [
       { label: 'vLLM AI Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
-      { label: 'Evolution Gateway', href: '/admin/whatsapp-services/evolution', icon: '◈' },
+      { label: 'Evolution Gateway', href: '/admin/service-endpoints/evolution', icon: '◈' },
       { label: 'Baileys Gateway', href: '#', icon: '◌', disabled: true },
+      { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
+      { label: 'Chatwoot', href: 'https://chatwoot.getouch.co', icon: '◌', external: true },
       { label: 'Voice API', href: '#', icon: '◍', disabled: true },
     ],
   },
@@ -125,7 +120,6 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '92, 210, 184',
     items: [
       { label: 'AI Services', href: '/admin/ai-services', icon: '◎' },
-      { label: 'Dify', href: 'https://dify.getouch.co', icon: '◉', external: true },
       { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
       { label: 'MCP', href: 'https://mcp.getouch.co', icon: '⌬', external: true },
     ],

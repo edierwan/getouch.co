@@ -1,11 +1,7 @@
-import { EvolutionConsole } from './EvolutionConsole';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default function EvolutionPage() {
-  return (
-    <div className="portal-body">
-      <EvolutionConsole />
-    </div>
-  );
+  redirect('/service-endpoints/evolution');
 }
