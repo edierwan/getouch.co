@@ -177,3 +177,37 @@ What rollback does not do:
 - Destructive actions were not executed in this phase.
 - vLLM was not started in this phase.
 - No public exposure was added for vLLM in this phase.
+---
+
+## Changelog — 2026-04-28 Plan Update
+
+This document was originally written when the public AI API domain was planned as `llm.getouch.co`. That decision changed:
+
+- **Public vLLM API domain is now `https://vllm.getouch.co/v1`.**
+- **`https://llm.getouch.co/v1` is reserved for future LiteLLM** (higher-level model routing) and is not used by the vLLM gateway.
+- The protected vLLM API foundation is implemented in the portal app at `/v1/models`, `/v1/chat/completions`, `/v1/embeddings`, `/health`, `/ready` (see `docs/ai-api-gateway-2026-04-27.md`).
+- Raw vLLM is never exposed publicly without API key protection.
+
+### Additional model targets (planned, not deployed)
+
+The runtime plan now records two future model aliases in addition to the original Qwen 14B target:
+
+1. `getouch-qwen3-14b` → `Qwen/Qwen3-14B-FP8` — primary planned vLLM chat model.
+2. `getouch-qwen3-30b` — Qwen3 30B chat/reasoning. **Blocked** on the current 16GB GPU unless a compatible quantized/MoE/FP8 variant is verified by an actual run. Exact Hugging Face model id is pending verification — recorded as `pending-verified-hf-id` rather than guessed.
+3. `getouch-embed` — Nomic embedding family. Embedding-only; routed through `/v1/embeddings`, never through `/v1/chat/completions`. Exact HF model id pending verification.
+
+### Operational guardrails
+
+- Do not start Qwen 30B automatically on the current 16GB GPU.
+- Do not run Qwen 14B, Qwen 30B, and embeddings concurrently on the same GPU.
+- Do not delete Ollama models.
+- Do not break Open WebUI. vLLM provider must be added manually in Open WebUI settings; it is not auto-configured.
+
+### Why vLLM still does not appear in Open WebUI
+
+Open WebUI currently shows only local Ollama models because no OpenAI-compatible provider has been added yet. After the operator adds either:
+
+- internal: `http://vllm-qwen3-14b-fp8:8000/v1` (with backend or gateway key), or
+- public protected: `https://vllm.getouch.co/v1` (with `GETOUCH_VLLM_API_KEY`),
+
+…the chat aliases (e.g. `getouch-qwen3-14b`) will appear under the External / OpenAI-compatible tab. The embedding alias `getouch-embed` will not appear as a chat model.

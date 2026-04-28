@@ -133,7 +133,13 @@ type GatewayStatus = {
   models: Array<{
     alias: string;
     backendModel: string;
+    type: 'chat' | 'embedding';
+    status: 'active' | 'planned' | 'blocked';
+    notes?: string;
   }>;
+  reservedDomains?: {
+    litellm: string;
+  };
 };
 
 type GatewayActionResponse = {
@@ -687,7 +693,7 @@ export function AiServicesConsole() {
         <div className="portal-panel-head portal-panel-head-inline">
           <div>
             <h3 className="portal-panel-title">AI API Gateway</h3>
-            <p className="portal-page-sub">Public OpenAI-compatible API foundation for `llm.getouch.co`, with gateway-side API key enforcement, backend abstraction, and a stable model alias.</p>
+            <p className="portal-page-sub">Public OpenAI-compatible vLLM API foundation served on <code>vllm.getouch.co</code>, with gateway-side API key enforcement, backend abstraction, and model alias routing. <code>llm.getouch.co</code> is reserved for future LiteLLM and is not in use.</p>
           </div>
           <div className="portal-action-row">
             <button type="button" className="portal-action-link" onClick={() => startGatewayRefreshing(() => refreshGatewayStatus())}>
@@ -713,7 +719,7 @@ export function AiServicesConsole() {
           <div className="portal-ai-runtime-card">
             <div className="portal-ai-status-label">Public API Base URL</div>
             <div className="portal-ai-runtime-value portal-ai-runtime-value-small">{gatewayStatus.publicBaseUrl}</div>
-            <div className="portal-ai-note">All `/v1/*` calls require `Authorization: Bearer &lt;GETOUCH_AI_API_KEY&gt;`.</div>
+            <div className="portal-ai-note">All `/v1/*` calls require `Authorization: Bearer &lt;GETOUCH_VLLM_API_KEY&gt;`. `llm.getouch.co` reserved for future LiteLLM.</div>
           </div>
           <div className="portal-ai-runtime-card">
             <div className="portal-ai-status-label">Gateway Status</div>
@@ -781,20 +787,42 @@ export function AiServicesConsole() {
           API key management UI is coming next. Current gateway keys are managed via server env or secrets and are never shown back in full in the browser.
         </div>
 
+        <section className="portal-ai-runtime-section">
+          <h4 className="portal-panel-label">MODEL RUNTIME PLAN</h4>
+          <div className="portal-info-table">
+            <div className="portal-info-table-row portal-info-table-head">
+              <span className="portal-info-table-label">Alias</span>
+              <span className="portal-info-table-value">Backend model · Type · Status</span>
+            </div>
+            {gatewayStatus.models.map((m) => (
+              <div key={m.alias} className="portal-info-table-row">
+                <span className="portal-info-table-label portal-ai-runtime-wrap">{m.alias}</span>
+                <span className="portal-info-table-value portal-ai-runtime-wrap">
+                  {m.backendModel} · {m.type} · {m.status}
+                  {m.notes ? ` — ${m.notes}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="portal-banner portal-banner-warning" style={{ marginTop: '0.75rem' }}>
+            Do not run multiple large vLLM models concurrently on the current 16GB GPU. Qwen 30B requires separate validation or larger GPU headroom. Nomic embedding uses <code>/v1/embeddings</code>, not <code>/v1/chat/completions</code>.
+          </div>
+        </section>
+
         <section id="ai-api-gateway-docs" className="portal-ai-runtime-section portal-ai-gateway-docs">
           <h4 className="portal-panel-label">API DOCS</h4>
           <div className="portal-ai-runtime-inline-copy">Client apps should call the public alias `getouch-qwen3-14b`. The gateway maps that alias to the current backend model.</div>
           <div className="portal-dify-code-block portal-ai-code-block">{`curl ${gatewayStatus.publicBaseUrl}/models \
-  -H "Authorization: Bearer <GETOUCH_AI_API_KEY>"`}</div>
+  -H "Authorization: Bearer <GETOUCH_VLLM_API_KEY>"`}</div>
           <div className="portal-dify-code-block portal-ai-code-block">{`curl ${gatewayStatus.publicBaseUrl}/chat/completions \
-  -H "Authorization: Bearer <GETOUCH_AI_API_KEY>" \
+  -H "Authorization: Bearer <GETOUCH_VLLM_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "getouch-qwen3-14b",
     "messages": [
       {
         "role": "user",
-        "content": "Reply only: GETOUCH AI API OK"
+        "content": "Reply only: GETOUCH VLLM API OK"
       }
     ],
     "max_tokens": 50,

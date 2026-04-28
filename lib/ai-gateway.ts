@@ -9,9 +9,15 @@ type GatewayKeyRecord = {
   hash: string;
 };
 
+export type GatewayModelType = 'chat' | 'embedding';
+export type GatewayModelStatus = 'active' | 'planned' | 'blocked';
+
 type GatewayModelRecord = {
   alias: string;
   backendModel: string;
+  type: GatewayModelType;
+  status: GatewayModelStatus;
+  notes?: string;
 };
 
 type GatewayConfig = {
@@ -66,7 +72,13 @@ export type GatewayStatus = {
   models: Array<{
     alias: string;
     backendModel: string;
+    type: GatewayModelType;
+    status: GatewayModelStatus;
+    notes?: string;
   }>;
+  reservedDomains: {
+    litellm: string;
+  };
 };
 
 type GatewayAuthResult = {
@@ -162,15 +174,27 @@ function parseGatewayKeys(raw: string | undefined) {
     .filter((entry): entry is GatewayKeyRecord => Boolean(entry));
 }
 
-function defaultModelAliases(backendType: GatewayBackendType) {
-  if (backendType === 'ollama') {
-    return [{ alias: 'getouch-qwen3-14b', backendModel: 'qwen3:14b' }];
-  }
+function defaultModelAliases(backendType: GatewayBackendType): GatewayModelRecord[] {
+  // Primary planned vLLM chat model. Marked 'planned' until backend is up;
+  // becomes effectively 'active' when probeGatewayBackend reports ready.
+  const primary: GatewayModelRecord = backendType === 'ollama'
+    ? { alias: 'getouch-qwen3-14b', backendModel: 'qwen3:14b', type: 'chat', status: 'active', notes: 'Ollama fallback' }
+    : { alias: 'getouch-qwen3-14b', backendModel: 'Qwen/Qwen3-14B-FP8', type: 'chat', status: 'planned', notes: 'Primary vLLM chat target' };
 
-  return [{ alias: 'getouch-qwen3-14b', backendModel: 'Qwen/Qwen3-14B-FP8' }];
+  // Future targets recorded for portal visibility but NOT served by default.
+  // Exact HF model IDs are pending verification; do not hardcode until tested.
+  const future: GatewayModelRecord[] = [
+    { alias: 'getouch-qwen3-30b', backendModel: 'pending-verified-hf-id', type: 'chat', status: 'blocked', notes: 'Future / blocked on current 16GB GPU unless validated' },
+    { alias: 'getouch-embed', backendModel: 'pending-verified-hf-id', type: 'embedding', status: 'planned', notes: 'Future Nomic embedding alias — separate /v1/embeddings endpoint' },
+  ];
+
+  return [primary, ...future];
 }
 
-function parseModelAliases(raw: string | undefined, backendType: GatewayBackendType) {
+function parseModelAliases(raw: string | undefined, backendType: GatewayBackendType): GatewayModelRecord[] {
+  // Format: alias=backendModel[:type[:status]]
+  // type: chat (default) | embedding
+  // status: active (default) | planned | blocked
   const entries = String(raw || '')
     .split(/[\n,]/)
     .map((entry) => entry.trim())
@@ -179,42 +203,76 @@ function parseModelAliases(raw: string | undefined, backendType: GatewayBackendT
       const separator = entry.indexOf('=');
       if (separator === -1) return null;
       const alias = entry.slice(0, separator).trim();
-      const backendModel = entry.slice(separator + 1).trim();
-      if (!alias || !backendModel) return null;
-      return { alias, backendModel };
+      const rhs = entry.slice(separator + 1).trim();
+      if (!alias || !rhs) return null;
+      const parts = rhs.split(':');
+      const backendModel = parts[0].trim();
+      const rawType = (parts[1] || 'chat').trim().toLowerCase();
+      const rawStatus = (parts[2] || 'active').trim().toLowerCase();
+      const type: GatewayModelType = rawType === 'embedding' ? 'embedding' : 'chat';
+      const status: GatewayModelStatus = rawStatus === 'planned' || rawStatus === 'blocked' ? rawStatus : 'active';
+      return { alias, backendModel, type, status };
     })
     .filter((entry): entry is GatewayModelRecord => Boolean(entry));
 
   return entries.length ? entries : defaultModelAliases(backendType);
 }
 
+// Pick the first non-empty value among multiple env names, in order.
+// Allows GETOUCH_VLLM_* (new, per 2026-04-27 plan) to override / co-exist
+// with GETOUCH_AI_* (legacy). vllm.getouch.co is the active vLLM API
+// domain; llm.getouch.co is reserved for future LiteLLM and is not used.
+function firstEnv(...names: string[]): string | undefined {
+  for (const name of names) {
+    const v = process.env[name];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+  return undefined;
+}
+
 export function getGatewayConfig(): GatewayConfig {
-  const enabled = asBoolean(process.env.GETOUCH_AI_GATEWAY_ENABLED, false);
-  const publicBaseUrl = normalizeBaseUrl(process.env.GETOUCH_AI_GATEWAY_PUBLIC_BASE_URL, 'https://llm.getouch.co/v1');
-  const docsUrl = normalizeBaseUrl(process.env.GETOUCH_AI_GATEWAY_DOCS_URL, 'https://portal.getouch.co/ai-services#ai-api-gateway-docs');
-  const backendType = (process.env.GETOUCH_AI_BACKEND_TYPE || 'disabled').trim().toLowerCase() as GatewayBackendType;
-  const safeBackendType: GatewayBackendType = ['disabled', 'vllm', 'ollama'].includes(backendType) ? backendType : 'disabled';
-  const backendBaseUrl = process.env.GETOUCH_AI_BACKEND_BASE_URL?.trim() || (safeBackendType === 'ollama' ? 'http://ollama:11434' : null);
+  const enabled = asBoolean(
+    firstEnv('GETOUCH_VLLM_GATEWAY_ENABLED', 'GETOUCH_AI_GATEWAY_ENABLED'),
+    false,
+  );
+  const publicBaseUrl = normalizeBaseUrl(
+    firstEnv('GETOUCH_VLLM_PUBLIC_BASE_URL', 'GETOUCH_AI_GATEWAY_PUBLIC_BASE_URL'),
+    'https://vllm.getouch.co/v1',
+  );
+  const docsUrl = normalizeBaseUrl(
+    firstEnv('GETOUCH_VLLM_GATEWAY_DOCS_URL', 'GETOUCH_AI_GATEWAY_DOCS_URL'),
+    'https://portal.getouch.co/ai-services#ai-api-gateway-docs',
+  );
+  const backendTypeRaw = (firstEnv('GETOUCH_VLLM_BACKEND_TYPE', 'GETOUCH_AI_BACKEND_TYPE') || 'disabled').trim().toLowerCase() as GatewayBackendType;
+  const safeBackendType: GatewayBackendType = ['disabled', 'vllm', 'ollama'].includes(backendTypeRaw) ? backendTypeRaw : 'disabled';
+  const backendBaseUrl = firstEnv('GETOUCH_VLLM_BACKEND_BASE_URL', 'GETOUCH_AI_BACKEND_BASE_URL')?.trim()
+    || (safeBackendType === 'ollama' ? 'http://ollama:11434' : null);
 
   return {
     enabled,
     publicBaseUrl,
     docsUrl,
-    allowedHosts: String(process.env.GETOUCH_AI_GATEWAY_ALLOWED_HOSTS || 'llm.getouch.co,localhost,127.0.0.1')
+    allowedHosts: String(
+      firstEnv('GETOUCH_VLLM_GATEWAY_ALLOWED_HOSTS', 'GETOUCH_AI_GATEWAY_ALLOWED_HOSTS')
+        || 'vllm.getouch.co,localhost,127.0.0.1',
+    )
       .split(',')
       .map((host) => host.trim().toLowerCase())
       .filter(Boolean),
-    keys: parseGatewayKeys(process.env.GETOUCH_AI_GATEWAY_KEYS),
+    keys: parseGatewayKeys(firstEnv('GETOUCH_VLLM_GATEWAY_KEYS', 'GETOUCH_AI_GATEWAY_KEYS')),
     backendType: safeBackendType,
     backendBaseUrl,
-    backendApiKey: process.env.GETOUCH_AI_BACKEND_API_KEY?.trim() || null,
-    timeoutMs: asNumber(process.env.GETOUCH_AI_GATEWAY_TIMEOUT_MS, 120_000),
-    maxBodyBytes: asNumber(process.env.GETOUCH_AI_GATEWAY_MAX_BODY_BYTES, 1_000_000),
-    maxTokens: asNumber(process.env.GETOUCH_AI_GATEWAY_MAX_TOKENS, 2048),
-    rateLimitRequests: asNumber(process.env.GETOUCH_AI_GATEWAY_RATE_LIMIT_REQUESTS, 30),
-    rateLimitWindowSeconds: asNumber(process.env.GETOUCH_AI_GATEWAY_RATE_LIMIT_WINDOW_SECONDS, 60),
-    modelAliases: parseModelAliases(process.env.GETOUCH_AI_GATEWAY_MODEL_ALIASES, safeBackendType),
-    adminTestKeyConfigured: Boolean(process.env.GETOUCH_AI_GATEWAY_ADMIN_TEST_KEY?.trim()),
+    backendApiKey: firstEnv('GETOUCH_VLLM_BACKEND_API_KEY', 'GETOUCH_AI_BACKEND_API_KEY')?.trim() || null,
+    timeoutMs: asNumber(firstEnv('GETOUCH_VLLM_GATEWAY_TIMEOUT_MS', 'GETOUCH_AI_GATEWAY_TIMEOUT_MS'), 120_000),
+    maxBodyBytes: asNumber(firstEnv('GETOUCH_VLLM_GATEWAY_MAX_BODY_BYTES', 'GETOUCH_AI_GATEWAY_MAX_BODY_BYTES'), 1_000_000),
+    maxTokens: asNumber(firstEnv('GETOUCH_VLLM_GATEWAY_MAX_TOKENS', 'GETOUCH_AI_GATEWAY_MAX_TOKENS'), 2048),
+    rateLimitRequests: asNumber(firstEnv('GETOUCH_VLLM_GATEWAY_RATE_LIMIT_REQUESTS', 'GETOUCH_AI_GATEWAY_RATE_LIMIT_REQUESTS'), 30),
+    rateLimitWindowSeconds: asNumber(firstEnv('GETOUCH_VLLM_GATEWAY_RATE_LIMIT_WINDOW_SECONDS', 'GETOUCH_AI_GATEWAY_RATE_LIMIT_WINDOW_SECONDS'), 60),
+    modelAliases: parseModelAliases(
+      firstEnv('GETOUCH_VLLM_GATEWAY_MODEL_ALIASES', 'GETOUCH_AI_GATEWAY_MODEL_ALIASES'),
+      safeBackendType,
+    ),
+    adminTestKeyConfigured: Boolean(firstEnv('GETOUCH_VLLM_GATEWAY_ADMIN_TEST_KEY', 'GETOUCH_AI_GATEWAY_ADMIN_TEST_KEY')?.trim()),
   };
 }
 
@@ -339,7 +397,10 @@ export async function getGatewayStatus(): Promise<GatewayStatus> {
       rateLimitRequests: config.rateLimitRequests,
       rateLimitWindowSeconds: config.rateLimitWindowSeconds,
     },
-    models: config.modelAliases,
+    models: config.modelAliases.map((m) => ({ ...m })),
+    reservedDomains: {
+      litellm: 'https://llm.getouch.co/v1',
+    },
   };
 }
 
@@ -464,14 +525,19 @@ export function resolveGatewayModel(alias: string) {
 export function buildGatewayModelsResponse() {
   const config = getGatewayConfig();
 
+  // Only expose aliases that are not 'blocked'. Blocked models exist in
+  // the plan but must not be returned to clients until validated.
   return {
     object: 'list',
-    data: config.modelAliases.map((entry) => ({
-      id: entry.alias,
-      object: 'model',
-      created: 0,
-      owned_by: 'getouch',
-    })),
+    data: config.modelAliases
+      .filter((entry) => entry.status !== 'blocked')
+      .map((entry) => ({
+        id: entry.alias,
+        object: 'model',
+        created: 0,
+        owned_by: 'getouch',
+        type: entry.type,
+      })),
   };
 }
 
@@ -771,6 +837,12 @@ export async function handleGatewayChatCompletion(request: NextRequest | Request
   if (!resolvedModel) {
     return createGatewayError(400, 'Unknown model alias.', 'unknown_model');
   }
+  if (resolvedModel.status === 'blocked') {
+    return createGatewayError(400, `Model alias "${modelAlias}" is not currently available.`, 'model_blocked');
+  }
+  if (resolvedModel.type !== 'chat') {
+    return createGatewayError(400, `Model alias "${modelAlias}" is not a chat model. Use /v1/embeddings for embedding aliases.`, 'wrong_model_type');
+  }
 
   const audit = createGatewayAudit('/v1/chat/completions', authResult.auth.prefix, parsedBody.payload);
   logGatewayEvent('request', audit, { bodyBytes: Buffer.byteLength(parsedBody.rawText, 'utf8') });
@@ -815,6 +887,59 @@ export async function handleGatewayModels(request: NextRequest | Request) {
   }, { bodyBytes: 0 });
 
   return createGatewayJsonResponse(buildGatewayModelsResponse());
+}
+
+/**
+ * POST /v1/embeddings
+ *
+ * Foundation handler for embedding aliases (e.g. getouch-embed). Enforces
+ * the same auth/host/body-size protections as chat completions and rejects
+ * non-embedding aliases. Backend forwarding is intentionally not wired yet:
+ * Nomic embedding HF model id is pending verification, so the handler
+ * returns 503 once auth+routing checks pass. This is the correct posture
+ * per Phase 4: do not pretend the backend is ready.
+ */
+export async function handleGatewayEmbeddings(request: NextRequest | Request) {
+  const hostError = assertGatewayHost(request);
+  if (hostError) return hostError;
+
+  const authResult = authenticateGatewayRequest(request);
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+
+  const parsedBody = await parseGatewayJsonBody(request);
+  if (parsedBody instanceof Response) {
+    return parsedBody;
+  }
+
+  const modelAlias = typeof parsedBody.payload.model === 'string' ? parsedBody.payload.model : '';
+  const resolvedModel = resolveGatewayModel(modelAlias);
+  if (!resolvedModel) {
+    return createGatewayError(400, 'Unknown model alias.', 'unknown_model');
+  }
+  if (resolvedModel.status === 'blocked') {
+    return createGatewayError(400, `Model alias "${modelAlias}" is not currently available.`, 'model_blocked');
+  }
+  if (resolvedModel.type !== 'embedding') {
+    return createGatewayError(
+      400,
+      `Model alias "${modelAlias}" is not an embedding model. Use /v1/chat/completions for chat aliases.`,
+      'wrong_model_type',
+    );
+  }
+
+  const audit = createGatewayAudit('/v1/embeddings', authResult.auth.prefix, parsedBody.payload);
+  logGatewayEvent('request', audit, { bodyBytes: Buffer.byteLength(parsedBody.rawText, 'utf8') });
+
+  // Embedding backend wiring is pending verified HF model id.
+  logGatewayEvent('error', audit, { status: 503, message: 'Embeddings backend pending verified model id.' });
+  return createGatewayError(
+    503,
+    'Embedding backend is not configured.',
+    'embeddings_backend_not_ready',
+    'service_unavailable_error',
+  );
 }
 
 export async function handleGatewayHealth(request: NextRequest | Request) {
