@@ -11,6 +11,26 @@ export const dynamic = 'force-dynamic';
 interface Ctx { params: Promise<{ id: string }> }
 const ACTIONS = new Set(['connect', 'reconnect', 'disconnect', 'qr']);
 
+type EvolutionQrPayload = {
+  qrcode?: { code?: string; base64?: string; pairingCode?: string; count?: number };
+  pairingCode?: string;
+  base64?: string;
+  code?: string;
+  count?: number;
+  instance?: { state?: string };
+};
+
+function normalizeQrPayload(data: EvolutionQrPayload | undefined) {
+  const nested = data?.qrcode;
+  return {
+    qr: nested?.base64 ?? data?.base64 ?? null,
+    qrCode: nested?.code ?? data?.code ?? null,
+    pairingCode: nested?.pairingCode ?? data?.pairingCode ?? null,
+    qrCount: nested?.count ?? data?.count ?? null,
+    state: data?.instance?.state ?? null,
+  };
+}
+
 export async function POST(req: NextRequest, ctx: Ctx) {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
@@ -29,11 +49,12 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const remoteId = row.evolutionRemoteId ?? row.sessionName;
 
   if (action === 'connect' || action === 'reconnect' || action === 'qr') {
-    const r = await evolutionFetch<{ qrcode?: { code?: string; base64?: string }; pairingCode?: string; instance?: unknown }>(
+    const r = await evolutionFetch<EvolutionQrPayload>(
       `/instance/connect/${encodeURIComponent(remoteId)}`,
       { method: 'GET', timeoutMs: 8000 },
     );
     if (r.ok) {
+      const qr = normalizeQrPayload(r.data);
       await db.update(evolutionSessions).set({
         status: 'qr_pending', qrStatus: 'pending', updatedAt: new Date(),
         qrExpiresAt: new Date(Date.now() + 60 * 1000),
@@ -46,9 +67,16 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       });
       return NextResponse.json({
         ok: true,
-        qr: r.data?.qrcode?.base64 ?? null,
-        qrCode: r.data?.qrcode?.code ?? null,
-        pairingCode: r.data?.pairingCode ?? null,
+        qr: qr.qr,
+        qrCode: qr.qrCode,
+        pairingCode: qr.pairingCode,
+        qrCount: qr.qrCount,
+        state: qr.state,
+        detail: qr.qr || qr.qrCode || qr.pairingCode
+          ? null
+          : qr.qrCount === 0
+            ? 'Backend is connecting but has not emitted a QR yet.'
+            : 'Backend did not return QR data.',
       });
     }
     return NextResponse.json({ ok: false, status: r.status, error: r.error ?? 'backend_error' }, { status: 502 });

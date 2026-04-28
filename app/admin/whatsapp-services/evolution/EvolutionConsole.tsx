@@ -582,7 +582,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
   const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
   const [showCreate, setShowCreate] = useState(false);
   const [busy, startTransition] = useTransition();
-  const [qrModal, setQrModal] = useState<{ id: string; qr: string | null; pairing: string | null } | null>(null);
+  const [qrModal, setQrModal] = useState<{ id: string; qr: string | null; pairing: string | null; detail: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -625,7 +625,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     });
     const j = await r.json();
     if ((a === 'connect' || a === 'reconnect' || a === 'qr') && r.ok) {
-      setQrModal({ id, qr: j.qr ?? null, pairing: j.pairingCode ?? null });
+      setQrModal({ id, qr: j.qr ?? null, pairing: j.pairingCode ?? null, detail: j.detail ?? null });
     }
     await reload(); onChange();
   }
@@ -707,7 +707,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
             ) : qrModal.pairing ? (
               <div className="evo-pairing">Pairing code: <code>{qrModal.pairing}</code></div>
             ) : (
-              <div className="evo-empty-row">No QR returned by backend.</div>
+              <div className="evo-empty-row">{qrModal.detail ?? 'No QR returned by backend.'}</div>
             )}
             <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal(null)}>Close</button>
           </div>

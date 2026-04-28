@@ -49,6 +49,23 @@ If you replace `infra/Caddyfile` with `scp`, force-recreate `caddy` afterward so
 docker compose up -d --force-recreate --no-deps caddy
 ```
 
+## Evolution API Deployment
+
+Evolution API is deployed as a Docker service on the VPS. It is not a separate GitHub repository and it is not part of the `wa.getouch.co` Baileys gateway.
+
+- Portal admin UI: `portal.getouch.co/whatsapp-services/evolution`
+- Internal service URL: `http://evolution-api:8080`
+- Public endpoint: `https://evo.getouch.co`
+- Runtime database: PostgreSQL database `evolution`
+- Existing Baileys gateway: `https://wa.getouch.co`
+
+Operational boundaries:
+
+- Portal is the admin/control plane for Evolution.
+- `evo.getouch.co` reverse proxies to the Evolution API service.
+- The portal talks to Evolution over the internal Docker network, not the public URL.
+- The Baileys gateway at `wa.getouch.co` remains separate and its primary number stays untouched.
+
 ## Container
 
 ```bash
