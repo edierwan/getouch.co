@@ -476,7 +476,7 @@ def next_run(current_state):
 
     if schedule_type == 'weekly':
         hour, minute = [int(part) for part in (current_state.get('weeklyTime') or '00:00').split(':')]
-      target_day = (int(current_state.get('weeklyDay') or 0) + 6) % 7
+        target_day = (int(current_state.get('weeklyDay') or 0) + 6) % 7
         candidate = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
         days_ahead = (target_day - candidate.weekday()) % 7
         if days_ahead == 0 and candidate <= now_local:
