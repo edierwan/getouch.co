@@ -96,16 +96,18 @@ http://ai.getouch.co {
   reverse_proxy open-webui:8080
 }
 
-http://llm.getouch.co {
+# Protected vLLM API gateway. Implemented inside portal app at /v1/*, /health, /ready.
+# llm.getouch.co is RESERVED for future LiteLLM and is NOT used here.
+http://vllm.getouch.co {
   import common_headers
-  header {
-    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
-    Pragma "no-cache"
-    Expires "0"
+
+  @gateway path /v1/* /health /ready
+  handle @gateway {
+    reverse_proxy getouch-web-prod:3000
   }
 
-  reverse_proxy getouch-web:3000 {
-    flush_interval -1
+  handle {
+    respond "Not Found. Use /v1/models, /v1/chat/completions, /v1/embeddings, /health, /ready." 404
   }
 }
 

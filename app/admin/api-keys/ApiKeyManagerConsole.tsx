@@ -62,6 +62,12 @@ interface ApiResponse {
   secretInventory: SecretInventoryItem[];
   scopeCatalog: Record<string, string[]>;
   services: string[];
+  hashing?: {
+    source: 'central' | 'auth_secret_legacy' | 'dev_default';
+    algorithm: string;
+    hashVersion: number;
+    pepperVersion: number;
+  };
 }
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -249,11 +255,51 @@ export function ApiKeyManagerConsole() {
 
   const stats = data?.stats ?? { totalKeys: 0, activeKeys: 0, gatewayServices: 0, requestsToday: 0 };
   const activePct = stats.totalKeys > 0 ? Math.round((stats.activeKeys / stats.totalKeys) * 100) : 0;
+  const hashing = data?.hashing;
+  const pepperBadge = hashing
+    ? hashing.source === 'central'
+      ? { label: `Pepper: CENTRAL_API_KEY_PEPPER (v${hashing.pepperVersion})`, tone: 'good' }
+      : hashing.source === 'auth_secret_legacy'
+        ? { label: 'Pepper: AUTH_SECRET (DEPRECATED — set CENTRAL_API_KEY_PEPPER)', tone: 'warn' }
+        : { label: 'Pepper: DEV DEFAULT (NOT FOR PRODUCTION)', tone: 'danger' }
+    : null;
 
   return (
     <div className="portal-akm-grid">
       {/* ========== LEFT: Stats + tabs + table ========== */}
       <div className="portal-akm-main">
+        {pepperBadge ? (
+          <div
+            style={{
+              padding: '.55rem .75rem',
+              borderRadius: '.5rem',
+              fontSize: '.78rem',
+              marginBottom: '.6rem',
+              background:
+                pepperBadge.tone === 'good'
+                  ? 'rgba(34,197,94,.10)'
+                  : pepperBadge.tone === 'warn'
+                    ? 'rgba(251,191,36,.12)'
+                    : 'rgba(239,68,68,.12)',
+              border:
+                pepperBadge.tone === 'good'
+                  ? '1px solid rgba(34,197,94,.4)'
+                  : pepperBadge.tone === 'warn'
+                    ? '1px solid rgba(251,191,36,.45)'
+                    : '1px solid rgba(239,68,68,.5)',
+              color:
+                pepperBadge.tone === 'good'
+                  ? '#16a34a'
+                  : pepperBadge.tone === 'warn'
+                    ? '#b45309'
+                    : '#b91c1c',
+              fontWeight: 600,
+            }}
+            title={`hash=${hashing?.algorithm} v${hashing?.hashVersion} pepperVersion=${hashing?.pepperVersion}`}
+          >
+            🔐 {pepperBadge.label}
+          </div>
+        ) : null}
         {/* Stat cards */}
         <div className="portal-akm-stats">
           <StatCard icon="🔑" label="Total Keys" value={stats.totalKeys} sub="All environments" />
