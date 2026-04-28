@@ -16,6 +16,7 @@ A single place inside `portal.getouch.co` to issue, scope, rotate, revoke, audit
 
 - UI: `/admin/api-keys` (admin only)
 - Sidebar: **Developer Platform → API Keys / Webhooks / SDK & Docs**
+- Service endpoint consumer: `/service-endpoints/vllm` offers a vLLM-focused view of AI keys, env-managed gateway keys, and suggested vLLM scopes.
 - API:
   - `GET /api/admin/api-keys` — list, stats, gateways, secret inventory, scope catalog
   - `POST /api/admin/api-keys` — create new key (returns plaintext **once**)
@@ -90,6 +91,14 @@ Scopes are namespaced strings. Wildcards (`ai:*`, `*`) are recognized by the val
 
 A key may carry any combination of scopes from any number of services.
 
+Recommended scopes for the current vLLM public gateway page:
+
+- `ai:chat`
+- `ai:models`
+- `model:getouch-qwen3-14b`
+
+These are prefilled by the `/service-endpoints/vllm` create-key flow.
+
 ## Validation library
 
 `lib/api-keys.ts` exports `validateApiKey({ authorizationHeader, requiredService?, requiredScope?, ip? })` returning a sanitized result:
@@ -104,6 +113,8 @@ A key may carry any combination of scopes from any number of services.
 Never returned to the caller: `keyHash`, full plaintext, internal stack traces.
 
 The library will be wired into the existing vLLM gateway (`/v1/*` routes) behind a feature flag in a follow-up change. WhatsApp gateway keeps its legacy validation for now (see migration plan below).
+
+As of the dedicated vLLM service-endpoint dashboard release, the live `/v1/*` gateway still authenticates with `GETOUCH_VLLM_GATEWAY_KEYS`. The portal surfaces this explicitly as `Central key wiring pending` and does not pretend central validation is live yet.
 
 ## Validation source flag
 

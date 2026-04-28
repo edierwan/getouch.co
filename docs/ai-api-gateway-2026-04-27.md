@@ -3,11 +3,13 @@
 ## Scope
 
 - Public vLLM API domain: `https://vllm.getouch.co/v1`
+- Portal admin UI route: `https://portal.getouch.co/service-endpoints/vllm`
 - `https://llm.getouch.co/v1` is **reserved for future LiteLLM** and is not used by this gateway.
 - Public access goes through the portal application gateway, not directly to a model server.
 - All `/v1/*` routes require an API key.
 - Public health endpoints stay available at `/health` and `/ready`.
 - Raw vLLM is never exposed publicly without API key protection.
+- vLLM itself has no native UI. `portal.getouch.co/service-endpoints/vllm` is the admin/control surface; `ai.getouch.co` (Open WebUI) is the chat/test UI.
 
 ## Architecture
 
@@ -32,6 +34,7 @@ This keeps one stable public API surface while allowing backend changes behind t
 
 - `Authorization: Bearer <GETOUCH_VLLM_API_KEY>` is required on every `/v1/*` request.
 - Gateway keys are currently managed through server env or secrets.
+- The portal now includes a dedicated vLLM gateway dashboard at `/service-endpoints/vllm` showing status, key inventory, quick tests, sanitized logs, Open WebUI provider status, and usage when central logging exists.
 - Keys may be provided as plain values or `sha256:` hashes.
 - The admin UI does not reveal full key values.
 - Per-key rate limit (default: 30 requests / 60s window).
@@ -101,6 +104,27 @@ Open WebUI currently shows only the local Ollama models. vLLM is **not** auto-co
 2. After saving, the configured chat aliases (e.g. `getouch-qwen3-14b`) appear under the External / OpenAI-compatible provider once the vLLM backend is running.
 3. The Nomic embedding alias `getouch-embed` will not show up as a chat model — it must be configured through Open WebUI's embedding provider settings if/when supported.
 4. **Do not delete Ollama models** and **do not wipe Open WebUI data** during this change.
+
+## Portal Admin UI
+
+The dedicated admin page is:
+
+- `portal.getouch.co/service-endpoints/vllm`
+
+It is responsible for:
+
+- showing public gateway health and backend readiness
+- showing the current public alias `getouch-qwen3-14b` → `Qwen/Qwen3-14B-FP8`
+- exposing admin-only quick tests for `/health`, `/ready`, and `/v1/models`
+- exposing sanitized gateway and backend log viewers
+- showing current env-managed gateway keys alongside central API key readiness
+
+Current key posture on that page:
+
+- gateway auth still uses `GETOUCH_VLLM_GATEWAY_KEYS`
+- central API keys are shown for operational readiness and future cutover
+- central-key validation is not yet the live auth path for `/v1/*`
+- no secrets are sent to the frontend; plaintext keys are shown only once at central-key creation time
 
 ## Example Requests
 

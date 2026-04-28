@@ -6,6 +6,7 @@ export interface NavItem {
   href: string;
   icon: string;
   external?: boolean;
+  disabled?: boolean;
 }
 
 export interface NavSection {
@@ -107,6 +108,16 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '111, 213, 153',
     items: [
       { label: 'Evolution Gateway', href: '/admin/whatsapp-services/evolution', icon: '◈' },
+    ],
+  },
+  {
+    label: 'SERVICE ENDPOINTS',
+    accentRgb: '78, 206, 199',
+    items: [
+      { label: 'vLLM AI Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
+      { label: 'Evolution Gateway', href: '/admin/whatsapp-services/evolution', icon: '◈' },
+      { label: 'Baileys Gateway', href: '#', icon: '◌', disabled: true },
+      { label: 'Voice API', href: '#', icon: '◍', disabled: true },
     ],
   },
   {

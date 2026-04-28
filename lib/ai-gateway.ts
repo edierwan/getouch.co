@@ -977,9 +977,24 @@ export async function runGatewayHealthCheck() {
   return getGatewayStatus();
 }
 
+export function getGatewayKeyInventory() {
+  const config = getGatewayConfig();
+  return config.keys.map((entry) => ({
+    label: entry.label,
+    prefix: entry.prefix,
+  }));
+}
+
+export function getGatewayAdminTestKey() {
+  return process.env.GETOUCH_VLLM_GATEWAY_ADMIN_TEST_KEY?.trim()
+    || process.env.GETOUCH_AI_GATEWAY_ADMIN_TEST_KEY?.trim()
+    || null;
+}
+
 export async function runGatewayModelsTest() {
   const config = getGatewayConfig();
-  if (!config.adminTestKeyConfigured) {
+  const adminTestKey = getGatewayAdminTestKey();
+  if (!config.adminTestKeyConfigured || !adminTestKey) {
     return {
       ok: false,
       message: 'Admin test key is not configured.',
@@ -993,7 +1008,7 @@ export async function runGatewayModelsTest() {
   try {
     const response = await fetch(`${config.publicBaseUrl}/models`, {
       headers: {
-        Authorization: `Bearer ${process.env.GETOUCH_AI_GATEWAY_ADMIN_TEST_KEY}`,
+        Authorization: `Bearer ${adminTestKey}`,
       },
       signal: controller.signal,
       cache: 'no-store',

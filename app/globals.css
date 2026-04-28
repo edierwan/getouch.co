@@ -1011,6 +1011,14 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
   text-decoration: none; position: relative;
 }
 .portal-nav-item:hover { background: var(--surface); color: var(--text); }
+.portal-nav-item-disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+.portal-nav-item-disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
 .portal-nav-icon { font-size: 0.8rem; opacity: 0.7; width: 14px; text-align: center; }
 .portal-nav-ext { margin-left: auto; font-size: 0.65rem; opacity: 0.5; }
 

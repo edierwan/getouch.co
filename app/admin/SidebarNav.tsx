@@ -153,7 +153,17 @@ export default function SidebarNav({ isPortal }: { isPortal: boolean }) {
               const itemHash = splitHash(item.href);
               const onSamePage = pathMatches(item.href);
               const isActive = isItemActive(item.href, item.external);
-              const className = `portal-nav-item${isActive ? ' portal-nav-item-active' : ''}`;
+              const className = `portal-nav-item${isActive ? ' portal-nav-item-active' : ''}${item.disabled ? ' portal-nav-item-disabled' : ''}`;
+
+              if (item.disabled) {
+                return (
+                  <span key={item.label} className={className} aria-disabled="true">
+                    <span className="portal-nav-icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                    <span className="portal-nav-ext">Planned</span>
+                  </span>
+                );
+              }
 
               if (item.external) {
                 return (

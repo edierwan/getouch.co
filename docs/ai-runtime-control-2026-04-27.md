@@ -53,6 +53,17 @@ The page now includes:
 - A warning banner when current GPU pressure makes a vLLM trial unsafe.
 - An updated AI services list that keeps Dify, MCP, Open WebUI, Ollama, SearXNG, and Pipelines, and adds a vLLM row.
 
+Additional page:
+
+- `/admin/service-endpoints/vllm` → public portal path `/service-endpoints/vllm`
+
+This dedicated page focuses on the protected gateway surface rather than runtime maintenance. It shows:
+
+- public endpoint `https://vllm.getouch.co/v1`
+- internal backend `http://vllm-qwen3-14b-fp8:8000/v1`
+- Open WebUI provider status for the External tab
+- gateway/API key status, quick tests, usage, and sanitized logs
+
 ## Status Meanings
 
 - `Ollama`: Ollama is the active runtime and vLLM is not running.
@@ -116,7 +127,16 @@ Instead, the portal uses a fixed-command SSH library with a narrow policy:
 
 This keeps the current change small and reversible while preserving the option to move the command policy into a dedicated host-side script later.
 
+The runtime page and the service-endpoint page both reuse this fixed-command SSH approach. No arbitrary shell input is accepted from the browser.
+
 ## vLLM Trial Intent
+
+Current operational notes for the dedicated gateway/runtime pair:
+
+- No separate vLLM database is required at this stage.
+- Portal metadata, key inventory, and usage continue to use the main `getouch.co` PostgreSQL database.
+- The backend model cache is expected under `/srv/apps/ai/huggingface` on the host.
+- LiteLLM, if introduced later on `llm.getouch.co`, may have its own database and control surface.
 
 If approved in a future maintenance window, the intended internal vLLM service is:
 
