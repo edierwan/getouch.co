@@ -473,10 +473,9 @@ export function authenticateGatewayRequest(request: NextRequest | Request) {
   const config = getGatewayConfig();
   const token = getRequestBearerToken(request);
 
-  if (!config.enabled) {
-    return { error: createGatewayError(503, 'AI gateway is not enabled.', 'gateway_disabled', 'service_unavailable_error') };
-  }
-
+  // Auth must be checked BEFORE backend availability so that an unauthenticated
+  // probe cannot distinguish "backend not deployed" from "your key is invalid".
+  // Spec: missing key → 401, invalid key → 401, backend unavailable → 503.
   if (!token) {
     return { error: createGatewayError(401, 'Missing API key.', 'missing_api_key', 'authentication_error') };
   }
@@ -484,6 +483,10 @@ export function authenticateGatewayRequest(request: NextRequest | Request) {
   const validated = validateGatewayApiKey(token);
   if (!validated) {
     return { error: createGatewayError(401, 'Invalid API key.', 'invalid_api_key', 'authentication_error') };
+  }
+
+  if (!config.enabled) {
+    return { error: createGatewayError(503, 'AI gateway is not enabled.', 'gateway_disabled', 'service_unavailable_error') };
   }
 
   const rateLimited = applyRateLimit(validated.hash);
