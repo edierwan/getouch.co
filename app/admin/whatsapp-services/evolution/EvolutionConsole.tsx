@@ -42,6 +42,7 @@ interface SessionQrResponse {
   detail?: string | null;
   connected?: boolean;
   waitRecommended?: boolean;
+  error?: string | null;
 }
 interface TenantBinding {
   id: string; tenantId: string; tenantName: string | null; tenantDomain: string | null;
@@ -132,6 +133,21 @@ function formatQrState(state: string | null | undefined): string {
   if (state === 'close') return 'Closed';
   if (state === 'qr') return 'QR Ready';
   return state.charAt(0).toUpperCase() + state.slice(1);
+}
+
+const QR_POLL_INTERVAL_MS = 2500;
+const QR_POLL_MAX_ATTEMPTS = 20;
+
+function getQrPollStatus(
+  result: SessionQrResponse,
+  current?: { qr: string | null; pairing: string | null; qrCodeText: string | null },
+) {
+  if (result.connected || result.state === 'open') return 'connected' as const;
+  if (result.qr || result.pairingCode || result.qrCode || current?.qr || current?.pairing || current?.qrCodeText) {
+    return 'ready' as const;
+  }
+  if (result.waitRecommended) return 'waiting_qr' as const;
+  return 'failed' as const;
 }
 
 /* ─── Top-level component ─────────────────────────────── */
@@ -607,12 +623,13 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     instanceName: string;
     provider: string;
     qr: string | null;
+    qrCodeText: string | null;
     pairing: string | null;
     detail: string | null;
     state: string | null;
     lastCheckedAt: string;
     pollAttempt: number;
-    pollStatus: 'idle' | 'polling' | 'ready' | 'connected' | 'timeout' | 'failed';
+    pollStatus: 'connecting' | 'waiting_qr' | 'ready' | 'connected' | 'timeout' | 'failed';
   } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -637,20 +654,29 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: actionName }),
     });
-    const json = await response.json();
-    if (!response.ok) throw new Error(json.error ?? `Failed (${response.status})`);
+    const json = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        typeof json?.detail === 'string'
+          ? json.detail
+          : typeof json?.error === 'string'
+            ? json.error
+            : `Failed (${response.status})`,
+      );
+    }
     return json as SessionQrResponse;
   }
 
   useEffect(() => {
     if (!qrModal) return;
-    if (qrModal.qr || qrModal.pairing) return;
-    if (qrModal.pollStatus === 'connected' || qrModal.pollStatus === 'failed' || qrModal.pollStatus === 'timeout') return;
-    if (qrModal.pollAttempt >= 10) {
+    if (qrModal.pollStatus === 'connecting' || qrModal.pollStatus === 'connected' || qrModal.pollStatus === 'failed' || qrModal.pollStatus === 'timeout') return;
+    if (qrModal.pollAttempt >= QR_POLL_MAX_ATTEMPTS) {
       setQrModal((current) => current && current.id === qrModal.id ? {
         ...current,
         pollStatus: 'timeout',
-        detail: current.detail ?? 'Timed out waiting for Evolution to emit a QR code.',
+        detail: current.qr || current.pairing || current.qrCodeText
+          ? 'Timed out waiting for the session to finish connecting. Retry to request a fresh QR.'
+          : 'Timed out waiting for Evolution to emit a QR code.',
       } : current);
       return;
     }
@@ -663,19 +689,14 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           const nextAttempt = current.pollAttempt + 1;
           return {
             ...current,
-            qr: result.qr ?? null,
-            pairing: result.pairingCode ?? null,
+            qr: result.qr ?? current.qr,
+            qrCodeText: result.qrCode ?? current.qrCodeText,
+            pairing: result.pairingCode ?? current.pairing,
             detail: result.detail ?? current.detail,
             state: result.state ?? current.state,
             lastCheckedAt: new Date().toISOString(),
             pollAttempt: nextAttempt,
-            pollStatus: result.connected
-              ? 'connected'
-              : result.qr || result.pairingCode
-                ? 'ready'
-                : result.waitRecommended
-                  ? 'polling'
-                  : 'failed',
+            pollStatus: getQrPollStatus(result, current),
           };
         });
         await reload();
@@ -688,7 +709,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           lastCheckedAt: new Date().toISOString(),
         } : current);
       }
-    }, 3000);
+    }, QR_POLL_INTERVAL_MS);
 
     return () => window.clearTimeout(timeout);
   }, [onChange, qrModal, reload]);
@@ -714,31 +735,54 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     if (a === 'connect' || a === 'reconnect' || a === 'qr') {
       const session = rows.find((row) => row.id === id);
       const instance = instances.find((row) => row.id === session?.instanceId);
-      const result = await requestQr(id, a);
       setQrModal({
         id,
         sessionName: session?.sessionName ?? 'Unknown session',
         instanceName: instance?.name ?? 'Unknown instance',
         provider: 'Evolution API',
-        qr: result.qr ?? null,
-        pairing: result.pairingCode ?? null,
-        detail: result.detail ?? null,
-        state: result.state ?? null,
+        qr: null,
+        qrCodeText: null,
+        pairing: null,
+        detail: 'Connecting to Evolution…',
+        state: 'connecting',
         lastCheckedAt: new Date().toISOString(),
         pollAttempt: 0,
-        pollStatus: result.connected
-          ? 'connected'
-          : result.qr || result.pairingCode
-            ? 'ready'
-            : result.waitRecommended
-              ? 'polling'
-              : 'failed',
+        pollStatus: 'connecting',
       });
+      try {
+        const result = await requestQr(id, a);
+        setQrModal((current) => current && current.id === id ? {
+          ...current,
+          qr: result.qr ?? current.qr,
+          qrCodeText: result.qrCode ?? current.qrCodeText,
+          pairing: result.pairingCode ?? current.pairing,
+          detail: result.detail ?? (result.waitRecommended ? 'Waiting for Evolution to emit QR…' : current.detail),
+          state: result.state ?? current.state,
+          lastCheckedAt: new Date().toISOString(),
+          pollAttempt: 0,
+          pollStatus: getQrPollStatus(result, current),
+        } : current);
+      } catch (actionError) {
+        setQrModal((current) => current && current.id === id ? {
+          ...current,
+          pollStatus: 'failed',
+          detail: actionError instanceof Error ? actionError.message : 'Failed to request QR.',
+          lastCheckedAt: new Date().toISOString(),
+        } : current);
+      }
+      await reload();
+      onChange();
+      return;
     } else {
-      await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
+      const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: a }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setErr(typeof payload?.detail === 'string' ? payload.detail : typeof payload?.error === 'string' ? payload.error : 'Action failed');
+        return;
+      }
     }
     await reload(); onChange();
   }
@@ -799,10 +843,10 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
                 <td className="evo-cell-muted">{timeAgo(s.lastMessageAt)}</td>
                 <td>
                   <div className="evo-row-actions">
-                    <button className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => action(s.id, 'qr')}>QR</button>
-                    <button className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => action(s.id, 'reconnect')}>Reconnect</button>
-                    <button className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => action(s.id, 'disconnect')}>Disconnect</button>
-                    <button className="evo-btn evo-btn-bad evo-btn-xs" onClick={() => remove(s.id, s.sessionName)}>Delete</button>
+                    <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void action(s.id, 'qr'); }}>QR</button>
+                    <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void action(s.id, 'reconnect'); }}>Reconnect</button>
+                    <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void action(s.id, 'disconnect'); }}>Disconnect</button>
+                    <button type="button" className="evo-btn evo-btn-bad evo-btn-xs" onClick={() => { void remove(s.id, s.sessionName); }}>Delete</button>
                   </div>
                 </td>
               </tr>
@@ -821,26 +865,31 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
               <div><strong>Instance:</strong> {qrModal.instanceName}</div>
               <div><strong>State:</strong> {formatQrState(qrModal.state)}</div>
               <div><strong>Last checked:</strong> {timeAgo(qrModal.lastCheckedAt)}</div>
-              <div><strong>Polling:</strong> {qrModal.pollStatus === 'polling' ? `Waiting (${qrModal.pollAttempt}/10)` : qrModal.pollStatus}</div>
+              <div><strong>Polling:</strong> {qrModal.pollStatus === 'waiting_qr' || qrModal.pollStatus === 'ready' ? `Attempt ${qrModal.pollAttempt}/${QR_POLL_MAX_ATTEMPTS}` : qrModal.pollStatus}</div>
             </div>
             {qrModal.qr ? (
               <img alt="QR code" src={qrModal.qr} className="evo-qr" />
             ) : qrModal.pairing ? (
               <div className="evo-pairing">Pairing code: <code>{qrModal.pairing}</code></div>
+            ) : qrModal.qrCodeText ? (
+              <div className="evo-empty-row">Evolution returned QR payload without an image. Retry to request a fresh QR.</div>
             ) : (
               <div className="evo-empty-row">{qrModal.detail ?? 'No QR returned by backend.'}</div>
             )}
+            {qrModal.pollStatus === 'connecting' ? <div className="evo-qr-status">Connecting to Evolution…</div> : null}
             {qrModal.pollStatus === 'connected' ? <div className="evo-qr-status evo-qr-status-good">Session connected.</div> : null}
-            {qrModal.pollStatus === 'polling' ? <div className="evo-qr-status">Session is connecting. Waiting for Evolution to emit QR...</div> : null}
-            {qrModal.pollStatus === 'timeout' ? <div className="evo-qr-status evo-qr-status-bad">Timed out waiting for QR. Retry to request a fresh check.</div> : null}
+            {qrModal.pollStatus === 'waiting_qr' ? <div className="evo-qr-status">Waiting for Evolution to emit QR…</div> : null}
+            {qrModal.pollStatus === 'ready' ? <div className="evo-qr-status">QR ready. Scan it in WhatsApp Linked Devices. The portal will keep checking for connection.</div> : null}
+            {qrModal.pollStatus === 'timeout' ? <div className="evo-qr-status evo-qr-status-bad">Timed out waiting for QR or connection confirmation. Retry to request a fresh check.</div> : null}
             {qrModal.pollStatus === 'failed' ? <div className="evo-qr-status evo-qr-status-bad">{qrModal.detail ?? 'QR polling failed.'}</div> : null}
             <div className="evo-row-actions evo-row-actions-end">
               <button
                 className="evo-btn evo-btn-primary"
                 type="button"
-                onClick={() => setQrModal((current) => current ? { ...current, pollAttempt: 0, pollStatus: 'polling', lastCheckedAt: new Date().toISOString() } : current)}
+                onClick={() => { void action(qrModal.id, 'qr'); }}
+                disabled={qrModal.pollStatus === 'connecting'}
               >
-                Retry Polling
+                Retry QR
               </button>
             <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal(null)}>Close</button>
             </div>

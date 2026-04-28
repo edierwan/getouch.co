@@ -24,15 +24,79 @@ type EvolutionConnectionStatePayload = {
   instance?: { state?: string };
 };
 
-function normalizeQrPayload(data: EvolutionQrPayload | undefined) {
+type EvolutionCreatePayload = EvolutionQrPayload & {
+  instance?: { instanceName?: string; state?: string };
+};
+
+type EvolutionBackendErrorPayload = {
+  error?: string;
+  response?: {
+    message?: string[] | string;
+  };
+};
+
+function normalizeQrImage(value: string | null | undefined) {
+  if (!value) return null;
+  if (value.startsWith('data:image')) return value;
+
+  const compact = value.replace(/\s+/g, '');
+  if (/^[A-Za-z0-9+/=]+$/.test(compact)) {
+    return `data:image/png;base64,${compact}`;
+  }
+
+  return null;
+}
+
+function normalizeQrPayload(data: EvolutionQrPayload | EvolutionCreatePayload | undefined) {
   const nested = data?.qrcode;
   return {
-    qr: nested?.base64 ?? data?.base64 ?? null,
+    qr: normalizeQrImage(nested?.base64 ?? data?.base64 ?? null),
     qrCode: nested?.code ?? data?.code ?? null,
     pairingCode: nested?.pairingCode ?? data?.pairingCode ?? null,
     qrCount: nested?.count ?? data?.count ?? null,
     state: data?.instance?.state ?? null,
   };
+}
+
+function getBackendMessage(data: EvolutionBackendErrorPayload | EvolutionQrPayload | EvolutionCreatePayload | undefined) {
+  const payload = data as EvolutionBackendErrorPayload | undefined;
+  const message = payload?.response?.message;
+  if (Array.isArray(message)) {
+    return typeof message[0] === 'string' ? message[0] : null;
+  }
+  return typeof message === 'string' ? message : null;
+}
+
+function isMissingRemoteInstance(data: EvolutionBackendErrorPayload | EvolutionQrPayload | EvolutionCreatePayload | undefined) {
+  const message = getBackendMessage(data)?.toLowerCase() ?? '';
+  return message.includes('does not exist') || message.includes('instance') && message.includes('not found');
+}
+
+function getRemoteIdCandidates(row: typeof evolutionSessions.$inferSelect) {
+  const values = [
+    row.evolutionRemoteId?.trim() || null,
+    row.sessionName.trim() || null,
+    row.sessionName.trim().toLowerCase() || null,
+  ].filter((value): value is string => Boolean(value));
+
+  return Array.from(new Set(values));
+}
+
+function getFailureDetail(input: {
+  status: number;
+  error: string | undefined;
+  data: EvolutionBackendErrorPayload | EvolutionQrPayload | EvolutionCreatePayload | undefined;
+  remoteId: string;
+}) {
+  const backendMessage = getBackendMessage(input.data);
+  if (input.status === 0) return 'Evolution backend unreachable.';
+  if (input.status === 401 || input.status === 403) return 'Evolution auth failed.';
+  if (input.status === 404 || isMissingRemoteInstance(input.data)) {
+    return `Evolution does not have a runtime session for "${input.remoteId}" yet.`;
+  }
+  if (backendMessage) return backendMessage;
+  if (input.error === 'evolution_not_configured') return 'Evolution backend not configured.';
+  return input.error ?? 'Unknown Evolution response.';
 }
 
 function mapBackendStateToSessionStatus(state: string | null): typeof evolutionSessions.$inferInsert.status {
@@ -103,18 +167,78 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const remoteId = row.evolutionRemoteId ?? row.sessionName;
 
   if (action === 'connect' || action === 'reconnect' || action === 'qr') {
-    const r = await evolutionFetch<EvolutionQrPayload>(
-      `/instance/connect/${encodeURIComponent(remoteId)}`,
-      { method: 'GET', timeoutMs: 8000 },
-    );
+    let resolvedRemoteId = remoteId;
+    let detailPrefix: string | null = null;
+    let r = null as Awaited<ReturnType<typeof evolutionFetch<EvolutionQrPayload>>> | Awaited<ReturnType<typeof evolutionFetch<EvolutionCreatePayload>>> | null;
+
+    for (const candidate of getRemoteIdCandidates(row)) {
+      const attempt = await evolutionFetch<EvolutionQrPayload>(
+        `/instance/connect/${encodeURIComponent(candidate)}`,
+        { method: 'GET', timeoutMs: 8000 },
+      );
+
+      if (attempt.ok) {
+        resolvedRemoteId = candidate;
+        if (candidate !== remoteId) {
+          detailPrefix = `Resolved using remote session name "${candidate}".`;
+        }
+        r = attempt;
+        break;
+      }
+
+      if (attempt.status !== 404 && !isMissingRemoteInstance(attempt.data)) {
+        resolvedRemoteId = candidate;
+        r = attempt;
+        break;
+      }
+    }
+
+    if (!r) {
+      const created = await evolutionFetch<EvolutionCreatePayload>('/instance/create', {
+        method: 'POST',
+        timeoutMs: 8000,
+        body: JSON.stringify({
+          instanceName: row.sessionName,
+          qrcode: true,
+          integration: 'WHATSAPP-BAILEYS',
+        }),
+      });
+
+      if (!created.ok) {
+        return NextResponse.json({
+          ok: false,
+          status: created.status,
+          error: created.error ?? 'backend_error',
+          detail: `Evolution runtime session is missing and recreation failed. ${getFailureDetail({
+            status: created.status,
+            error: created.error,
+            data: created.data,
+            remoteId: row.sessionName,
+          })}`,
+        }, { status: 502 });
+      }
+
+      resolvedRemoteId = created.data?.instance?.instanceName ?? row.sessionName;
+      detailPrefix = 'Evolution runtime session was missing. The portal recreated it and requested a fresh QR.';
+      const createdQr = normalizeQrPayload(created.data);
+
+      r = createdQr.qr || createdQr.qrCode || createdQr.pairingCode || createdQr.state
+        ? created
+        : await evolutionFetch<EvolutionQrPayload>(
+            `/instance/connect/${encodeURIComponent(resolvedRemoteId)}`,
+            { method: 'GET', timeoutMs: 8000 },
+          );
+    }
+
     if (r.ok) {
       const qr = normalizeQrPayload(r.data);
-      const state = qr.state ?? await fetchConnectionState(remoteId);
+      const state = qr.state ?? await fetchConnectionState(resolvedRemoteId);
       const sessionStatus = mapBackendStateToSessionStatus(state);
-      const detail = getDetailForState({ ...qr, state });
+      const detail = [detailPrefix, getDetailForState({ ...qr, state })].filter(Boolean).join(' ') || null;
       await db.update(evolutionSessions).set({
+        evolutionRemoteId: resolvedRemoteId,
         status: sessionStatus,
-        qrStatus: qr.qr || qr.qrCode || qr.pairingCode ? 'pending' : null,
+        qrStatus: state === 'open' ? 'connected' : qr.qr || qr.qrCode || qr.pairingCode ? 'pending' : null,
         updatedAt: new Date(),
         qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(Date.now() + 60 * 1000) : null,
         lastConnectedAt: state === 'open' ? new Date() : row.lastConnectedAt,
@@ -137,7 +261,17 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         detail,
       });
     }
-    return NextResponse.json({ ok: false, status: r.status, error: r.error ?? 'backend_error' }, { status: 502 });
+    return NextResponse.json({
+      ok: false,
+      status: r.status,
+      error: r.error ?? 'backend_error',
+      detail: getFailureDetail({
+        status: r.status,
+        error: r.error,
+        data: r.data,
+        remoteId: resolvedRemoteId,
+      }),
+    }, { status: 502 });
   }
 
   if (action === 'disconnect') {
