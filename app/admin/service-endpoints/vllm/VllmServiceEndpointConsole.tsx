@@ -154,6 +154,282 @@ function meterStyle(percent: number | null) {
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function asString(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
+function asNullableString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function asNumber(value: unknown, fallback: number | null = null) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function asBoolean(value: unknown, fallback = false) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function normalizeDashboardPayload(payload: unknown): VllmDashboardStatus | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+
+  const checkedAt = asString(root.checkedAt, new Date().toISOString());
+  const gateway = asRecord(root.gateway);
+  const gatewayBackend = asRecord(gateway?.backend);
+  const gatewayAuth = asRecord(gateway?.auth);
+  const gatewayExposure = asRecord(gateway?.exposure);
+  const gatewayLimits = asRecord(gateway?.limits);
+  const gatewayReservedDomains = asRecord(gateway?.reservedDomains);
+  const runtime = asRecord(root.runtime);
+  const runtimeCore = asRecord(runtime?.runtime);
+  const runtimeGpu = asRecord(runtime?.gpu);
+  const runtimeOllama = asRecord(runtime?.ollama);
+  const runtimeVllm = asRecord(runtime?.vllm);
+  const runtimeOpenWebUi = asRecord(runtime?.openWebUi);
+  const runtimeDocker = asRecord(runtime?.docker);
+  const runtimeHost = asRecord(runtime?.host);
+  const runtimeActions = asRecord(runtime?.actions);
+  const runtimeLinks = asRecord(runtime?.links);
+  const runtimeCommandPolicy = asRecord(runtime?.commandPolicy);
+  const serviceInfo = asRecord(root.serviceInfo);
+  const pepper = asRecord(serviceInfo?.pepper);
+  const apiAccess = asRecord(root.apiAccess);
+  const openWebUi = asRecord(root.openWebUi);
+  const usage = asRecord(root.usage);
+  const resourceUsage = asRecord(root.resourceUsage);
+  const rawErrors = Array.isArray(root.errors) ? root.errors.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) : [];
+  const normalizedProviderBaseUrls = asStringArray(root.providerBaseUrls).length
+    ? asStringArray(root.providerBaseUrls)
+    : asStringArray(openWebUi?.providerBaseUrls).length
+      ? asStringArray(openWebUi?.providerBaseUrls)
+      : asStringArray(runtimeOpenWebUi?.providerBaseUrls);
+  const normalizedApiKeys = Array.isArray(root.apiKeys)
+    ? root.apiKeys
+    : Array.isArray(apiAccess?.keys)
+      ? apiAccess.keys
+      : [];
+  const normalizedRecentRequests = Array.isArray(root.recentRequests)
+    ? root.recentRequests
+    : Array.isArray(apiAccess?.recentRequests)
+      ? apiAccess.recentRequests
+      : [];
+
+  return {
+    checkedAt,
+    gateway: {
+      checkedAt: asString(gateway?.checkedAt, checkedAt),
+      publicBaseUrl: asString(gateway?.publicBaseUrl, 'https://vllm.getouch.co/v1'),
+      publicHealthUrl: asString(gateway?.publicHealthUrl, 'https://vllm.getouch.co/health'),
+      publicReadyUrl: asString(gateway?.publicReadyUrl, 'https://vllm.getouch.co/ready'),
+      docsUrl: asString(gateway?.docsUrl, 'https://portal.getouch.co/admin/service-endpoints/vllm#api-docs'),
+      status: (gateway?.status === 'Ready' || gateway?.status === 'Active' || gateway?.status === 'Not configured' || gateway?.status === 'Backend unavailable') ? gateway.status : 'Backend unavailable',
+      enabled: asBoolean(gateway?.enabled, true),
+      backend: {
+        type: gatewayBackend?.type === 'disabled' || gatewayBackend?.type === 'ollama' || gatewayBackend?.type === 'vllm' ? gatewayBackend.type : 'vllm',
+        baseUrl: asNullableString(gatewayBackend?.baseUrl) || 'http://vllm-qwen3-14b-fp8:8000/v1',
+        ready: asBoolean(gatewayBackend?.ready, false),
+        message: asString(gatewayBackend?.message, 'Gateway backend is not ready.'),
+      },
+      auth: {
+        required: true,
+        keyCount: asNumber(gatewayAuth?.keyCount, 0) ?? 0,
+        adminTestKeyConfigured: asBoolean(gatewayAuth?.adminTestKeyConfigured, false),
+      },
+      exposure: {
+        publicGateway: true,
+        backendPrivate: asBoolean(gatewayExposure?.backendPrivate, true),
+        backendDirectPublicExposure: false,
+      },
+      limits: {
+        maxBodyBytes: asNumber(gatewayLimits?.maxBodyBytes, 0) ?? 0,
+        timeoutMs: asNumber(gatewayLimits?.timeoutMs, 0) ?? 0,
+        maxTokens: asNumber(gatewayLimits?.maxTokens, 0) ?? 0,
+        rateLimitRequests: asNumber(gatewayLimits?.rateLimitRequests, 0) ?? 0,
+        rateLimitWindowSeconds: asNumber(gatewayLimits?.rateLimitWindowSeconds, 0) ?? 0,
+      },
+      models: Array.isArray(gateway?.models) ? gateway.models as VllmDashboardStatus['gateway']['models'] : [],
+      reservedDomains: {
+        litellm: asString(gatewayReservedDomains?.litellm, 'https://llm.getouch.co'),
+      },
+    },
+    runtime: {
+      checkedAt: asString(runtime?.checkedAt, checkedAt),
+      runtime: {
+        activeRuntime: runtimeCore?.activeRuntime === 'Ollama' || runtimeCore?.activeRuntime === 'vLLM' || runtimeCore?.activeRuntime === 'Maintenance' || runtimeCore?.activeRuntime === 'Unknown'
+          ? runtimeCore.activeRuntime
+          : 'Unknown',
+        recommendedMode: asString(runtimeCore?.recommendedMode, 'Ollama primary / vLLM trial only'),
+        recommendedReason: asString(runtimeCore?.recommendedReason, 'Runtime probe unavailable.'),
+        warning: asNullableString(runtimeCore?.warning),
+      },
+      gpu: {
+        available: asBoolean(runtimeGpu?.available, false),
+        name: asNullableString(runtimeGpu?.name),
+        totalVramMiB: asNumber(runtimeGpu?.totalVramMiB),
+        usedVramMiB: asNumber(runtimeGpu?.usedVramMiB),
+        freeVramMiB: asNumber(runtimeGpu?.freeVramMiB),
+        utilizationGpuPercent: asNumber(runtimeGpu?.utilizationGpuPercent),
+        temperatureC: asNumber(runtimeGpu?.temperatureC),
+        driverVersion: asNullableString(runtimeGpu?.driverVersion),
+        cudaVersion: asNullableString(runtimeGpu?.cudaVersion),
+        dockerAccess: asBoolean(runtimeGpu?.dockerAccess, false),
+        dockerAccessError: asNullableString(runtimeGpu?.dockerAccessError),
+      },
+      ollama: {
+        containerStatus: runtimeOllama?.containerStatus === 'running' || runtimeOllama?.containerStatus === 'stopped' || runtimeOllama?.containerStatus === 'missing' || runtimeOllama?.containerStatus === 'unknown'
+          ? runtimeOllama.containerStatus
+          : 'unknown',
+        apiReachable: asBoolean(runtimeOllama?.apiReachable, false),
+        apiError: asNullableString(runtimeOllama?.apiError),
+        residentModel: asNullableString(runtimeOllama?.residentModel),
+        residentProcessor: asNullableString(runtimeOllama?.residentProcessor),
+        residentSize: asNullableString(runtimeOllama?.residentSize),
+        residentContext: asNullableString(runtimeOllama?.residentContext),
+        residentUntil: asNullableString(runtimeOllama?.residentUntil),
+        installedModels: asStringArray(runtimeOllama?.installedModels),
+        installedCount: asNumber(runtimeOllama?.installedCount, 0) ?? 0,
+      },
+      vllm: {
+        status: runtimeVllm?.status === 'Not installed' || runtimeVllm?.status === 'Installed but stopped' || runtimeVllm?.status === 'Starting' || runtimeVllm?.status === 'Running' || runtimeVllm?.status === 'Failed' || runtimeVllm?.status === 'Blocked' || runtimeVllm?.status === 'Unknown'
+          ? runtimeVllm.status
+          : 'Unknown',
+        intendedModel: asString(runtimeVllm?.intendedModel, 'Qwen/Qwen3-14B-FP8'),
+        intendedEndpoint: asString(runtimeVllm?.intendedEndpoint, 'http://vllm-qwen3-14b-fp8:8000/v1'),
+        publicExposure: 'No',
+        containerStatus: runtimeVllm?.containerStatus === 'running' || runtimeVllm?.containerStatus === 'stopped' || runtimeVllm?.containerStatus === 'missing' || runtimeVllm?.containerStatus === 'unknown'
+          ? runtimeVllm.containerStatus
+          : 'unknown',
+        providerReachable: asBoolean(runtimeVllm?.providerReachable, false),
+        providerError: asNullableString(runtimeVllm?.providerError),
+        configuredInCompose: asBoolean(runtimeVllm?.configuredInCompose, false),
+        composeServiceFound: asBoolean(runtimeVllm?.composeServiceFound, false),
+        lastError: asNullableString(runtimeVllm?.lastError),
+        blockedReason: asNullableString(runtimeVllm?.blockedReason),
+      },
+      openWebUi: {
+        reachable: asBoolean(runtimeOpenWebUi?.reachable, false),
+        providerBaseUrls: normalizedProviderBaseUrls,
+        providerKeysConfigured: asNumber(runtimeOpenWebUi?.providerKeysConfigured, 0) ?? 0,
+        ollamaProviderAvailable: asBoolean(runtimeOpenWebUi?.ollamaProviderAvailable, false),
+        vllmProviderConfigured: asBoolean(runtimeOpenWebUi?.vllmProviderConfigured, false),
+        vllmProviderUsable: asBoolean(runtimeOpenWebUi?.vllmProviderUsable, false),
+        error: asNullableString(runtimeOpenWebUi?.error),
+      },
+      docker: {
+        network: asNullableString(runtimeDocker?.network),
+        openWebUiContainer: asString(runtimeDocker?.openWebUiContainer, 'open-webui'),
+        ollamaContainer: asString(runtimeDocker?.ollamaContainer, 'ollama'),
+        vllmContainer: asString(runtimeDocker?.vllmContainer, 'vllm-qwen3-14b-fp8'),
+        publicExposureDetected: asBoolean(runtimeDocker?.publicExposureDetected, false),
+      },
+      host: {
+        memoryTotal: asNullableString(runtimeHost?.memoryTotal),
+        memoryUsed: asNullableString(runtimeHost?.memoryUsed),
+        memoryAvailable: asNullableString(runtimeHost?.memoryAvailable),
+        swapTotal: asNullableString(runtimeHost?.swapTotal),
+        swapUsed: asNullableString(runtimeHost?.swapUsed),
+        diskSrvFree: asNullableString(runtimeHost?.diskSrvFree),
+      },
+      actions: {
+        canRefresh: asBoolean(runtimeActions?.canRefresh, true),
+        canUnloadOllama: asBoolean(runtimeActions?.canUnloadOllama, false),
+        canStartVllmTrial: asBoolean(runtimeActions?.canStartVllmTrial, false),
+        canStopVllm: asBoolean(runtimeActions?.canStopVllm, false),
+        canRestoreOllama: asBoolean(runtimeActions?.canRestoreOllama, false),
+        canConfigureOpenWebUiVllm: asBoolean(runtimeActions?.canConfigureOpenWebUiVllm, false),
+        startBlockedReason: asNullableString(runtimeActions?.startBlockedReason),
+        configureBlockedReason: asNullableString(runtimeActions?.configureBlockedReason),
+      },
+      links: {
+        openWebUi: asString(runtimeLinks?.openWebUi, 'https://ai.getouch.co'),
+        grafanaGpu: asString(runtimeLinks?.grafanaGpu, 'https://grafana.getouch.co'),
+      },
+      commandPolicy: {
+        mode: 'inline-fixed-commands',
+        allowedActions: Array.isArray(runtimeCommandPolicy?.allowedActions) ? runtimeCommandPolicy.allowedActions as VllmDashboardStatus['runtime']['commandPolicy']['allowedActions'] : ['status', 'ollama-unload-current', 'vllm-start', 'vllm-stop', 'restore-ollama', 'openwebui-configure-vllm'],
+      },
+    },
+    errors: rawErrors,
+    backendState: root.backendState === 'running' || root.backendState === 'not_running' || root.backendState === 'not_deployed' || root.backendState === 'not_ready' || root.backendState === 'unknown'
+      ? root.backendState
+      : 'unknown',
+    serviceInfo: {
+      publicEndpoint: asString(serviceInfo?.publicEndpoint, 'https://vllm.getouch.co/v1'),
+      internalBackend: asString(serviceInfo?.internalBackend, 'http://vllm-qwen3-14b-fp8:8000/v1'),
+      modelInternal: asString(serviceInfo?.modelInternal, 'Qwen/Qwen3-14B-FP8'),
+      modelAlias: asString(serviceInfo?.modelAlias, 'getouch-qwen3-14b'),
+      gatewayVersion: asNullableString(serviceInfo?.gatewayVersion),
+      backendVersion: asString(serviceInfo?.backendVersion, 'Not running'),
+      lastHealthCheck: asString(serviceInfo?.lastHealthCheck, checkedAt),
+      gatewayStartedAt: asNullableString(serviceInfo?.gatewayStartedAt),
+      backendStartedAt: asNullableString(serviceInfo?.backendStartedAt),
+      pepper: {
+        source: pepper?.source === 'central' || pepper?.source === 'auth_secret_legacy' || pepper?.source === 'dev_default'
+          ? pepper.source
+          : 'dev_default',
+        algorithm: 'hmac-sha256',
+        hashVersion: 1,
+        pepperVersion: 1,
+      },
+    },
+    apiAccess: {
+      centralKeyCount: asNumber(apiAccess?.centralKeyCount, normalizedApiKeys.length) ?? normalizedApiKeys.length,
+      activeKeys: asNumber(apiAccess?.activeKeys, 0) ?? 0,
+      revokedKeys: asNumber(apiAccess?.revokedKeys, 0) ?? 0,
+      expiredKeys: asNumber(apiAccess?.expiredKeys, 0) ?? 0,
+      envKeyCount: asNumber(apiAccess?.envKeyCount, 0) ?? 0,
+      envKeys: Array.isArray(apiAccess?.envKeys) ? apiAccess.envKeys as VllmDashboardStatus['apiAccess']['envKeys'] : [],
+      centralWiringPending: asBoolean(apiAccess?.centralWiringPending, true),
+      requestsLast7Days: asNumber(apiAccess?.requestsLast7Days, normalizedRecentRequests.length) ?? normalizedRecentRequests.length,
+      successRate7d: asNumber(apiAccess?.successRate7d),
+      keys: normalizedApiKeys as VllmDashboardStatus['apiAccess']['keys'],
+      recentRequests: normalizedRecentRequests as VllmDashboardStatus['apiAccess']['recentRequests'],
+    },
+    openWebUi: {
+      url: asString(openWebUi?.url, 'https://ai.getouch.co'),
+      expectedTab: 'External',
+      expectedModel: asString(openWebUi?.expectedModel, 'getouch-qwen3-14b'),
+      providerBaseUrl: asString(openWebUi?.providerBaseUrl, 'https://vllm.getouch.co/v1'),
+      providerBaseUrls: normalizedProviderBaseUrls,
+      status: openWebUi?.status === 'Not configured' || openWebUi?.status === 'Configured' || openWebUi?.status === 'Visible' || openWebUi?.status === 'Working' || openWebUi?.status === 'Failed' || openWebUi?.status === 'Backend not ready' || openWebUi?.status === 'Unknown'
+        ? openWebUi.status
+        : 'Unknown',
+      note: asString(openWebUi?.note, 'vLLM backend is not running yet. Open WebUI will not show getouch-qwen3-14b until /v1/models is available.'),
+    },
+    providerBaseUrls: normalizedProviderBaseUrls,
+    providerApiKeysConfigured: asBoolean(root.providerApiKeysConfigured, (asNumber(runtimeOpenWebUi?.providerKeysConfigured, 0) ?? 0) > 0),
+    openWebuiProviderStatus: root.openWebuiProviderStatus === 'unknown' || root.openWebuiProviderStatus === 'not_configured' || root.openWebuiProviderStatus === 'configured' || root.openWebuiProviderStatus === 'working' || root.openWebuiProviderStatus === 'failed' || root.openWebuiProviderStatus === 'backend_not_ready'
+      ? root.openWebuiProviderStatus
+      : 'unknown',
+    openWebuiProviderModels: asStringArray(root.openWebuiProviderModels),
+    apiKeys: normalizedApiKeys as VllmDashboardStatus['apiKeys'],
+    recentRequests: normalizedRecentRequests as VllmDashboardStatus['recentRequests'],
+    usage: {
+      requestsLast7Days: asNumber(usage?.requestsLast7Days, asNumber(apiAccess?.requestsLast7Days, normalizedRecentRequests.length) ?? normalizedRecentRequests.length) ?? normalizedRecentRequests.length,
+      successRate7d: asNumber(usage?.successRate7d, asNumber(apiAccess?.successRate7d)),
+      lastCheckedAt: asString(usage?.lastCheckedAt, checkedAt),
+    },
+    resourceUsage: {
+      available: asBoolean(resourceUsage?.available, false),
+      gpuMemoryPercent: asNumber(resourceUsage?.gpuMemoryPercent),
+      gpuMemoryLabel: asString(resourceUsage?.gpuMemoryLabel, 'Not available'),
+      gpuUtilPercent: asNumber(resourceUsage?.gpuUtilPercent),
+      gpuUtilLabel: asString(resourceUsage?.gpuUtilLabel, 'Not available'),
+      ramPercent: asNumber(resourceUsage?.ramPercent),
+      ramLabel: asString(resourceUsage?.ramLabel, 'Not available'),
+    },
+  };
+}
+
 export function VllmServiceEndpointConsole() {
   const [data, setData] = useState<VllmDashboardStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,10 +454,11 @@ export function VllmServiceEndpointConsole() {
 
   async function loadDashboard() {
     const result = await requestJson<VllmDashboardStatus>('/api/admin/service-endpoints/vllm/status');
-    if (!result.ok || !result.payload) {
+    const normalized = normalizeDashboardPayload(result.payload);
+    if (!result.ok || !normalized) {
       throw new Error((result.payload as { error?: string } | null)?.error || 'Unable to load vLLM dashboard');
     }
-    setData(result.payload);
+    setData(normalized);
     setError(null);
   }
 
@@ -230,42 +507,14 @@ export function VllmServiceEndpointConsole() {
   }, [data]);
 
   const resourceUsage = useMemo(() => {
-    if (!data) {
-      return {
-        gpuMemoryPercent: null,
-        gpuMemoryLabel: 'Not available',
-        gpuUtilPercent: null,
-        gpuUtilLabel: 'Not available',
-        ramPercent: null,
-        ramLabel: 'Not available',
-      };
-    }
-
-    const totalGpu = data.runtime.gpu.totalVramMiB;
-    const usedGpu = data.runtime.gpu.usedVramMiB;
-    const gpuMemoryPercent = totalGpu !== null && usedGpu !== null && totalGpu > 0
-      ? Math.round((usedGpu / totalGpu) * 100)
-      : null;
-
-    const totalRam = parseHumanSize(data.runtime.host.memoryTotal);
-    const usedRam = parseHumanSize(data.runtime.host.memoryUsed);
-    const ramPercent = totalRam !== null && usedRam !== null && totalRam > 0
-      ? Math.round((usedRam / totalRam) * 100)
-      : null;
-
-    return {
-      gpuMemoryPercent,
-      gpuMemoryLabel: gpuMemoryPercent === null
-        ? (data.runtime.vllm.containerStatus === 'running' ? 'Not available' : 'Backend not running')
-        : `${formatBytes((usedGpu || 0) * 1024 * 1024)} / ${formatBytes((totalGpu || 0) * 1024 * 1024)}`,
-      gpuUtilPercent: data.runtime.gpu.utilizationGpuPercent,
-      gpuUtilLabel: data.runtime.gpu.utilizationGpuPercent === null
-        ? (data.runtime.vllm.containerStatus === 'running' ? 'Not available' : 'Backend not running')
-        : `${data.runtime.gpu.utilizationGpuPercent}%`,
-      ramPercent,
-      ramLabel: totalRam === null || usedRam === null
-        ? (data.runtime.vllm.containerStatus === 'running' ? 'Not available' : 'Backend not running')
-        : `${data.runtime.host.memoryUsed} / ${data.runtime.host.memoryTotal}`,
+    return data?.resourceUsage || {
+      available: false,
+      gpuMemoryPercent: null,
+      gpuMemoryLabel: 'Not available',
+      gpuUtilPercent: null,
+      gpuUtilLabel: 'Not available',
+      ramPercent: null,
+      ramLabel: 'Not available',
     };
   }, [data]);
 

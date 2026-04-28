@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getVllmDashboardStatus } from '@/lib/service-endpoints-vllm';
+import {
+  createDegradedVllmDashboardStatus,
+  getVllmDashboardStatus,
+  normalizeVllmDashboardStatus,
+} from '@/lib/service-endpoints-vllm';
 
 async function requireAdmin() {
   const session = await getSession();
@@ -15,9 +19,14 @@ export async function GET() {
 
   try {
     const status = await getVllmDashboardStatus();
-    return NextResponse.json(status, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(normalizeVllmDashboardStatus(status), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to load vLLM gateway dashboard';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(createDegradedVllmDashboardStatus(message), {
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Getouch-Degraded': '1',
+      },
+    });
   }
 }
