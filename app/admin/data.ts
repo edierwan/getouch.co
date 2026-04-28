@@ -113,6 +113,15 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
+    label: 'DEVELOPER PLATFORM',
+    accentRgb: '184, 156, 255',
+    items: [
+      { label: 'API Keys', href: '/admin/api-keys', icon: '⚿' },
+      { label: 'Webhooks', href: '/admin/api-keys#webhooks', icon: '↺' },
+      { label: 'SDK & Docs', href: '/admin/api-keys#docs', icon: '⌥' },
+    ],
+  },
+  {
     label: 'MONITORING',
     accentRgb: '246, 199, 108',
     items: [

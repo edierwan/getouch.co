@@ -2969,3 +2969,295 @@ a.portal-resource-row-link:hover {
     justify-content: flex-start;
   }
 }
+
+/* =====================================================
+ * API Key Manager (/admin/api-keys)
+ * Dark theme tuned to match the rest of the portal.
+ * ===================================================== */
+
+.portal-akm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 1180px) {
+  .portal-akm-grid { grid-template-columns: 1fr; }
+}
+
+.portal-akm-main { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+/* Stat cards */
+.portal-akm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.875rem;
+}
+@media (max-width: 980px) { .portal-akm-stats { grid-template-columns: repeat(2, 1fr); } }
+
+.portal-akm-stat {
+  display: flex; gap: 0.875rem; align-items: center;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px; padding: 1rem 1.1rem;
+}
+.portal-akm-stat-icon {
+  width: 44px; height: 44px; flex: 0 0 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(126,154,255,0.18), rgba(126,154,255,0.05));
+  display: grid; place-items: center; font-size: 1.25rem;
+}
+.portal-akm-stat-good .portal-akm-stat-icon {
+  background: linear-gradient(135deg, rgba(92,210,184,0.22), rgba(92,210,184,0.05));
+}
+.portal-akm-stat-violet .portal-akm-stat-icon {
+  background: linear-gradient(135deg, rgba(184,156,255,0.22), rgba(184,156,255,0.05));
+}
+.portal-akm-stat-amber .portal-akm-stat-icon {
+  background: linear-gradient(135deg, rgba(246,199,108,0.22), rgba(246,199,108,0.05));
+}
+.portal-akm-stat-body { min-width: 0; }
+.portal-akm-stat-label {
+  font-size: 0.75rem; letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.55); text-transform: uppercase;
+}
+.portal-akm-stat-value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; margin-top: 2px; }
+.portal-akm-stat-sub { font-size: 0.78rem; color: rgba(255,255,255,0.55); margin-top: 2px; }
+
+/* Tabs */
+.portal-akm-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.portal-akm-tab {
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: rgba(255,255,255,0.6);
+  padding: 0.6rem 1rem; cursor: pointer; font-size: 0.92rem;
+}
+.portal-akm-tab:hover { color: rgba(255,255,255,0.9); }
+.portal-akm-tab-active {
+  color: #7e9aff; border-bottom-color: #7e9aff;
+}
+
+/* Filters */
+.portal-akm-filters {
+  display: grid;
+  grid-template-columns: 1fr 180px 160px;
+  gap: 0.6rem;
+  margin: 0.75rem 0 0.5rem;
+}
+@media (max-width: 900px) { .portal-akm-filters { grid-template-columns: 1fr; } }
+.portal-akm-search,
+.portal-akm-select {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  color: inherit; padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+}
+.portal-akm-search::placeholder { color: rgba(255,255,255,0.4); }
+.portal-akm-select { color: rgba(255,255,255,0.85); }
+
+/* Table */
+.portal-akm-table-wrap { overflow-x: auto; margin-top: 0.75rem; }
+.portal-akm-table {
+  width: 100%; border-collapse: collapse; font-size: 0.9rem;
+}
+.portal-akm-table th {
+  text-align: left; font-weight: 500;
+  font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.portal-akm-table td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: top;
+}
+.portal-akm-table tr:hover td { background: rgba(255,255,255,0.015); }
+.portal-akm-keyname { font-weight: 500; }
+.portal-akm-keysub { font-size: 0.78rem; color: rgba(255,255,255,0.5); margin-top: 2px; }
+.portal-akm-prefix {
+  background: rgba(255,255,255,0.04);
+  padding: 2px 6px; border-radius: 6px; font-size: 0.82rem;
+}
+.portal-akm-empty {
+  text-align: center; color: rgba(255,255,255,0.5);
+  padding: 1.5rem 0.75rem; font-size: 0.9rem;
+}
+.portal-akm-table-footer {
+  margin-top: 0.6rem; font-size: 0.82rem; color: rgba(255,255,255,0.5);
+}
+
+/* Tags */
+.portal-akm-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.portal-akm-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap;
+}
+.portal-tag-violet { background: rgba(184,156,255,0.18); color: #c8b4ff; }
+.portal-tag-emerald { background: rgba(92,210,184,0.16); color: #8fe4cc; }
+.portal-tag-cyan { background: rgba(104,187,255,0.18); color: #98cfff; }
+.portal-tag-amber { background: rgba(246,199,108,0.18); color: #f7d490; }
+.portal-tag-slate { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75); }
+
+/* Action icons */
+.portal-akm-actions { display: inline-flex; gap: 4px; }
+.portal-akm-iconbtn {
+  background: transparent; border: 1px solid rgba(255,255,255,0.08);
+  width: 26px; height: 26px;
+  border-radius: 7px; color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  display: grid; place-items: center;
+  font-size: 0.95rem;
+}
+.portal-akm-iconbtn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.portal-akm-iconbtn-danger:hover { background: rgba(255,99,99,0.15); color: #ff8b8b; border-color: rgba(255,99,99,0.3); }
+
+/* Scope catalog grid */
+.portal-akm-scopes-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem; margin-top: 0.75rem;
+}
+.portal-akm-scope-card {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 0.75rem 0.9rem;
+}
+.portal-akm-scope-group {
+  font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(255,255,255,0.55); margin-bottom: 0.4rem;
+}
+.portal-akm-scope-card ul { list-style: none; padding: 0; margin: 0; }
+.portal-akm-scope-card li { padding: 2px 0; font-size: 0.85rem; }
+.portal-akm-scope-card code { color: rgba(255,255,255,0.85); }
+
+/* Bottom row: Service Gateways + Recent Activity */
+.portal-akm-bottom {
+  display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;
+}
+@media (max-width: 1100px) { .portal-akm-bottom { grid-template-columns: 1fr; } }
+
+.portal-akm-gateways {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+@media (max-width: 800px) { .portal-akm-gateways { grid-template-columns: repeat(2, 1fr); } }
+
+.portal-akm-gateway-card {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 0.85rem 0.9rem;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.portal-akm-gateway-icon { font-size: 1.5rem; }
+.portal-akm-gateway-name { font-weight: 500; font-size: 0.92rem; }
+
+.portal-akm-bottom-link { padding-top: 0.4rem; }
+
+.portal-akm-activity { list-style: none; padding: 0; margin: 0.6rem 0 0; }
+.portal-akm-activity li {
+  display: flex; gap: 0.6rem; align-items: flex-start;
+  padding: 0.55rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.88rem;
+}
+.portal-akm-activity li:last-child { border-bottom: 0; }
+.portal-akm-activity-dot { color: #7e9aff; flex: 0 0 14px; font-size: 0.6rem; padding-top: 5px; }
+
+/* Create panel (right) */
+.portal-akm-create {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px; padding: 1.1rem 1.1rem 1.25rem;
+  position: sticky; top: 1rem;
+  max-height: calc(100vh - 2rem); overflow-y: auto;
+}
+.portal-akm-form { display: flex; flex-direction: column; gap: 0.85rem; margin-top: 0.5rem; }
+.portal-akm-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.portal-akm-field > span,
+.portal-akm-field > legend {
+  font-size: 0.78rem; color: rgba(255,255,255,0.7);
+  padding: 0;
+}
+.portal-akm-field input[type="text"],
+.portal-akm-field input[type="number"],
+.portal-akm-field input[type="date"] {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 0.5rem 0.65rem;
+  color: inherit; font-size: 0.9rem;
+}
+.portal-akm-field input::placeholder { color: rgba(255,255,255,0.35); }
+.portal-akm-field { border: 0; }
+fieldset.portal-akm-field { padding: 0; margin: 0; }
+
+.portal-akm-segmented {
+  display: grid; grid-template-columns: 1fr 1fr;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 3px; gap: 3px;
+}
+.portal-akm-segmented button {
+  background: transparent; border: 0; color: rgba(255,255,255,0.7);
+  padding: 0.4rem; border-radius: 6px; cursor: pointer; font-size: 0.88rem;
+}
+.portal-akm-segmented button.active {
+  background: rgba(126,154,255,0.18); color: #c2d2ff;
+}
+
+.portal-akm-checkrow { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.portal-akm-checkbox {
+  display: inline-flex; gap: 0.4rem; align-items: center;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px; padding: 0.35rem 0.6rem;
+  cursor: pointer; font-size: 0.85rem;
+}
+.portal-akm-checkbox input { accent-color: #7e9aff; }
+
+.portal-akm-scopes-list {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  max-height: 240px; overflow-y: auto;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px; padding: 0.5rem;
+}
+.portal-akm-scope-block { display: flex; flex-direction: column; gap: 4px; }
+.portal-akm-scope-block-title {
+  font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(255,255,255,0.5); margin-bottom: 2px;
+}
+
+.portal-akm-generate {
+  background: linear-gradient(135deg, #5a7eff, #8a6bff);
+  border: 0; color: #fff; font-weight: 500;
+  padding: 0.7rem; border-radius: 10px; cursor: pointer; font-size: 0.95rem;
+  display: flex; gap: 0.4rem; justify-content: center; align-items: center;
+}
+.portal-akm-generate:disabled { opacity: 0.6; cursor: progress; }
+.portal-akm-once-hint {
+  font-size: 0.78rem; color: rgba(255,255,255,0.55);
+  text-align: center; margin: 0;
+}
+
+.portal-akm-once { display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-akm-once-name { font-weight: 500; }
+.portal-akm-once-value {
+  display: block; word-break: break-all;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 0.55rem 0.7rem; border-radius: 8px;
+  font-size: 0.82rem; color: #ffd97a;
+}
+.portal-akm-once-actions { display: flex; gap: 0.5rem; }
+
+/* Reusable info-table head row used in this page */
+.portal-info-table-head .portal-info-table-label,
+.portal-info-table-head .portal-info-table-value {
+  font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+}
