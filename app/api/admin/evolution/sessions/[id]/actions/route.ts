@@ -25,6 +25,12 @@ type EvolutionConnectionStatePayload = {
   instance?: { state?: string };
 };
 
+type EvolutionInstanceSummaryPayload = {
+  name?: string;
+  connectionStatus?: string;
+  instance?: { instanceName?: string; state?: string };
+};
+
 type EvolutionCreatePayload = EvolutionQrPayload & {
   instance?: { instanceName?: string; state?: string };
 };
@@ -100,6 +106,10 @@ function getFailureDetail(input: {
   return input.error ?? 'Unknown Evolution response.';
 }
 
+function isRetryableTimeoutFailure(status: number, error: string | undefined) {
+  return status === 0 && (error?.toLowerCase().includes('aborted') ?? false);
+}
+
 function mapBackendStateToSessionStatus(state: string | null): typeof evolutionSessions.$inferInsert.status {
   switch (state) {
     case 'open':
@@ -125,6 +135,44 @@ async function fetchConnectionState(remoteId: string): Promise<string | null> {
   );
   if (!state.ok) return null;
   return state.data?.instance?.state ?? null;
+}
+
+async function probeInstanceState(remoteId: string): Promise<string | null> {
+  const state = await fetchConnectionState(remoteId);
+  if (state) return state;
+
+  const instances = await evolutionFetch<EvolutionInstanceSummaryPayload[]>('/instance/fetchInstances', {
+    method: 'GET',
+    timeoutMs: 5000,
+  });
+  if (!instances.ok || !Array.isArray(instances.data)) return null;
+
+  const match = instances.data.find((instance) => {
+    const instanceName = instance.name ?? instance.instance?.instanceName;
+    return instanceName === remoteId;
+  });
+
+  return match?.connectionStatus ?? match?.instance?.state ?? null;
+}
+
+async function recoverTimedOutConnect(remoteId: string) {
+  const state = await probeInstanceState(remoteId);
+  if (!state) return null;
+
+  const retry = await evolutionFetch<EvolutionQrPayload>(
+    `/instance/connect/${encodeURIComponent(remoteId)}`,
+    { method: 'GET', timeoutMs: 8000 },
+  );
+  if (retry.ok) return retry;
+
+  return {
+    ok: true,
+    status: 200,
+    data: {
+      count: 0,
+      instance: { state },
+    },
+  } satisfies Awaited<ReturnType<typeof evolutionFetch<EvolutionQrPayload>>>;
 }
 
 function getDetailForState(input: {
@@ -206,6 +254,18 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       });
 
       if (!created.ok) {
+        if (isRetryableTimeoutFailure(created.status, created.error)) {
+          const recovered = await recoverTimedOutConnect(row.sessionName);
+          if (recovered) {
+            resolvedRemoteId = row.sessionName;
+            detailPrefix = 'Evolution runtime session was missing. Recreation is still starting in the background.';
+            r = recovered;
+          }
+        }
+
+        if (r) {
+          // Continue through the shared success path below with a waiting state.
+        } else {
         return NextResponse.json({
           ok: false,
           status: created.status,
@@ -217,18 +277,29 @@ export async function POST(req: NextRequest, ctx: Ctx) {
             remoteId: row.sessionName,
           })}`,
         }, { status: EVOLUTION_DEPENDENCY_FAILURE_STATUS });
+        }
       }
 
-      resolvedRemoteId = created.data?.instance?.instanceName ?? row.sessionName;
-      detailPrefix = 'Evolution runtime session was missing. The portal recreated it and requested a fresh QR.';
-      const createdQr = normalizeQrPayload(created.data);
+      if (!r) {
+        resolvedRemoteId = created.data?.instance?.instanceName ?? row.sessionName;
+        detailPrefix = 'Evolution runtime session was missing. The portal recreated it and requested a fresh QR.';
+        const createdQr = normalizeQrPayload(created.data);
 
-      r = createdQr.qr || createdQr.qrCode || createdQr.pairingCode || createdQr.state
-        ? created
-        : await evolutionFetch<EvolutionQrPayload>(
-            `/instance/connect/${encodeURIComponent(resolvedRemoteId)}`,
-            { method: 'GET', timeoutMs: 8000 },
-          );
+        r = createdQr.qr || createdQr.qrCode || createdQr.pairingCode || createdQr.state
+          ? created
+          : await evolutionFetch<EvolutionQrPayload>(
+              `/instance/connect/${encodeURIComponent(resolvedRemoteId)}`,
+              { method: 'GET', timeoutMs: 8000 },
+            );
+      }
+    }
+
+    if (r && !r.ok && isRetryableTimeoutFailure(r.status, r.error)) {
+      const recovered = await recoverTimedOutConnect(resolvedRemoteId);
+      if (recovered) {
+        detailPrefix ??= 'Evolution is still starting the runtime session.';
+        r = recovered;
+      }
     }
 
     if (r.ok) {
