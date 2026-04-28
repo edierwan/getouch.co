@@ -770,7 +770,7 @@ export function VllmServiceEndpointConsole() {
               <p className="portal-page-sub">Admin and control UI for the protected public endpoint at {data.serviceInfo.publicEndpoint}. Raw vLLM stays private.</p>
             </div>
             <div className="portal-action-row">
-              <span className={statusClass(headerStatus === 'Active' ? 'active' : 'warning')}>{headerStatus}</span>
+              <span className={statusClass(headerStatus === 'Active' ? 'healthy' : 'warning')}>{headerStatus}</span>
               <a href="#api-docs" className="portal-action-link">API Docs</a>
               <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button>
             </div>
