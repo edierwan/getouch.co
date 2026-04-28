@@ -532,36 +532,67 @@ print(json.dumps(status))
 PY
 }
 
+emit_result() {
+  local ok="$1"
+  local action="$2"
+  local message="$3"
+  local status_json
+
+  status_json="$(collect_status_json 2>/dev/null || true)"
+  if [ -z "$status_json" ]; then
+    status_json='{"checkedAt":null}'
+  fi
+
+  python3 - <<'PY' "$ok" "$action" "$message" "$status_json"
+import json
+import sys
+
+ok_raw, action, message, status_raw = sys.argv[1:5]
+
+try:
+    status = json.loads(status_raw)
+except Exception:
+    status = {"checkedAt": None, "warning": "Status probe returned malformed JSON."}
+
+print(json.dumps({
+    "ok": ok_raw.lower() == "true",
+    "action": action,
+    "message": message,
+    "status": status,
+}))
+PY
+}
+
 require_compose_vllm() {
   if ! test -f "$COMPOSE_FILE"; then
-    echo '{"ok":false,"action":"'"$ACTION"'","message":"Compose file not found on host.","status":'"$(collect_status_json)"'}'
+    emit_result false "$ACTION" "Compose file not found on host."
     exit 0
   fi
 
   if ! grep -q "^  $VLLM_SERVICE:" "$COMPOSE_FILE"; then
-    echo '{"ok":false,"action":"'"$ACTION"'","message":"vLLM service is not configured in compose. Deployment remains blocked until explicitly approved.","status":'"$(collect_status_json)"'}'
+    emit_result false "$ACTION" "vLLM service is not configured in compose. Deployment remains blocked until explicitly approved."
     exit 0
   fi
 }
 
 case "$ACTION" in
   status)
-    echo '{"ok":true,"action":"status","message":"AI runtime status refreshed.","status":'"$(collect_status_json)"'}'
+    emit_result true status "AI runtime status refreshed."
     ;;
   ollama-unload-current)
     current_model="$(docker exec ollama ollama ps | awk 'NR==2 {print $1}')"
     if [ -z "$current_model" ]; then
-      echo '{"ok":true,"action":"ollama-unload-current","message":"No resident Ollama model was loaded.","status":'"$(collect_status_json)"'}'
+      emit_result true ollama-unload-current "No resident Ollama model was loaded."
       exit 0
     fi
     docker exec ollama ollama stop "$current_model" >/dev/null
-    echo '{"ok":true,"action":"ollama-unload-current","message":"Unloaded resident Ollama model: '"$current_model"'.","status":'"$(collect_status_json)"'}'
+    emit_result true ollama-unload-current "Unloaded resident Ollama model: $current_model."
     ;;
   vllm-start)
     require_compose_vllm
     mkdir -p "$HF_CACHE_DIR"
     if [ -z "\${VLLM_API_KEY:-}" ]; then
-      echo '{"ok":false,"action":"vllm-start","message":"VLLM_API_KEY is not configured on host.","status":'"$(collect_status_json)"'}'
+      emit_result false vllm-start "VLLM_API_KEY is not configured on host."
       exit 0
     fi
     docker compose -f "$COMPOSE_FILE" up -d "$VLLM_SERVICE" >/dev/null 2>&1 || true
@@ -569,15 +600,15 @@ case "$ACTION" in
     restart_count="$(docker inspect "$VLLM_SERVICE" --format '{{.RestartCount}}' 2>/dev/null || echo 0)"
     if [ "$restart_count" != "0" ]; then
       logs="$(docker logs --tail=40 "$VLLM_SERVICE" 2>&1 | tail -n 5 | tr '\n' ' ' | sed 's/"//g')"
-      echo '{"ok":false,"action":"vllm-start","message":"vLLM started with restart activity: '"$logs"'","status":'"$(collect_status_json)"'}'
+      emit_result false vllm-start "vLLM started with restart activity: $logs"
       exit 0
     fi
-    echo '{"ok":true,"action":"vllm-start","message":"vLLM trial start requested.","status":'"$(collect_status_json)"'}'
+    emit_result true vllm-start "vLLM trial start requested."
     ;;
   vllm-stop)
     require_compose_vllm
     docker compose -f "$COMPOSE_FILE" stop "$VLLM_SERVICE" >/dev/null 2>&1 || docker stop "$VLLM_SERVICE" >/dev/null 2>&1 || true
-    echo '{"ok":true,"action":"vllm-stop","message":"vLLM trial stopped.","status":'"$(collect_status_json)"'}'
+    emit_result true vllm-stop "vLLM trial stopped."
     ;;
   restore-ollama)
     if grep -q "^  $VLLM_SERVICE:" "$COMPOSE_FILE" 2>/dev/null; then
@@ -586,14 +617,14 @@ case "$ACTION" in
       docker stop "$VLLM_SERVICE" >/dev/null 2>&1 || true
     fi
     docker start ollama >/dev/null 2>&1 || true
-    echo '{"ok":true,"action":"restore-ollama","message":"Requested Ollama restore mode. vLLM was stopped if present.","status":'"$(collect_status_json)"'}'
+    emit_result true restore-ollama "Requested Ollama restore mode. vLLM was stopped if present."
     ;;
   openwebui-configure-vllm)
     require_compose_vllm
-    echo '{"ok":false,"action":"openwebui-configure-vllm","message":"Open WebUI vLLM provider wiring is intentionally not auto-applied yet. Add the vLLM endpoint to OPENAI_API_BASE_URLS and OPENAI_API_KEYS during an approved maintenance window.","status":'"$(collect_status_json)"'}'
+    emit_result false openwebui-configure-vllm "Open WebUI vLLM provider wiring is intentionally not auto-applied yet. Add the vLLM endpoint to OPENAI_API_BASE_URLS and OPENAI_API_KEYS during an approved maintenance window."
     ;;
   *)
-    echo '{"ok":false,"action":"'"$ACTION"'","message":"Unsupported action.","status":'"$(collect_status_json)"'}'
+    emit_result false "$ACTION" "Unsupported action."
     exit 0
     ;;
 esac

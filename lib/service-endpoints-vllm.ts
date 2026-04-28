@@ -113,6 +113,114 @@ const AI_RUNTIME_SSH_KNOWN_HOSTS_PATH = process.env.AI_RUNTIME_SSH_KNOWN_HOSTS_P
   || process.env.INFRA_METRICS_SSH_KNOWN_HOSTS_PATH
   || `${DEFAULT_SSH_DIR}/known_hosts`;
 
+function createFallbackRuntimeStatus(errorMessage: string | null): AiRuntimeStatus {
+  return {
+    checkedAt: new Date().toISOString(),
+    runtime: {
+      activeRuntime: 'Unknown',
+      recommendedMode: 'Ollama primary / vLLM trial only',
+      recommendedReason: 'Shared runtime probe unavailable; showing conservative fallback status.',
+      warning: errorMessage || 'AI runtime probe unavailable. Falling back to gateway-only status.',
+    },
+    gpu: {
+      available: false,
+      name: null,
+      totalVramMiB: null,
+      usedVramMiB: null,
+      freeVramMiB: null,
+      utilizationGpuPercent: null,
+      temperatureC: null,
+      driverVersion: null,
+      cudaVersion: null,
+      dockerAccess: false,
+      dockerAccessError: errorMessage,
+    },
+    ollama: {
+      containerStatus: 'unknown',
+      apiReachable: false,
+      apiError: errorMessage,
+      residentModel: null,
+      residentProcessor: null,
+      residentSize: null,
+      residentContext: null,
+      residentUntil: null,
+      installedModels: [],
+      installedCount: 0,
+    },
+    vllm: {
+      status: 'Unknown',
+      intendedModel: VLLM_INTERNAL_MODEL,
+      intendedEndpoint: VLLM_INTERNAL_BACKEND,
+      publicExposure: 'No',
+      containerStatus: 'unknown',
+      providerReachable: false,
+      providerError: errorMessage,
+      configuredInCompose: false,
+      composeServiceFound: false,
+      lastError: errorMessage,
+      blockedReason: errorMessage,
+    },
+    openWebUi: {
+      reachable: false,
+      providerBaseUrls: [],
+      providerKeysConfigured: 0,
+      ollamaProviderAvailable: false,
+      vllmProviderConfigured: false,
+      vllmProviderUsable: false,
+      error: errorMessage,
+    },
+    docker: {
+      network: null,
+      openWebUiContainer: 'open-webui',
+      ollamaContainer: 'ollama',
+      vllmContainer: 'vllm-qwen3-14b-fp8',
+      publicExposureDetected: false,
+    },
+    host: {
+      memoryTotal: null,
+      memoryUsed: null,
+      memoryAvailable: null,
+      swapTotal: null,
+      swapUsed: null,
+      diskSrvFree: null,
+    },
+    actions: {
+      canRefresh: true,
+      canUnloadOllama: false,
+      canStartVllmTrial: false,
+      canStopVllm: false,
+      canRestoreOllama: false,
+      canConfigureOpenWebUiVllm: false,
+      startBlockedReason: errorMessage,
+      configureBlockedReason: errorMessage,
+    },
+    links: {
+      openWebUi: 'https://ai.getouch.co',
+      grafanaGpu: process.env.AI_RUNTIME_GRAFANA_GPU_URL || 'https://grafana.getouch.co',
+    },
+    commandPolicy: {
+      mode: 'inline-fixed-commands',
+      allowedActions: [
+        'status',
+        'ollama-unload-current',
+        'vllm-start',
+        'vllm-stop',
+        'restore-ollama',
+        'openwebui-configure-vllm',
+      ],
+    },
+  };
+}
+
+async function getSafeAiRuntimeStatus(): Promise<AiRuntimeStatus> {
+  try {
+    return await getAiRuntimeStatus();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to load AI runtime status';
+    return createFallbackRuntimeStatus(message);
+  }
+}
+
 function isVllmCentralKey(key: Awaited<ReturnType<typeof listApiKeys>>[number]) {
   const services = (key.services as string[] | null) ?? [];
   const scopes = (key.scopes as string[] | null) ?? [];
@@ -170,7 +278,7 @@ function deriveOpenWebUiStatus(runtime: AiRuntimeStatus, gateway: GatewayStatus)
 export async function getVllmDashboardStatus(): Promise<VllmDashboardStatus> {
   const [gateway, runtime, allKeys, remote, usageRows] = await Promise.all([
     getGatewayStatus(),
-    getAiRuntimeStatus(),
+    getSafeAiRuntimeStatus(),
     listApiKeys(),
     getRemoteVllmIntrospection(),
     db
