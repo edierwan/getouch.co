@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { formatPairingCode, normalizeMyPhone, samePhone } from '@/lib/phone';
 
 /* ─── Types ───────────────────────────────────────────── */
 type Tab = 'overview' | 'instances' | 'tenants' | 'sessions' | 'webhooks' | 'templates' | 'messages' | 'analytics' | 'settings';
@@ -29,7 +30,7 @@ interface Session {
   id: string; instanceId: string | null; tenantId: string | null;
   sessionName: string; phoneNumber: string | null;
   status: 'connected' | 'connecting' | 'disconnected' | 'expired' | 'error' | 'qr_pending';
-  qrStatus: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
+  qrStatus: string | null; qrExpiresAt?: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
   createdAt: string; updatedAt: string;
 }
 interface SessionQrResponse {
@@ -37,12 +38,15 @@ interface SessionQrResponse {
   qr?: string | null;
   qrCode?: string | null;
   pairingCode?: string | null;
+  pairingCodeFormatted?: string | null;
   qrCount?: number | null;
   state?: string | null;
   detail?: string | null;
   connected?: boolean;
   waitRecommended?: boolean;
   error?: string | null;
+  qrExpiresAt?: string | null;
+  lastCheckedAt?: string;
 }
 interface TenantBinding {
   id: string; tenantId: string; tenantName: string | null; tenantDomain: string | null;
@@ -71,7 +75,8 @@ interface MessageLog {
   direction: 'inbound' | 'outbound'; toNumber: string | null; fromNumber: string | null;
   messageType: string;
   status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
-  preview: string | null; errorCode: string | null; createdAt: string;
+  preview: string | null; errorCode: string | null; errorMessage?: string | null;
+  providerMessageId?: string | null; metadata?: Record<string, unknown> | null; createdAt: string;
 }
 interface EventLog {
   id: string; eventType: string; severity: string; summary: string | null;
@@ -83,6 +88,20 @@ interface OverviewResponse {
   config: EvolutionConfig; stats: OverviewStats;
   instances: Instance[]; tenants: TenantBinding[]; events: EventLog[];
   systemHealth: SystemHealthItem[];
+}
+
+interface SessionStatusResponse extends SessionQrResponse {
+  session?: Session;
+}
+
+interface SessionTestResult {
+  id: string;
+  status: MessageLog['status'];
+  recipient: string | null;
+  preview: string | null;
+  providerMessageId?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
 }
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -139,15 +158,32 @@ const QR_POLL_INTERVAL_MS = 2500;
 const QR_POLL_MAX_ATTEMPTS = 20;
 
 function getQrPollStatus(
-  result: SessionQrResponse,
+  result: SessionQrResponse | SessionStatusResponse,
   current?: { qr: string | null; pairing: string | null; qrCodeText: string | null },
 ) {
   if (result.connected || result.state === 'open') return 'connected' as const;
+  if (result.state === 'failed' || result.state === 'refused') return 'failed' as const;
   if (result.qr || result.pairingCode || result.qrCode || current?.qr || current?.pairing || current?.qrCodeText) {
     return 'ready' as const;
   }
-  if (result.waitRecommended) return 'waiting_qr' as const;
+  if (result.waitRecommended || result.state === 'connecting' || result.state === 'qr' || result.state == null) {
+    return 'waiting_qr' as const;
+  }
   return 'failed' as const;
+}
+
+function getQrExpiryCountdown(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const expiresAt = new Date(iso).getTime();
+  if (!Number.isFinite(expiresAt)) return null;
+  return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+}
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime())) return '—';
+  return value.toLocaleString();
 }
 
 /* ─── Top-level component ─────────────────────────────── */
@@ -613,10 +649,17 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
   const [rows, setRows] = useState<Session[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<{ instanceId: string; status: string; tenantId: string }>({ instanceId: '', status: '', tenantId: '' });
-  const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
+  const [filter, setFilter] = useState({ instanceId: '', status: '', tenantId: '', query: '' });
   const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
   const [busy, startTransition] = useTransition();
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [testInstanceId, setTestInstanceId] = useState('');
+  const [testForm, setTestForm] = useState({ recipientPhone: '', text: 'Hello from Getouch Evolution Gateway.' });
+  const [testFeedback, setTestFeedback] = useState<{ tone: 'good' | 'bad' | 'warn'; text: string } | null>(null);
+  const [testResultsLoading, setTestResultsLoading] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+  const [testResults, setTestResults] = useState<SessionTestResult[]>([]);
   const [qrModal, setQrModal] = useState<{
     id: string;
     sessionName: string;
@@ -627,9 +670,14 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     pairing: string | null;
     detail: string | null;
     state: string | null;
+    qrExpiresAt: string | null;
     lastCheckedAt: string;
     pollAttempt: number;
     pollStatus: 'connecting' | 'waiting_qr' | 'ready' | 'connected' | 'timeout' | 'failed';
+    activeTab: 'qr' | 'pairing';
+    pairingPhone: string;
+    pairingBusy: boolean;
+    pairingError: string | null;
   } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -639,19 +687,127 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     if (filter.instanceId) params.set('instanceId', filter.instanceId);
     if (filter.status) params.set('status', filter.status);
     if (filter.tenantId) params.set('tenantId', filter.tenantId);
-    const [s, i] = await Promise.all([
-      fetch(`/api/admin/evolution/sessions?${params}`, { cache: 'no-store' }).then((r) => r.json()),
-      fetch('/api/admin/evolution/instances', { cache: 'no-store' }).then((r) => r.json()),
-    ]);
-    setRows(s.sessions ?? []);
-    setInstances(i.instances ?? []);
-    setLoading(false);
-  }, [filter]);
+
+    try {
+      const [sessionsResponse, instancesResponse] = await Promise.all([
+        fetch(`/api/admin/evolution/sessions?${params}`, { cache: 'no-store' }),
+        fetch('/api/admin/evolution/instances', { cache: 'no-store' }),
+      ]);
+
+      const [sessionsJson, instancesJson] = await Promise.all([
+        sessionsResponse.json().catch(() => ({ sessions: [] })),
+        instancesResponse.json().catch(() => ({ instances: [] })),
+      ]);
+
+      setRows(sessionsJson.sessions ?? []);
+      setInstances(instancesJson.instances ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter.instanceId, filter.status, filter.tenantId]);
+
   useEffect(() => { void reload(); }, [reload]);
+
+  const instanceMap = useMemo(() => new Map(instances.map((instance) => [instance.id, instance])), [instances]);
+  const visibleRows = useMemo(() => {
+    const query = filter.query.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) => {
+      const instanceName = row.instanceId ? instanceMap.get(row.instanceId)?.name ?? '' : '';
+      return [row.sessionName, row.phoneNumber ?? '', row.tenantId ?? '', instanceName]
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [filter.query, instanceMap, rows]);
+
+  const sessionOptions = useMemo(() => {
+    if (!testInstanceId) return rows;
+    return rows.filter((row) => row.instanceId === testInstanceId);
+  }, [rows, testInstanceId]);
+
+  useEffect(() => {
+    if (!rows.length) {
+      setSelectedSessionId('');
+      setTestResults([]);
+      return;
+    }
+
+    if (!selectedSessionId) {
+      const preferred = rows.find((row) => row.status === 'connected') ?? rows[0];
+      setSelectedSessionId(preferred.id);
+      setTestInstanceId(preferred.instanceId ?? '');
+      return;
+    }
+
+    const current = rows.find((row) => row.id === selectedSessionId);
+    if (!current) {
+      const preferred = rows.find((row) => row.status === 'connected') ?? rows[0];
+      setSelectedSessionId(preferred.id);
+      setTestInstanceId(preferred.instanceId ?? '');
+    }
+  }, [rows, selectedSessionId]);
+
+  useEffect(() => {
+    if (!selectedSessionId || !testInstanceId) return;
+    const current = rows.find((row) => row.id === selectedSessionId);
+    if (current?.instanceId === testInstanceId) return;
+
+    const fallback = rows.find((row) => row.instanceId === testInstanceId && row.status === 'connected')
+      ?? rows.find((row) => row.instanceId === testInstanceId)
+      ?? null;
+    setSelectedSessionId(fallback?.id ?? '');
+  }, [rows, selectedSessionId, testInstanceId]);
+
+  const selectedSession = useMemo(
+    () => rows.find((row) => row.id === selectedSessionId) ?? null,
+    [rows, selectedSessionId],
+  );
+  const selectedInstance = selectedSession?.instanceId ? instanceMap.get(selectedSession.instanceId) ?? null : null;
+  const normalizedRecipient = useMemo(
+    () => normalizeMyPhone(testForm.recipientPhone),
+    [testForm.recipientPhone],
+  );
+  const pairingPhoneNormalized = qrModal ? normalizeMyPhone(qrModal.pairingPhone) : null;
+  const recipientMatchesSession = samePhone(testForm.recipientPhone, selectedSession?.phoneNumber);
+
+  const sendDisabledReason = useMemo(() => {
+    if (!selectedSession) return 'Choose a session before sending a test message.';
+    if (selectedSession.status !== 'connected') return 'Connect this session before sending messages.';
+    if (!normalizedRecipient) return 'Enter a valid Malaysian phone number.';
+    if (!testForm.text.trim()) return 'Enter a message before sending.';
+    if (recipientMatchesSession) return 'Choose a recipient different from the paired WhatsApp number.';
+    return null;
+  }, [normalizedRecipient, recipientMatchesSession, selectedSession, testForm.text]);
+
+  const loadTestResults = useCallback(async (sessionId: string) => {
+    if (!sessionId) {
+      setTestResults([]);
+      return;
+    }
+
+    setTestResultsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/evolution/sessions/${sessionId}/send-test`, { cache: 'no-store' });
+      const json = await response.json().catch(() => ({ results: [] }));
+      setTestResults(json.results ?? []);
+    } finally {
+      setTestResultsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSessionId) {
+      setTestResults([]);
+      return;
+    }
+    void loadTestResults(selectedSessionId);
+  }, [loadTestResults, selectedSessionId]);
 
   async function requestQr(id: string, actionName: 'connect' | 'reconnect' | 'qr'): Promise<SessionQrResponse> {
     const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: actionName }),
     });
     const json = await response.json().catch(() => null);
@@ -667,9 +823,25 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     return json as SessionQrResponse;
   }
 
+  async function requestSessionStatus(id: string): Promise<SessionStatusResponse> {
+    const response = await fetch(`/api/admin/evolution/sessions/${id}/status`, { cache: 'no-store' });
+    const json = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        typeof json?.detail === 'string'
+          ? json.detail
+          : typeof json?.error === 'string'
+            ? json.error
+            : `Failed (${response.status})`,
+      );
+    }
+    return json as SessionStatusResponse;
+  }
+
   useEffect(() => {
     if (!qrModal) return;
-    if (qrModal.pollStatus === 'connecting' || qrModal.pollStatus === 'connected' || qrModal.pollStatus === 'failed' || qrModal.pollStatus === 'timeout') return;
+    if (!['waiting_qr', 'ready'].includes(qrModal.pollStatus)) return;
+
     if (qrModal.pollAttempt >= QR_POLL_MAX_ATTEMPTS) {
       setQrModal((current) => current && current.id === qrModal.id ? {
         ...current,
@@ -683,19 +855,22 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
     const timeout = window.setTimeout(async () => {
       try {
-        const result = await requestQr(qrModal.id, 'qr');
+        const result = !qrModal.qr && !qrModal.pairing && !qrModal.qrCodeText
+          ? await requestQr(qrModal.id, 'qr')
+          : await requestSessionStatus(qrModal.id);
+
         setQrModal((current) => {
           if (!current || current.id !== qrModal.id) return current;
-          const nextAttempt = current.pollAttempt + 1;
           return {
             ...current,
             qr: result.qr ?? current.qr,
             qrCodeText: result.qrCode ?? current.qrCodeText,
-            pairing: result.pairingCode ?? current.pairing,
+            pairing: formatPairingCode(result.pairingCodeFormatted ?? result.pairingCode) ?? current.pairing,
             detail: result.detail ?? current.detail,
             state: result.state ?? current.state,
-            lastCheckedAt: new Date().toISOString(),
-            pollAttempt: nextAttempt,
+            qrExpiresAt: result.qrExpiresAt ?? current.qrExpiresAt,
+            lastCheckedAt: result.lastCheckedAt ?? new Date().toISOString(),
+            pollAttempt: current.pollAttempt + 1,
             pollStatus: getQrPollStatus(result, current),
           };
         });
@@ -714,24 +889,93 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     return () => window.clearTimeout(timeout);
   }, [onChange, qrModal, reload]);
 
+  useEffect(() => {
+    if (!qrModal || qrModal.pollStatus !== 'connected') return;
+    const timeout = window.setTimeout(() => {
+      setQrModal((current) => current && current.id === qrModal.id ? null : current);
+    }, 1500);
+    return () => window.clearTimeout(timeout);
+  }, [qrModal]);
+
+  async function requestPairingCode() {
+    if (!qrModal) return;
+    setQrModal((current) => current ? { ...current, pairingBusy: true, pairingError: null, activeTab: 'pairing' } : current);
+
+    try {
+      const response = await fetch(`/api/admin/evolution/sessions/${qrModal.id}/pairing-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: qrModal.pairingPhone }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          typeof json?.detail === 'string'
+            ? json.detail
+            : typeof json?.error === 'string'
+              ? json.error
+              : `Failed (${response.status})`,
+        );
+      }
+
+      const result = json as SessionQrResponse;
+      setQrModal((current) => current && current.id === qrModal.id ? {
+        ...current,
+        activeTab: 'pairing',
+        pairingBusy: false,
+        pairingError: null,
+        qr: result.qr ?? current.qr,
+        qrCodeText: result.qrCode ?? current.qrCodeText,
+        pairing: formatPairingCode(result.pairingCodeFormatted ?? result.pairingCode) ?? current.pairing,
+        detail: result.detail ?? current.detail,
+        state: result.state ?? current.state,
+        qrExpiresAt: result.qrExpiresAt ?? current.qrExpiresAt,
+        lastCheckedAt: result.lastCheckedAt ?? new Date().toISOString(),
+        pollAttempt: 0,
+        pollStatus: getQrPollStatus(result, current),
+      } : current);
+      await reload();
+      onChange();
+    } catch (pairingError) {
+      setQrModal((current) => current && current.id === qrModal.id ? {
+        ...current,
+        pairingBusy: false,
+        pairingError: pairingError instanceof Error ? pairingError.message : 'Failed to request a pairing code.',
+        lastCheckedAt: new Date().toISOString(),
+      } : current);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setErr(null);
+    e.preventDefault();
+    setErr(null);
+
     startTransition(async () => {
-      const r = await fetch('/api/admin/evolution/sessions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const response = await fetch('/api/admin/evolution/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form, tenantId: form.tenantId || null, phoneNumber: form.phoneNumber || null,
+          ...form,
+          tenantId: form.tenantId || null,
+          phoneNumber: form.phoneNumber || null,
         }),
       });
-      if (!r.ok) { setErr((await r.json()).error ?? 'failed'); return; }
+      if (!response.ok) {
+        setErr((await response.json().catch(() => ({ error: 'failed' }))).error ?? 'failed');
+        return;
+      }
+
       setForm({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
       setShowCreate(false);
-      await reload(); onChange();
+      await reload();
+      onChange();
     });
   }
 
   async function action(id: string, a: 'connect' | 'reconnect' | 'disconnect' | 'qr') {
-    if (a === 'disconnect' && !confirm('Disconnect this session?')) return;
+    setErr(null);
+
+    if (a === 'disconnect' && !window.confirm('Disconnect this session?')) return;
     if (a === 'connect' || a === 'reconnect' || a === 'qr') {
       const session = rows.find((row) => row.id === id);
       const instance = instances.find((row) => row.id === session?.instanceId);
@@ -745,20 +989,27 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         pairing: null,
         detail: 'Connecting to Evolution…',
         state: 'connecting',
+        qrExpiresAt: session?.qrExpiresAt ?? null,
         lastCheckedAt: new Date().toISOString(),
         pollAttempt: 0,
         pollStatus: 'connecting',
+        activeTab: 'qr',
+        pairingPhone: session?.phoneNumber ?? '',
+        pairingBusy: false,
+        pairingError: null,
       });
+
       try {
         const result = await requestQr(id, a);
         setQrModal((current) => current && current.id === id ? {
           ...current,
           qr: result.qr ?? current.qr,
           qrCodeText: result.qrCode ?? current.qrCodeText,
-          pairing: result.pairingCode ?? current.pairing,
+          pairing: formatPairingCode(result.pairingCodeFormatted ?? result.pairingCode) ?? current.pairing,
           detail: result.detail ?? (result.waitRecommended ? 'Waiting for Evolution to emit QR…' : current.detail),
           state: result.state ?? current.state,
-          lastCheckedAt: new Date().toISOString(),
+          qrExpiresAt: result.qrExpiresAt ?? current.qrExpiresAt,
+          lastCheckedAt: result.lastCheckedAt ?? new Date().toISOString(),
           pollAttempt: 0,
           pollStatus: getQrPollStatus(result, current),
         } : current);
@@ -770,133 +1021,419 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           lastCheckedAt: new Date().toISOString(),
         } : current);
       }
+
       await reload();
       onChange();
       return;
-    } else {
-      const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: a }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        setErr(typeof payload?.detail === 'string' ? payload.detail : typeof payload?.error === 'string' ? payload.error : 'Action failed');
-        return;
-      }
     }
-    await reload(); onChange();
+
+    const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: a }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setErr(typeof payload?.detail === 'string' ? payload.detail : typeof payload?.error === 'string' ? payload.error : 'Action failed');
+      return;
+    }
+
+    await reload();
+    onChange();
   }
 
   async function remove(id: string, name: string) {
-    if (!confirm(`Delete session "${name}"? This is irreversible.`)) return;
+    if (!window.confirm(`Delete session "${name}"? This is irreversible.`)) return;
     await fetch(`/api/admin/evolution/sessions/${id}`, { method: 'DELETE' });
-    await reload(); onChange();
+    if (selectedSessionId === id) setSelectedSessionId('');
+    await reload();
+    onChange();
   }
 
+  async function sendTestMessage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSessionId) {
+      setTestFeedback({ tone: 'bad', text: 'Choose a session before sending a test message.' });
+      return;
+    }
+    if (sendDisabledReason) {
+      setTestFeedback({ tone: 'bad', text: sendDisabledReason });
+      return;
+    }
+
+    setTestSending(true);
+    setTestFeedback(null);
+    try {
+      const response = await fetch(`/api/admin/evolution/sessions/${selectedSessionId}/send-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientPhone: testForm.recipientPhone, text: testForm.text }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.ok) {
+        if (json?.result) {
+          setTestResults((current) => [json.result as SessionTestResult, ...current.filter((item) => item.id !== json.result.id)].slice(0, 8));
+        }
+        throw new Error(
+          typeof json?.detail === 'string'
+            ? json.detail
+            : typeof json?.error === 'string'
+              ? json.error
+              : `Failed (${response.status})`,
+        );
+      }
+
+      const result = json.result as SessionTestResult;
+      setTestResults((current) => [result, ...current.filter((item) => item.id !== result.id)].slice(0, 8));
+      setTestFeedback({ tone: 'good', text: `Test message queued for ${result.recipient ?? normalizedRecipient}.` });
+      setTestForm((current) => ({ ...current, recipientPhone: '' }));
+      await reload();
+      await loadTestResults(selectedSessionId);
+      onChange();
+    } catch (sendError) {
+      setTestFeedback({
+        tone: 'bad',
+        text: sendError instanceof Error ? sendError.message : 'Failed to send the test message.',
+      });
+    } finally {
+      setTestSending(false);
+    }
+  }
+
+  const qrCountdown = qrModal ? getQrExpiryCountdown(qrModal.qrExpiresAt) : null;
+
   return (
-    <section className="evo-panel evo-panel-fill">
-      <div className="evo-panel-head">
-        <h3 className="evo-panel-title">WhatsApp Sessions</h3>
-        <div className="evo-row-actions">
-          <select className="evo-input evo-input-sm" value={filter.instanceId} onChange={(e) => setFilter((f) => ({ ...f, instanceId: e.target.value }))}>
-            <option value="">All instances</option>
-            {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <select className="evo-input evo-input-sm" value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))}>
-            <option value="">All statuses</option>
-            {['connected', 'connecting', 'qr_pending', 'disconnected', 'expired', 'error'].map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button type="button" className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => setShowCreate((v) => !v)}>＋ New Session</button>
+    <div className="evo-session-layout">
+      <section className="evo-panel evo-panel-fill">
+        <div className="evo-panel-head">
+          <div>
+            <h3 className="evo-panel-title">WhatsApp Sessions</h3>
+            <div className="evo-cell-muted">Select a session to drive QR pairing and test-message checks from the same workspace.</div>
+          </div>
+          <div className="evo-row-actions evo-session-toolbar">
+            <input
+              className="evo-input evo-input-sm evo-input-search"
+              placeholder="Search sessions"
+              value={filter.query}
+              onChange={(e) => setFilter((current) => ({ ...current, query: e.target.value }))}
+            />
+            <select className="evo-input evo-input-sm" value={filter.instanceId} onChange={(e) => setFilter((current) => ({ ...current, instanceId: e.target.value }))}>
+              <option value="">All instances</option>
+              {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
+            </select>
+            <select className="evo-input evo-input-sm" value={filter.status} onChange={(e) => setFilter((current) => ({ ...current, status: e.target.value }))}>
+              <option value="">All statuses</option>
+              {['connected', 'connecting', 'qr_pending', 'disconnected', 'expired', 'error'].map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+            <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void reload(); }}>Refresh</button>
+            <button type="button" className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => setShowCreate((value) => !value)}>＋ New Session</button>
+          </div>
         </div>
-      </div>
 
-      {showCreate && (
-        <form className="evo-form-inline" onSubmit={submit}>
-          <input className="evo-input" required placeholder="Session name" value={form.sessionName} onChange={(e) => setForm((f) => ({ ...f, sessionName: e.target.value }))} />
-          <select className="evo-input" required value={form.instanceId} onChange={(e) => setForm((f) => ({ ...f, instanceId: e.target.value }))}>
-            <option value="">Choose instance…</option>
-            {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <input className="evo-input" placeholder="Tenant ID (optional)" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))} />
-          <input className="evo-input" placeholder="Phone (optional, +60…)" value={form.phoneNumber} onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))} />
-          <button className="evo-btn evo-btn-primary evo-btn-xs" type="submit" disabled={busy}>Create</button>
-          <button className="evo-btn evo-btn-ghost evo-btn-xs" type="button" onClick={() => setShowCreate(false)}>Cancel</button>
-          {err ? <div className="evo-form-err">{err}</div> : null}
-        </form>
-      )}
+        {showCreate && (
+          <form className="evo-form-inline" onSubmit={submit}>
+            <input className="evo-input" required placeholder="Session name" value={form.sessionName} onChange={(e) => setForm((current) => ({ ...current, sessionName: e.target.value }))} />
+            <select className="evo-input" required value={form.instanceId} onChange={(e) => setForm((current) => ({ ...current, instanceId: e.target.value }))}>
+              <option value="">Choose instance…</option>
+              {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
+            </select>
+            <input className="evo-input" placeholder="Tenant ID (optional)" value={form.tenantId} onChange={(e) => setForm((current) => ({ ...current, tenantId: e.target.value }))} />
+            <input className="evo-input" placeholder="Phone (optional, +60…)" value={form.phoneNumber} onChange={(e) => setForm((current) => ({ ...current, phoneNumber: e.target.value }))} />
+            <button className="evo-btn evo-btn-primary evo-btn-xs" type="submit" disabled={busy}>Create</button>
+            <button className="evo-btn evo-btn-ghost evo-btn-xs" type="button" onClick={() => setShowCreate(false)}>Cancel</button>
+            {err ? <div className="evo-form-err">{err}</div> : null}
+          </form>
+        )}
 
-      {loading ? <div className="evo-empty">Loading…</div> : rows.length === 0 ? (
-        <div className="evo-empty-row">No sessions yet.</div>
-      ) : (
-        <table className="evo-table">
-          <thead><tr><th>SESSION</th><th>PHONE</th><th>STATUS</th><th>LAST CONNECTED</th><th>LAST MSG</th><th>ACTIONS</th></tr></thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  <div className="evo-cell-strong">{s.sessionName}</div>
-                  <div className="evo-cell-muted">{s.tenantId ? s.tenantId.slice(0, 8) : '—'}</div>
-                </td>
-                <td className="evo-cell-mono">{s.phoneNumber ?? '—'}</td>
-                <td><span className={statusBadge(s.status)}>{s.status}</span></td>
-                <td className="evo-cell-muted">{timeAgo(s.lastConnectedAt)}</td>
-                <td className="evo-cell-muted">{timeAgo(s.lastMessageAt)}</td>
-                <td>
-                  <div className="evo-row-actions">
-                    <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void action(s.id, 'qr'); }}>QR</button>
-                    <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void action(s.id, 'reconnect'); }}>Reconnect</button>
-                    <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void action(s.id, 'disconnect'); }}>Disconnect</button>
-                    <button type="button" className="evo-btn evo-btn-bad evo-btn-xs" onClick={() => { void remove(s.id, s.sessionName); }}>Delete</button>
+        {loading ? <div className="evo-empty">Loading…</div> : visibleRows.length === 0 ? (
+          <div className="evo-empty-row">No sessions match the current filters.</div>
+        ) : (
+          <div className="evo-table-wrap">
+            <table className="evo-table">
+              <thead>
+                <tr><th>SESSION</th><th>INSTANCE</th><th>PHONE</th><th>STATUS</th><th>LAST CONNECTED</th><th>LAST MSG</th><th>ACTIONS</th></tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row) => {
+                  const isSelected = row.id === selectedSessionId;
+                  const instanceName = row.instanceId ? instanceMap.get(row.instanceId)?.name ?? '—' : '—';
+                  return (
+                    <tr
+                      key={row.id}
+                      className={isSelected ? 'evo-row-selected' : undefined}
+                      onClick={() => {
+                        setSelectedSessionId(row.id);
+                        setTestInstanceId(row.instanceId ?? '');
+                        setTestFeedback(null);
+                      }}
+                    >
+                      <td>
+                        <div className="evo-cell-strong">{row.sessionName}</div>
+                        <div className="evo-cell-muted">{row.tenantId ? row.tenantId.slice(0, 12) : 'System session'}</div>
+                      </td>
+                      <td>
+                        <div className="evo-cell-strong">{instanceName}</div>
+                        <div className="evo-cell-muted">{row.instanceId ?? '—'}</div>
+                      </td>
+                      <td className="evo-cell-mono">{row.phoneNumber ?? '—'}</td>
+                      <td><span className={statusBadge(row.status)}>{row.status.replace('_', ' ')}</span></td>
+                      <td className="evo-cell-muted">{timeAgo(row.lastConnectedAt)}</td>
+                      <td className="evo-cell-muted">{timeAgo(row.lastMessageAt)}</td>
+                      <td>
+                        <div className="evo-row-actions">
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'qr'); }}>QR</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'reconnect'); }}>Reconnect</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'disconnect'); }}>Disconnect</button>
+                          <button type="button" className="evo-btn evo-btn-bad evo-btn-xs" onClick={(e) => { e.stopPropagation(); void remove(row.id, row.sessionName); }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <div className="evo-panel-stack">
+        <section className="evo-panel">
+          <div className="evo-side-card-head">
+            <div>
+              <h3 className="evo-panel-title">Send Test Message</h3>
+              <div className="evo-cell-muted">Server-side send only. No Evolution secrets reach the browser.</div>
+            </div>
+            {selectedSession ? <span className={statusBadge(selectedSession.status)}>{selectedSession.status.replace('_', ' ')}</span> : null}
+          </div>
+
+          <form className="evo-form-vert" onSubmit={sendTestMessage}>
+            <div className="evo-form-row evo-form-row-stack-sm">
+              <label className="evo-label">
+                Session
+                <select
+                  className="evo-input"
+                  value={selectedSessionId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    const nextSession = rows.find((row) => row.id === nextId) ?? null;
+                    setSelectedSessionId(nextId);
+                    setTestInstanceId(nextSession?.instanceId ?? '');
+                    setTestFeedback(null);
+                  }}
+                >
+                  <option value="">Choose a session…</option>
+                  {sessionOptions.map((row) => <option key={row.id} value={row.id}>{row.sessionName}</option>)}
+                </select>
+              </label>
+              <label className="evo-label">
+                Instance
+                <select className="evo-input" value={testInstanceId} onChange={(e) => setTestInstanceId(e.target.value)}>
+                  <option value="">All instances</option>
+                  {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div className="evo-session-note-grid">
+              <div className="evo-summary-card evo-summary-card-muted">
+                <span className="evo-summary-label">Session</span>
+                <strong className="evo-summary-value">{selectedSession?.sessionName ?? 'Not selected'}</strong>
+                <span className="evo-summary-meta">{selectedInstance?.name ?? 'Choose an instance'}</span>
+              </div>
+              <div className="evo-summary-card evo-summary-card-muted">
+                <span className="evo-summary-label">Paired Number</span>
+                <strong className="evo-summary-value evo-cell-mono">{selectedSession?.phoneNumber ?? '—'}</strong>
+                <span className="evo-summary-meta">Blocked as a test recipient</span>
+              </div>
+            </div>
+
+            <label className="evo-label">
+              Recipient Number
+              <input
+                className="evo-input evo-cell-mono"
+                placeholder="0192277233 or 60192277233"
+                value={testForm.recipientPhone}
+                onChange={(e) => setTestForm((current) => ({ ...current, recipientPhone: e.target.value }))}
+              />
+            </label>
+            <div className="evo-field-note">
+              {normalizedRecipient ? `Normalized to ${normalizedRecipient}` : 'Use a Malaysian mobile number. Local 01x format is accepted.'}
+            </div>
+            {recipientMatchesSession ? <div className="evo-inline-feedback evo-inline-feedback-bad">Choose a recipient different from the paired WhatsApp number.</div> : null}
+
+            <label className="evo-label">
+              Message
+              <textarea
+                className="evo-input evo-textarea"
+                rows={5}
+                value={testForm.text}
+                onChange={(e) => setTestForm((current) => ({ ...current, text: e.target.value }))}
+              />
+            </label>
+
+            {selectedSession && selectedSession.status !== 'connected' ? (
+              <div className="evo-inline-feedback evo-inline-feedback-warn">Connect this session before sending test traffic.</div>
+            ) : null}
+            {testFeedback ? <div className={`evo-inline-feedback evo-inline-feedback-${testFeedback.tone}`}>{testFeedback.text}</div> : null}
+
+            <div className="evo-row-actions evo-row-actions-end">
+              <button className="evo-btn evo-btn-primary" type="submit" disabled={testSending || Boolean(sendDisabledReason)}>
+                {testSending ? 'Sending…' : 'Send Test Message'}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="evo-panel">
+          <div className="evo-side-card-head">
+            <div>
+              <h3 className="evo-panel-title">Recent Test Results</h3>
+              <div className="evo-cell-muted">Latest test-message attempts for the selected session.</div>
+            </div>
+            {selectedSession ? <span className="evo-cell-muted">{selectedSession.sessionName}</span> : null}
+          </div>
+
+          {testResultsLoading ? <div className="evo-empty">Loading…</div> : testResults.length === 0 ? (
+            <div className="evo-results-empty">No test messages have been sent for this session yet.</div>
+          ) : (
+            <div className="evo-results-list">
+              {testResults.slice(0, 8).map((result) => (
+                <div key={result.id} className="evo-results-item">
+                  <div className="evo-results-head">
+                    <span className={statusBadge(result.status)}>{result.status}</span>
+                    <span className="evo-cell-muted">{timeAgo(result.createdAt)}</span>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                  <div className="evo-results-preview">{result.preview ?? 'No preview available.'}</div>
+                  <div className="evo-results-meta evo-cell-mono">To: {result.recipient ?? '—'}</div>
+                  {result.providerMessageId ? <div className="evo-results-meta evo-cell-mono">Provider ID: {result.providerMessageId}</div> : null}
+                  {result.errorMessage ? <div className="evo-inline-feedback evo-inline-feedback-bad">{result.errorMessage}</div> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       {qrModal && (
         <div className="evo-modal-back" onClick={() => setQrModal(null)}>
-          <div className="evo-modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="evo-panel-title">Connect WhatsApp Session</h3>
-            <div className="evo-qr-meta">
-              <div><strong>Session:</strong> {qrModal.sessionName}</div>
-              <div><strong>Provider:</strong> {qrModal.provider}</div>
-              <div><strong>Instance:</strong> {qrModal.instanceName}</div>
-              <div><strong>State:</strong> {formatQrState(qrModal.state)}</div>
-              <div><strong>Last checked:</strong> {timeAgo(qrModal.lastCheckedAt)}</div>
-              <div><strong>Polling:</strong> {qrModal.pollStatus === 'waiting_qr' || qrModal.pollStatus === 'ready' ? `Attempt ${qrModal.pollAttempt}/${QR_POLL_MAX_ATTEMPTS}` : qrModal.pollStatus}</div>
+          <div className="evo-modal evo-qr-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="evo-modal-head">
+              <div>
+                <h3 className="evo-panel-title">Connect WhatsApp Session</h3>
+                <p className="evo-modal-subtitle">Scan a QR code or request a pairing code without leaving the admin portal.</p>
+              </div>
+              <button className="evo-modal-close" type="button" onClick={() => setQrModal(null)}>Close</button>
             </div>
-            {qrModal.qr ? (
-              <img alt="QR code" src={qrModal.qr} className="evo-qr" />
-            ) : qrModal.pairing ? (
-              <div className="evo-pairing">Pairing code: <code>{qrModal.pairing}</code></div>
-            ) : qrModal.qrCodeText ? (
-              <div className="evo-empty-row">Evolution returned QR payload without an image. Retry to request a fresh QR.</div>
+
+            <div className="evo-summary-grid">
+              <div className="evo-summary-card">
+                <span className="evo-summary-label">Session</span>
+                <strong className="evo-summary-value">{qrModal.sessionName}</strong>
+                <span className="evo-summary-meta">{selectedSession?.tenantId ?? 'System session'}</span>
+              </div>
+              <div className="evo-summary-card">
+                <span className="evo-summary-label">Provider</span>
+                <strong className="evo-summary-value">{qrModal.provider}</strong>
+                <span className="evo-summary-meta">Existing live Evolution backend</span>
+              </div>
+              <div className="evo-summary-card">
+                <span className="evo-summary-label">Instance</span>
+                <strong className="evo-summary-value">{qrModal.instanceName}</strong>
+                <span className="evo-summary-meta">{formatQrState(qrModal.state)}</span>
+              </div>
+            </div>
+
+            <div className="evo-status-row">
+              <span className={statusBadge(qrModal.pollStatus === 'ready' ? 'connecting' : qrModal.pollStatus)}>
+                {qrModal.pollStatus === 'ready' ? 'QR Ready' : qrModal.pollStatus.replace('_', ' ')}
+              </span>
+              <span className="evo-status-meta">State: {formatQrState(qrModal.state)}</span>
+              {qrCountdown != null ? <span className="evo-status-meta">Refreshes in {qrCountdown}s</span> : null}
+              <span className="evo-status-meta">Last checked {timeAgo(qrModal.lastCheckedAt)}</span>
+              <span className="evo-status-meta">Attempt {qrModal.pollAttempt}/{QR_POLL_MAX_ATTEMPTS}</span>
+            </div>
+
+            {qrModal.pollStatus === 'connected' ? <div className="evo-inline-feedback evo-inline-feedback-good">Session connected. Closing this dialog automatically.</div> : null}
+            {qrModal.pollStatus === 'timeout' ? <div className="evo-inline-feedback evo-inline-feedback-bad">{qrModal.detail ?? 'Timed out waiting for connection.'}</div> : null}
+            {qrModal.pollStatus === 'failed' ? <div className="evo-inline-feedback evo-inline-feedback-bad">{qrModal.detail ?? 'Failed to request a QR code.'}</div> : null}
+
+            <div className="evo-modal-tabs">
+              <button className={`evo-modal-tab ${qrModal.activeTab === 'qr' ? 'evo-modal-tab-active' : ''}`} type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'qr' } : current)}>QR Code</button>
+              <button className={`evo-modal-tab ${qrModal.activeTab === 'pairing' ? 'evo-modal-tab-active' : ''}`} type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'pairing' } : current)}>Pairing Code</button>
+            </div>
+
+            {qrModal.activeTab === 'qr' ? (
+              <div className="evo-modal-grid">
+                <div className="evo-qr-stage">
+                  {qrModal.qr ? (
+                    <div className="evo-qr-box">
+                      <img alt="QR code" src={qrModal.qr} className="evo-qr" />
+                    </div>
+                  ) : (
+                    <div className="evo-qr-placeholder">
+                      <strong>{qrModal.detail ?? 'Waiting for Evolution to emit a QR code.'}</strong>
+                      <span>{qrModal.qrCodeText ? 'Evolution returned QR text without an image. Request a fresh QR.' : 'The portal keeps polling while this dialog stays open.'}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="evo-pairing-card">
+                  <h4 className="evo-panel-title">How to scan</h4>
+                  <div className="evo-cell-muted">Open WhatsApp on the phone you want to link, then go to Linked Devices and scan the code shown here.</div>
+                  <div className="evo-field-note">If QR emission is delayed, keep this window open. The portal will retry state checks automatically.</div>
+                  {qrModal.detail && qrModal.pollStatus === 'ready' ? <div className="evo-inline-feedback evo-inline-feedback-warn">{qrModal.detail}</div> : null}
+                  <div className="evo-row-actions">
+                    <button className="evo-btn evo-btn-primary" type="button" onClick={() => { void action(qrModal.id, 'qr'); }} disabled={qrModal.pollStatus === 'connecting'}>Refresh QR</button>
+                    <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'pairing' } : current)}>Use Pairing Code</button>
+                  </div>
+                </div>
+              </div>
             ) : (
-              <div className="evo-empty-row">{qrModal.detail ?? 'No QR returned by backend.'}</div>
+              <div className="evo-modal-grid">
+                <div className="evo-pairing-card">
+                  <label className="evo-label">
+                    Phone number
+                    <input
+                      className="evo-input evo-cell-mono"
+                      placeholder="0192277233"
+                      value={qrModal.pairingPhone}
+                      onChange={(e) => setQrModal((current) => current ? { ...current, pairingPhone: e.target.value, pairingError: null } : current)}
+                    />
+                  </label>
+                  <div className="evo-field-note">
+                    {pairingPhoneNormalized ? `Will request a pairing code for ${pairingPhoneNormalized}` : 'Use the primary WhatsApp number for the device you want to link.'}
+                  </div>
+                  {qrModal.pairingError ? <div className="evo-inline-feedback evo-inline-feedback-bad">{qrModal.pairingError}</div> : null}
+                  {!qrModal.pairing && qrModal.qr ? <div className="evo-inline-feedback evo-inline-feedback-warn">Evolution returned a QR code instead. Switch tabs if you want to scan it.</div> : null}
+                  <div className="evo-row-actions">
+                    <button className="evo-btn evo-btn-primary" type="button" disabled={qrModal.pairingBusy || !pairingPhoneNormalized} onClick={() => { void requestPairingCode(); }}>
+                      {qrModal.pairingBusy ? 'Requesting…' : 'Request Pairing Code'}
+                    </button>
+                    <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'qr' } : current)}>Back to QR</button>
+                  </div>
+                </div>
+                <div className="evo-pairing-card">
+                  <h4 className="evo-panel-title">Pairing code</h4>
+                  {qrModal.pairing ? (
+                    <div className="evo-pairing-code">{qrModal.pairing}</div>
+                  ) : (
+                    <div className="evo-qr-placeholder evo-qr-placeholder-compact">
+                      <strong>No pairing code yet</strong>
+                      <span>Request a new code, or use QR code if the backend falls back to QR flow.</span>
+                    </div>
+                  )}
+                  <div className="evo-field-note">In WhatsApp, choose Linked Devices, then Link with phone number instead.</div>
+                  {qrModal.detail ? <div className="evo-inline-feedback evo-inline-feedback-warn">{qrModal.detail}</div> : null}
+                </div>
+              </div>
             )}
-            {qrModal.pollStatus === 'connecting' ? <div className="evo-qr-status">Connecting to Evolution…</div> : null}
-            {qrModal.pollStatus === 'connected' ? <div className="evo-qr-status evo-qr-status-good">Session connected.</div> : null}
-            {qrModal.pollStatus === 'waiting_qr' ? <div className="evo-qr-status">Waiting for Evolution to emit QR…</div> : null}
-            {qrModal.pollStatus === 'ready' ? <div className="evo-qr-status">QR ready. Scan it in WhatsApp Linked Devices. The portal will keep checking for connection.</div> : null}
-            {qrModal.pollStatus === 'timeout' ? <div className="evo-qr-status evo-qr-status-bad">Timed out waiting for QR or connection confirmation. Retry to request a fresh check.</div> : null}
-            {qrModal.pollStatus === 'failed' ? <div className="evo-qr-status evo-qr-status-bad">{qrModal.detail ?? 'QR polling failed.'}</div> : null}
+
             <div className="evo-row-actions evo-row-actions-end">
-              <button
-                className="evo-btn evo-btn-primary"
-                type="button"
-                onClick={() => { void action(qrModal.id, 'qr'); }}
-                disabled={qrModal.pollStatus === 'connecting'}
-              >
-                Retry QR
-              </button>
-            <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal(null)}>Close</button>
+              <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal(null)}>Close</button>
             </div>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -1503,6 +2040,57 @@ export function EvolutionStyles() {
 .evo-preview { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.55rem 0.7rem; font-size: 0.82rem; color: var(--text-secondary); white-space: pre-wrap; }
 .evo-scope-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.84rem; }
 .evo-scope-list code { background: rgba(139,92,246,0.10); padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.78rem; }
+.evo-session-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 0.85rem; align-items: start; }
+.evo-panel-stack { display: flex; flex-direction: column; gap: 0.85rem; }
+.evo-session-toolbar { align-items: center; justify-content: flex-end; }
+.evo-input-search { min-width: 190px; }
+.evo-table-wrap { overflow: auto; }
+.evo-row-selected td { background: rgba(34,197,94,0.08); }
+.evo-side-card-head { display: flex; justify-content: space-between; gap: 0.8rem; align-items: flex-start; }
+.evo-session-note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.evo-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem; }
+.evo-summary-card { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 0.85rem 0.95rem; background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); display: flex; flex-direction: column; gap: 0.35rem; }
+.evo-summary-card-muted { background: var(--bg-elevated); }
+.evo-summary-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.evo-summary-value { font-size: 0.95rem; font-weight: 700; }
+.evo-summary-meta { color: var(--text-secondary); font-size: 0.76rem; }
+.evo-field-note { font-size: 0.76rem; color: var(--text-secondary); }
+.evo-inline-feedback { border-radius: 10px; padding: 0.7rem 0.8rem; font-size: 0.82rem; border: 1px solid transparent; }
+.evo-inline-feedback-good { background: rgba(34,197,94,0.10); border-color: rgba(34,197,94,0.22); color: #86efac; }
+.evo-inline-feedback-bad { background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.24); color: #fca5a5; }
+.evo-inline-feedback-warn { background: rgba(234,179,8,0.10); border-color: rgba(234,179,8,0.24); color: #fde68a; }
+.evo-results-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.evo-results-item { border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem; background: var(--bg-elevated); display: flex; flex-direction: column; gap: 0.45rem; }
+.evo-results-head { display: flex; justify-content: space-between; gap: 0.6rem; align-items: center; }
+.evo-results-preview { font-size: 0.86rem; line-height: 1.5; white-space: pre-wrap; }
+.evo-results-meta { font-size: 0.75rem; color: var(--text-secondary); }
+.evo-results-empty { padding: 1rem 0.25rem; font-size: 0.84rem; color: var(--text-secondary); }
+.evo-status-row { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
+.evo-status-meta { font-size: 0.76rem; color: var(--text-secondary); }
+.evo-modal-back { position: fixed; inset: 0; background: rgba(2,6,23,0.72); backdrop-filter: blur(12px); z-index: 80; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.evo-modal.evo-qr-modal { max-width: 860px; background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(10,14,24,0.98)); box-shadow: 0 28px 80px rgba(0,0,0,0.45); }
+.evo-modal-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.evo-modal-subtitle { margin: 0.2rem 0 0; color: var(--text-secondary); font-size: 0.84rem; }
+.evo-modal-close { border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,0.03); color: var(--text); font-size: 0.8rem; padding: 0.42rem 0.8rem; cursor: pointer; }
+.evo-modal-tabs { display: inline-flex; gap: 0.3rem; padding: 0.25rem; border-radius: 999px; background: rgba(255,255,255,0.04); width: fit-content; }
+.evo-modal-tab { border: none; background: transparent; color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; padding: 0.5rem 0.9rem; border-radius: 999px; cursor: pointer; }
+.evo-modal-tab-active { background: rgba(34,197,94,0.14); color: #dcfce7; }
+.evo-modal-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 0.8rem; }
+.evo-qr-stage, .evo-pairing-card { border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.03); display: flex; flex-direction: column; gap: 0.7rem; }
+.evo-qr-box { background: white; border-radius: 14px; padding: 1rem; display: flex; align-items: center; justify-content: center; min-height: 340px; }
+.evo-qr { width: min(100%, 320px); max-width: 320px; margin: 0 auto; display: block; background: white; padding: 0; border-radius: 8px; }
+.evo-qr-placeholder { min-height: 340px; border: 1px dashed rgba(255,255,255,0.14); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.45rem; text-align: center; color: var(--text-secondary); padding: 1rem; }
+.evo-qr-placeholder-compact { min-height: 160px; }
+.evo-pairing-code { font-size: 1.9rem; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 700; letter-spacing: 0.22em; line-height: 1.2; text-align: center; padding: 1.1rem 0.75rem; border-radius: 12px; background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.22); }
+@media (max-width: 1180px) {
+  .evo-session-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .evo-summary-grid, .evo-session-note-grid, .evo-modal-grid { grid-template-columns: 1fr; }
+  .evo-form-row-stack-sm { flex-direction: column; }
+  .evo-session-toolbar { justify-content: stretch; }
+  .evo-input-search { min-width: 0; width: 100%; }
+}
     `}</style>
   );
 }

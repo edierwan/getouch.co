@@ -62,6 +62,7 @@ interface SessionRow {
 
 interface TenantRow {
   tenantId: string;
+  displayName?: string | null;
   sessions: number;
   messagesToday: number;
   keyPrefix: string | null;
@@ -77,12 +78,132 @@ interface EventRow {
   sessionId?: string | null;
   tenantId?: string | null;
   createdAt?: string;
+  source?: 'baileys_db' | 'legacy_runtime';
 }
 
 interface HealthItem {
   label: string;
   status: 'healthy' | 'degraded' | 'unknown' | 'not_configured';
   detail?: string;
+}
+
+interface WebhookRow {
+  id: string;
+  tenantId: string | null;
+  sessionId: string | null;
+  label: string | null;
+  url: string;
+  events: string[];
+  secretPrefix: string | null;
+  status: string;
+  lastDeliveryAt: string | null;
+  lastStatus: number | null;
+  lastError: string | null;
+  deliveryCount: number;
+  failureCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TemplateRow {
+  id: string;
+  tenantId: string | null;
+  name: string;
+  language: string;
+  status: string;
+  body: string;
+  variables: string[];
+  createdByEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DbMessageRow {
+  id: string;
+  tenantId: string | null;
+  sessionId: string | null;
+  direction: string;
+  toNumber: string | null;
+  fromNumber: string | null;
+  messageType: string;
+  status: string;
+  preview: string | null;
+  errorCode: string | null;
+  createdAt: string;
+}
+
+interface SendLogRow {
+  id: string;
+  tenantId: string | null;
+  sessionId: string | null;
+  apiKeyPrefix: string | null;
+  toNumber: string | null;
+  status: string;
+  detail: string | null;
+  createdAt: string;
+}
+
+interface DatabaseState {
+  status: {
+    configured: boolean;
+    connected: boolean;
+    database: string;
+    urlSource: string;
+    schemaApplied: boolean;
+    tableCount: number;
+    tables: string[];
+    missingTables: string[];
+    indexes: string[];
+    missingIndexes: string[];
+    constraints: Array<{ tableName: string; constraintName: string; constraintType: string }>;
+    defaultTenantPresent: boolean;
+    error: string | null;
+  };
+  counts: {
+    tenants: number;
+    sessions: number;
+    webhooks: number;
+    templates: number;
+    messages: number;
+    events: number;
+    sendLogs: number;
+    messages24h: number;
+  };
+  tenants: Array<{
+    tenantId: string;
+    displayName: string | null;
+    status: string;
+    maxSessions: number;
+    messageRate: number;
+    webhookEnabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  sessions: Array<{
+    id: string;
+    tenantId: string | null;
+    phone: string | null;
+    purpose: string;
+    status: string;
+    notes: string | null;
+    lastConnectedAt: string | null;
+    lastActivityAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  webhooks: WebhookRow[];
+  templates: TemplateRow[];
+  messages: DbMessageRow[];
+  events: Array<{
+    id: string;
+    tenantId: string | null;
+    sessionId: string | null;
+    eventType: string;
+    level: string;
+    detail: string | null;
+    createdAt: string;
+  }>;
+  sendLogs: SendLogRow[];
 }
 
 interface OverviewData {
@@ -93,10 +214,25 @@ interface OverviewData {
     database: string;
     pairingEnabled: boolean;
     qrEnabled: boolean;
+    runtimeLabel: string;
+    runtimeMode: string;
+    runtimeDatabase: string;
+    newDatabaseInitialized: boolean;
+    newDatabaseStatus: string;
+    cutoverReady: boolean;
+    cutoverBlocker: string;
+    dbUrlSource: string;
+  };
+  runtime: {
+    container: string;
+    defaultSessionId: string | null;
+    webhookStats: Record<string, number>;
+    mode: string;
   };
   runtimeOk: boolean;
   runtimeError: string | null;
   onlineState: 'online' | 'degraded' | 'offline';
+  overviewEventSource: 'baileys_db' | 'legacy_runtime' | 'empty';
   stats: {
     total: number;
     connected: number;
@@ -106,13 +242,17 @@ interface OverviewData {
     tenants: number;
     uptime: string;
     uptimeSeconds: number | null;
+    dbMessages24h: number;
+    dbEvents: number;
+    dbSendLogs: number;
   };
-  sessions: SessionRow[];
+  sessions: Array<SessionRow & { source: 'legacy_runtime' }>;
   tenants: TenantRow[];
   apiKeys: ApiKey[];
   apiKeyStats: { total: number; active: number; revoked: number; expired: number };
   events: EventRow[];
   health: HealthItem[];
+  database: DatabaseState;
 }
 
 /* ─── Helpers ─────────────────────────────────────────── */
@@ -136,10 +276,10 @@ function fmtNumber(n: number | null | undefined): string {
 
 function statusPill(status: string): string {
   const s = status.toLowerCase();
-  if (['active', 'connected', 'healthy', 'online', 'delivered', 'sent'].includes(s)) return 'evo-pill evo-pill-good';
-  if (['connecting', 'pending', 'pending_qr', 'queued', 'rotating'].includes(s)) return 'evo-pill evo-pill-info';
+  if (['active', 'connected', 'healthy', 'online', 'delivered', 'sent', 'initialized'].includes(s)) return 'evo-pill evo-pill-good';
+  if (['connecting', 'pending', 'pending_qr', 'queued', 'rotating', 'partial', 'legacy'].includes(s)) return 'evo-pill evo-pill-info';
   if (['disconnected', 'paused', 'archived', 'received', 'draft', 'unknown', 'not_configured'].includes(s)) return 'evo-pill evo-pill-muted';
-  if (['error', 'failed', 'failing', 'rejected', 'expired', 'degraded', 'offline'].includes(s)) return 'evo-pill evo-pill-bad';
+  if (['error', 'failed', 'failing', 'rejected', 'expired', 'degraded', 'offline', 'unavailable'].includes(s)) return 'evo-pill evo-pill-bad';
   return 'evo-pill evo-pill-muted';
 }
 
@@ -189,6 +329,17 @@ export function BaileysConsole() {
     return () => clearInterval(t);
   }, [reload]);
 
+  useEffect(() => {
+    const handleTabChange = (event: Event) => {
+      const next = (event as CustomEvent<Tab>).detail;
+      if (typeof next === 'string') {
+        setTab(next as Tab);
+      }
+    };
+    document.addEventListener('bly:set-tab', handleTabChange);
+    return () => document.removeEventListener('bly:set-tab', handleTabChange);
+  }, []);
+
   const onCreateSession = () => setTab('sessions');
 
   return (
@@ -221,15 +372,22 @@ export function BaileysConsole() {
           ⚠ Runtime unreachable: <code>{data.runtimeError ?? 'unknown'}</code>. Check the <code>getouch-wa</code> container.
         </div>
       ) : null}
+      {data ? (
+        <div className="evo-banner evo-banner-good">
+          Live session control is still proxied to <code>{data.config.runtimeLabel}</code>.
+          {' '}New database status: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
+          {' '}Cutover blocker: {data.config.cutoverBlocker}
+        </div>
+      ) : null}
 
       <div className="evo-tabpanel">
         {tab === 'overview' && <OverviewTab data={data} loading={loading} onRefresh={reload} startTransition={startTransition} />}
         {tab === 'sessions' && <SessionsTab data={data} onRefresh={reload} />}
         {tab === 'tenants' && <TenantsTab data={data} />}
-        {tab === 'webhooks' && <WebhooksTab />}
-        {tab === 'templates' && <TemplatesTab />}
+        {tab === 'webhooks' && <WebhooksTab data={data} />}
+        {tab === 'templates' && <TemplatesTab data={data} />}
         {tab === 'messages' && <MessagesTab />}
-        {tab === 'analytics' && <AnalyticsTab />}
+        {tab === 'analytics' && <AnalyticsTab data={data} />}
         {tab === 'settings' && <SettingsTab data={data} />}
       </div>
 
@@ -342,7 +500,7 @@ function OverviewTab({
                   {tenants.map((t) => (
                     <tr key={t.tenantId}>
                       <td className="evo-cell-strong">
-                        {t.tenantId === 'system' ? 'System / Default' : t.tenantId}
+                        {t.tenantId === 'system' ? 'System / Default' : (t.displayName || t.tenantId)}
                       </td>
                       <td>{t.sessions}</td>
                       <td className="evo-cell-mono">{t.keyPrefix ?? '—'}</td>
@@ -454,7 +612,12 @@ function OverviewTab({
           <section className="evo-panel">
             <div className="evo-panel-head">
               <h3 className="evo-panel-title">Event Log</h3>
-              <a href="/admin/api-keys?service=whatsapp" className="evo-btn evo-btn-ghost evo-btn-xs">View Full Log</a>
+              <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className={`evo-pill evo-pill-xs ${data.overviewEventSource === 'baileys_db' ? 'evo-pill-good' : data.overviewEventSource === 'legacy_runtime' ? 'evo-pill-info' : 'evo-pill-muted'}`}>
+                  {data.overviewEventSource === 'baileys_db' ? 'Baileys DB' : data.overviewEventSource === 'legacy_runtime' ? 'Legacy Runtime' : 'No Events'}
+                </span>
+                <a href="/admin/api-keys?service=whatsapp" className="evo-btn evo-btn-ghost evo-btn-xs">View Full Log</a>
+              </div>
             </div>
             {events.length === 0 ? (
               <div className="evo-empty-row">No events yet.</div>
@@ -646,6 +809,9 @@ function PairingPanel({ sessions, onChanged }: { sessions: SessionRow[]; onChang
           <p className="evo-cell-muted" style={{ fontSize: '0.75rem' }}>
             On the phone: <em>WhatsApp → Linked Devices → Link with phone number instead</em>.
           </p>
+          <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
+            Legacy runtime note: pairing currently works only on the default session. Per-session pairing is deferred until the new Baileys runtime replaces <code>getouch-wa</code>.
+          </p>
         </div>
       )}
 
@@ -792,7 +958,7 @@ function TenantsTab({ data }: { data: OverviewData | null }) {
     <section className="evo-panel">
       <div className="evo-panel-head">
         <h3 className="evo-panel-title">Tenants</h3>
-        <span className="evo-cell-muted">Source of truth: portal `tenants` table. Baileys stores tenant_id references only.</span>
+        <span className="evo-cell-muted">Baileys DB tenant refs: {data?.database.counts.tenants ?? 0} rows. Central API keys still come from the portal DB.</span>
       </div>
       {tenants.length === 0 ? (
         <div className="evo-empty-row">
@@ -812,7 +978,7 @@ function TenantsTab({ data }: { data: OverviewData | null }) {
           <tbody>
             {tenants.map((t) => (
               <tr key={t.tenantId}>
-                <td className="evo-cell-strong">{t.tenantId === 'system' ? 'System / Default' : t.tenantId}</td>
+                <td className="evo-cell-strong">{t.tenantId === 'system' ? 'System / Default' : (t.displayName || t.tenantId)}</td>
                 <td>{t.sessions}</td>
                 <td className="evo-cell-mono">{t.keyPrefix ?? '—'}</td>
                 <td>{fmtNumber(t.messagesToday)}</td>
@@ -827,37 +993,103 @@ function TenantsTab({ data }: { data: OverviewData | null }) {
 }
 
 /* ─── WEBHOOKS TAB ────────────────────────────────────── */
-function WebhooksTab() {
+function WebhooksTab({ data }: { data: OverviewData | null }) {
+  const rows = data?.database.webhooks ?? [];
   return (
     <section className="evo-panel">
       <div className="evo-panel-head">
         <h3 className="evo-panel-title">Webhooks</h3>
+        <span className="evo-cell-muted">Baileys DB rows: {data?.database.counts.webhooks ?? 0}</span>
       </div>
-      <div className="evo-empty-row">
-        Webhook management endpoints are available in the runtime. Full Portal CRUD UI lands in the next iteration.
-        <br />
-        Supported event types: <code>messages.upsert</code>, <code>messages.update</code>, <code>connection.update</code>,
-        <code>chats.update</code>, <code>qr.generated</code>, <code>session.connected</code>, <code>session.disconnected</code>.
-      </div>
+      {rows.length === 0 ? (
+        <div className="evo-empty-row">
+          No webhook rows in the new Baileys DB yet.
+          <br />
+          Supported events: <code>messages.upsert</code>, <code>messages.update</code>, <code>connection.update</code>,
+          <code>chats.update</code>, <code>qr.generated</code>, <code>session.connected</code>, <code>session.disconnected</code>.
+        </div>
+      ) : (
+        <table className="evo-table evo-table-compact">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Tenant</th>
+              <th>Session</th>
+              <th>Events</th>
+              <th>Status</th>
+              <th>Last Delivery</th>
+              <th>Deliveries</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <div className="evo-cell-strong">{row.label || 'Webhook'}</div>
+                  <div className="evo-cell-muted" style={{ maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.url}</div>
+                </td>
+                <td className="evo-cell-muted">{row.tenantId ?? 'system'}</td>
+                <td className="evo-cell-mono">{row.sessionId ?? '—'}</td>
+                <td className="evo-cell-muted">{row.events.join(', ') || '—'}</td>
+                <td><span className={statusPill(row.status)}>{row.status}</span></td>
+                <td className="evo-cell-muted">{timeAgo(row.lastDeliveryAt)}</td>
+                <td>{row.deliveryCount}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }
 
 /* ─── TEMPLATES TAB ───────────────────────────────────── */
-function TemplatesTab() {
+function TemplatesTab({ data }: { data: OverviewData | null }) {
+  const rows = data?.database.templates ?? [];
   return (
     <section className="evo-panel">
       <div className="evo-panel-head">
         <h3 className="evo-panel-title">Templates</h3>
-        <span className="evo-cell-muted">Internal reusable templates (not Meta official templates).</span>
+        <span className="evo-cell-muted">Internal reusable templates (not Meta official templates). Rows: {data?.database.counts.templates ?? 0}</span>
       </div>
-      <div className="evo-empty-row">No templates yet.</div>
+      {rows.length === 0 ? (
+        <div className="evo-empty-row">No templates yet.</div>
+      ) : (
+        <table className="evo-table evo-table-compact">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Tenant</th>
+              <th>Status</th>
+              <th>Language</th>
+              <th>Variables</th>
+              <th>Preview</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td className="evo-cell-strong">{row.name}</td>
+                <td className="evo-cell-muted">{row.tenantId ?? 'system'}</td>
+                <td><span className={statusPill(row.status)}>{row.status}</span></td>
+                <td>{row.language}</td>
+                <td className="evo-cell-muted">{row.variables.join(', ') || '—'}</td>
+                <td className="evo-cell-muted" style={{ maxWidth: 280, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.body}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }
 
 /* ─── MESSAGES TAB ────────────────────────────────────── */
-interface MessagesResponse { ok?: boolean; messages?: Array<{ id?: string; direction?: string; phone?: string; text?: string; status?: string; createdAt?: string; sessionId?: string | null }>; }
+interface MessagesResponse {
+  ok?: boolean;
+  source?: 'baileys_db' | 'legacy_runtime';
+  messages?: Array<{ id?: string; direction?: string; phone?: string; text?: string; status?: string; createdAt?: string; sessionId?: string | null }>;
+}
 
 function MessagesTab() {
   const [rows, setRows] = useState<MessagesResponse['messages']>([]);
@@ -869,13 +1101,19 @@ function MessagesTab() {
     try {
       const res = await fetch('/api/admin/service-endpoints/baileys/messages?limit=50', { cache: 'no-store' });
       const j: MessagesResponse = await res.json();
-      if (!j.ok) setErr(((j as unknown) as { error?: string }).error ?? 'failed');
+      if (!j.ok) {
+        setErr(((j as unknown) as { error?: string }).error ?? 'failed');
+      } else {
+        setErr(null);
+      }
       setRows(j.messages ?? []);
-      setErr(null);
+      setSource(j.source ?? null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'network_error');
     } finally { setLoading(false); }
   }, []);
+
+  const [source, setSource] = useState<'baileys_db' | 'legacy_runtime' | null>(null);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -883,7 +1121,10 @@ function MessagesTab() {
     <section className="evo-panel">
       <div className="evo-panel-head">
         <h3 className="evo-panel-title">Messages</h3>
-        <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => void reload()}>↻ Refresh</button>
+        <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {source ? <span className={`evo-pill evo-pill-xs ${source === 'baileys_db' ? 'evo-pill-good' : 'evo-pill-info'}`}>{source === 'baileys_db' ? 'Baileys DB' : 'Legacy Runtime'}</span> : null}
+          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => void reload()}>↻ Refresh</button>
+        </div>
       </div>
       {loading && (rows ?? []).length === 0 ? <div className="evo-empty-row">Loading…</div> : null}
       {err ? <div className="evo-form-err">{err}</div> : null}
@@ -920,16 +1161,58 @@ function MessagesTab() {
 }
 
 /* ─── ANALYTICS TAB ───────────────────────────────────── */
-function AnalyticsTab() {
+function AnalyticsTab({ data }: { data: OverviewData | null }) {
   return (
-    <section className="evo-panel">
-      <div className="evo-panel-head">
-        <h3 className="evo-panel-title">Analytics</h3>
-      </div>
-      <div className="evo-empty-row">
-        Charts will appear here once message traffic is recorded. (We do not render fake data on a fresh install.)
-      </div>
-    </section>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+      <section className="evo-panel">
+        <div className="evo-panel-head">
+          <h3 className="evo-panel-title">Analytics</h3>
+          <span className="evo-cell-muted">Fresh-install analytics with no fake numbers.</span>
+        </div>
+        <div className="evo-stat-grid">
+          <MiniStat label="Runtime Msg 24h" value={data?.stats.messages24h ?? 0} tone="amber" />
+          <MiniStat label="Baileys DB Msg 24h" value={data?.stats.dbMessages24h ?? 0} />
+          <MiniStat label="DB Events" value={data?.stats.dbEvents ?? 0} />
+          <MiniStat label="Send Logs" value={data?.stats.dbSendLogs ?? 0} />
+        </div>
+      </section>
+
+      <section className="evo-panel">
+        <div className="evo-panel-head">
+          <h3 className="evo-panel-title">Recent Send Logs</h3>
+        </div>
+        {(data?.database.sendLogs ?? []).length === 0 ? (
+          <div className="evo-empty-row">No send logs yet in the Baileys DB.</div>
+        ) : (
+          <table className="evo-table evo-table-compact">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Tenant</th>
+                <th>Session</th>
+                <th>API Key</th>
+                <th>Recipient</th>
+                <th>Status</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.database.sendLogs ?? []).slice(0, 20).map((row) => (
+                <tr key={row.id}>
+                  <td className="evo-cell-muted">{timeAgo(row.createdAt)}</td>
+                  <td className="evo-cell-muted">{row.tenantId ?? 'system'}</td>
+                  <td className="evo-cell-mono">{row.sessionId ?? '—'}</td>
+                  <td className="evo-cell-mono">{row.apiKeyPrefix ?? '—'}</td>
+                  <td className="evo-cell-mono">{row.toNumber ?? '—'}</td>
+                  <td><span className={statusPill(row.status)}>{row.status}</span></td>
+                  <td className="evo-cell-muted">{row.detail ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -945,13 +1228,22 @@ function SettingsTab({ data }: { data: OverviewData | null }) {
         <tbody>
           <tr><td className="evo-cell-muted">Public endpoint</td><td className="evo-cell-mono">{cfg?.publicUrl ?? '—'}</td></tr>
           <tr><td className="evo-cell-muted">Internal backend</td><td className="evo-cell-mono">{cfg?.internalUrl ?? '—'}</td></tr>
-          <tr><td className="evo-cell-muted">Database</td><td className="evo-cell-mono">{cfg?.database ?? '—'}</td></tr>
+          <tr><td className="evo-cell-muted">Runtime</td><td>{cfg?.runtimeLabel ? <span className="evo-pill evo-pill-info">{cfg.runtimeLabel}</span> : '—'}</td></tr>
+          <tr><td className="evo-cell-muted">Runtime DB</td><td className="evo-cell-mono">{cfg?.runtimeDatabase ?? '—'}</td></tr>
+          <tr><td className="evo-cell-muted">New Baileys DB</td><td className="evo-cell-mono">{cfg?.database ?? '—'}</td></tr>
+          <tr><td className="evo-cell-muted">New DB status</td><td><span className={statusPill(cfg?.newDatabaseStatus ?? 'unknown')}>{cfg?.newDatabaseStatus ?? 'unknown'}</span></td></tr>
+          <tr><td className="evo-cell-muted">DB URL source</td><td>{cfg?.dbUrlSource ?? '—'}</td></tr>
           <tr><td className="evo-cell-muted">QR mode</td><td>{cfg?.qrEnabled ? <span className={statusPill('active')}>enabled</span> : '—'}</td></tr>
           <tr><td className="evo-cell-muted">Pairing mode</td><td>{cfg?.pairingEnabled ? <span className={statusPill('active')}>enabled</span> : '—'}</td></tr>
-          <tr><td className="evo-cell-muted">Configured</td><td>{cfg?.configured ? <span className={statusPill('healthy')}>yes</span> : <span className={statusPill('not_configured')}>no</span>}</td></tr>
+          <tr><td className="evo-cell-muted">Runtime configured</td><td>{cfg?.configured ? <span className={statusPill('healthy')}>yes</span> : <span className={statusPill('not_configured')}>no</span>}</td></tr>
           <tr><td className="evo-cell-muted">Central API key integration</td><td>via Developer Platform → API Keys (service: <code>whatsapp</code>)</td></tr>
+          <tr><td className="evo-cell-muted">Schema applied</td><td>{data?.database.status.schemaApplied ? <span className={statusPill('healthy')}>yes</span> : <span className={statusPill('degraded')}>no</span>}</td></tr>
+          <tr><td className="evo-cell-muted">Missing tables</td><td>{(data?.database.status.missingTables ?? []).join(', ') || 'none'}</td></tr>
         </tbody>
       </table>
+      <div className="evo-preview" style={{ marginTop: '0.7rem' }}>
+        {cfg?.cutoverBlocker ?? '—'}
+      </div>
       <p className="evo-cell-muted" style={{ marginTop: '0.6rem', fontSize: '0.78rem' }}>
         Secrets are managed via portal env (<code>WA_API_KEY</code>, <code>WA_URL</code>, <code>BAILEYS_DATABASE_URL</code>) and never displayed here.
       </p>

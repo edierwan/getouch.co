@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listApiKeys } from '@/lib/api-keys';
+import { getBaileysDbPortalData } from '@/lib/baileys-db';
 import {
   BAILEYS_DB_NAME,
   WA_BASE_URL,
@@ -22,7 +23,6 @@ interface WaSession {
   createdAt?: string | null;
   messages24h?: { inbound?: number; outbound?: number };
   tenantId?: string | null;
-  pairingCode?: string | null;
 }
 
 interface WaSessionsList {
@@ -72,79 +72,163 @@ export async function GET() {
 
   const configured = isWaConfigured();
 
-  // Fetch in parallel; treat individual upstream failures as empty so the
-  // page still renders during fresh-install state.
-  const [overviewRes, sessionsRes, eventsRes, keysList] = await Promise.all([
+  const [dbData, overviewRes, sessionsRes, runtimeEventsRes, keysList] = await Promise.all([
+    getBaileysDbPortalData(),
     waProxy<WaOverview>('/admin/overview'),
     waProxy<WaSessionsList>('/admin/sessions'),
     waProxy<WaEvent[]>('/admin/events', { query: { limit: 25 } }),
     listApiKeys().catch(() => []),
   ]);
 
-  const sessions: WaSession[] = sessionsRes.data?.sessions ?? [];
+  const runtimeSessions: WaSession[] = sessionsRes.data?.sessions ?? [];
   const overview = overviewRes.data ?? {};
-  const totals = overview.sessionTotals ?? {
-    total: sessions.length,
-    connected: sessions.filter((s) => s.status === 'connected').length,
-    pending: sessions.filter((s) => s.status === 'connecting' || s.status === 'pending' || s.qrAvailable).length,
-    disconnected: sessions.filter((s) => !['connected', 'connecting', 'pending'].includes(s.status) && !s.qrAvailable).length,
+  const runtimeTotals = overview.sessionTotals ?? {
+    total: runtimeSessions.length,
+    connected: runtimeSessions.filter((s) => s.status === 'connected').length,
+    pending: runtimeSessions.filter((s) => s.status === 'connecting' || s.status === 'pending' || s.qrAvailable).length,
+    disconnected: runtimeSessions.filter((s) => !['connected', 'connecting', 'pending'].includes(s.status) && !s.qrAvailable).length,
     messages24h: 0,
   };
 
-  // Filter central API keys for whatsapp/baileys scope.
+  const dbSessionMap = new Map(dbData.sessions.map((session) => [session.id, session]));
+  const sessions = runtimeSessions.map((session) => {
+    const mirrored = dbSessionMap.get(session.id);
+    return {
+      id: session.id,
+      status: session.status,
+      qrAvailable: Boolean(session.qrAvailable),
+      phone: session.phone ?? session.user?.id ?? mirrored?.phone ?? null,
+      tenantId: session.tenantId ?? mirrored?.tenantId ?? null,
+      lastActivityAt: session.lastActivityAt ?? mirrored?.lastActivityAt ?? null,
+      messages24h: (session.messages24h?.inbound ?? 0) + (session.messages24h?.outbound ?? 0),
+      source: 'legacy_runtime' as const,
+    };
+  });
+
   const baileysKeys = keysList
-    .filter((k) => {
-      const services = (k.services as string[] | null) ?? [];
+    .filter((key) => {
+      const services = (key.services as string[] | null) ?? [];
       return services.length === 0 || services.includes('whatsapp') || services.includes('baileys');
     })
-    .map((k) => ({
-      id: k.id,
-      name: k.name,
-      tenantId: k.tenantId,
-      keyPrefix: k.keyPrefix,
-      environment: k.environment,
-      status: k.status,
-      scopes: (k.scopes as string[]) ?? [],
-      lastUsedAt: k.lastUsedAt,
-      createdAt: k.createdAt,
-      revokedAt: k.revokedAt,
-      expiresAt: k.expiresAt,
+    .map((key) => ({
+      id: key.id,
+      name: key.name,
+      tenantId: key.tenantId,
+      keyPrefix: key.keyPrefix,
+      environment: key.environment,
+      status: key.status,
+      scopes: (key.scopes as string[]) ?? [],
+      lastUsedAt: key.lastUsedAt,
+      createdAt: key.createdAt,
+      revokedAt: key.revokedAt,
+      expiresAt: key.expiresAt,
     }));
 
   const apiKeyStats = {
     total: baileysKeys.length,
-    active: baileysKeys.filter((k) => k.status === 'active').length,
-    revoked: baileysKeys.filter((k) => k.status === 'revoked').length,
-    expired: baileysKeys.filter((k) => k.expiresAt && new Date(k.expiresAt).getTime() < Date.now()).length,
+    active: baileysKeys.filter((key) => key.status === 'active').length,
+    revoked: baileysKeys.filter((key) => key.status === 'revoked').length,
+    expired: baileysKeys.filter((key) => key.expiresAt && new Date(key.expiresAt).getTime() < Date.now()).length,
   };
 
-  // Tenant overview derived from sessions + central keys.
-  const tenantMap = new Map<string, { tenantId: string; sessions: number; messagesToday: number; keyPrefix: string | null; status: string }>();
-  for (const s of sessions) {
-    const tid = s.tenantId || 'system';
-    const existing = tenantMap.get(tid) ?? { tenantId: tid, sessions: 0, messagesToday: 0, keyPrefix: null, status: 'active' };
-    existing.sessions += 1;
-    existing.messagesToday += (s.messages24h?.inbound ?? 0) + (s.messages24h?.outbound ?? 0);
-    tenantMap.set(tid, existing);
+  const tenantMap = new Map<string, { tenantId: string; displayName: string | null; sessions: number; messagesToday: number; keyPrefix: string | null; status: string }>();
+  for (const tenant of dbData.tenants) {
+    tenantMap.set(tenant.tenantId, {
+      tenantId: tenant.tenantId,
+      displayName: tenant.displayName,
+      sessions: 0,
+      messagesToday: 0,
+      keyPrefix: null,
+      status: tenant.status,
+    });
   }
-  for (const k of baileysKeys) {
-    const tid = k.tenantId || 'system';
-    const existing = tenantMap.get(tid) ?? { tenantId: tid, sessions: 0, messagesToday: 0, keyPrefix: null, status: 'active' };
-    if (!existing.keyPrefix) existing.keyPrefix = k.keyPrefix;
-    tenantMap.set(tid, existing);
+  for (const session of sessions) {
+    const tenantId = session.tenantId || 'system';
+    const existing = tenantMap.get(tenantId) ?? {
+      tenantId,
+      displayName: null,
+      sessions: 0,
+      messagesToday: 0,
+      keyPrefix: null,
+      status: 'active',
+    };
+    existing.sessions += 1;
+    existing.messagesToday += session.messages24h;
+    tenantMap.set(tenantId, existing);
+  }
+  for (const key of baileysKeys) {
+    const tenantId = key.tenantId || 'system';
+    const existing = tenantMap.get(tenantId) ?? {
+      tenantId,
+      displayName: null,
+      sessions: 0,
+      messagesToday: 0,
+      keyPrefix: null,
+      status: 'active',
+    };
+    if (!existing.keyPrefix) existing.keyPrefix = key.keyPrefix;
+    tenantMap.set(tenantId, existing);
   }
   const tenants = Array.from(tenantMap.values());
 
-  const onlineState = configured ? classifyOnline(totals.connected, totals.total) : 'offline';
+  const onlineState = configured ? classifyOnline(runtimeTotals.connected, runtimeTotals.total) : 'offline';
 
-  // Health checks
+  const overviewEventSource = dbData.events.length > 0
+    ? 'baileys_db'
+    : (runtimeEventsRes.ok && (runtimeEventsRes.data?.length ?? 0) > 0 ? 'legacy_runtime' : 'empty');
+
+  const events = dbData.events.length > 0
+    ? dbData.events.slice(0, 25).map((event) => ({
+        id: event.id,
+        type: event.eventType,
+        level: event.level,
+        detail: event.detail,
+        sessionId: event.sessionId,
+        tenantId: event.tenantId,
+        createdAt: event.createdAt,
+        source: 'baileys_db' as const,
+      }))
+    : (runtimeEventsRes.data ?? []).slice(0, 25).map((event) => ({
+        id: event.id,
+        type: event.type ?? event.message,
+        level: event.level ?? 'info',
+        detail: event.detail ?? null,
+        sessionId: event.sessionId ?? null,
+        tenantId: event.tenantId ?? null,
+        createdAt: event.createdAt,
+        source: 'legacy_runtime' as const,
+      }));
+
+  const runtimeCutoverBlocker =
+    'Current getouch-wa still initializes and queries its legacy message_log/event_log/api_keys/connected_apps/admin_settings schema from DATABASE_URL. It does not yet read or write the new Baileys tables, so direct runtime cutover would strand the new schema unused.';
+
   const health = [
-    { label: 'Baileys Runtime', status: configured && overviewRes.ok ? 'healthy' : configured ? 'degraded' : 'not_configured', detail: configured ? `${WA_BASE_URL}` : 'WA_API_KEY missing' },
-    { label: 'WebSocket', status: totals.connected > 0 ? 'healthy' : totals.total > 0 ? 'degraded' : 'unknown', detail: `${totals.connected}/${totals.total} connected` },
-    { label: 'Database', status: configured && overviewRes.ok ? 'healthy' : 'unknown', detail: `Postgres: ${BAILEYS_DB_NAME}` },
-    { label: 'Event Delivery', status: (overview.webhook?.stats?.delivered ?? 0) > 0 ? 'healthy' : 'unknown', detail: `${overview.webhook?.stats?.delivered ?? 0} delivered` },
-    { label: 'Queue', status: 'healthy', detail: '0 backlog' },
-  ];
+    {
+      label: 'Legacy Runtime',
+      status: configured && overviewRes.ok ? 'healthy' : configured ? 'degraded' : 'not_configured',
+      detail: configured ? 'getouch-wa on wa.getouch.co' : 'WA_API_KEY missing',
+    },
+    {
+      label: 'WebSocket',
+      status: runtimeTotals.connected > 0 ? 'healthy' : runtimeTotals.total > 0 ? 'degraded' : 'unknown',
+      detail: `${runtimeTotals.connected}/${runtimeTotals.total} connected`,
+    },
+    {
+      label: 'Baileys DB',
+      status: dbData.status.schemaApplied ? 'healthy' : dbData.status.connected ? 'degraded' : dbData.status.configured ? 'degraded' : 'not_configured',
+      detail: dbData.status.schemaApplied ? `Schema initialized in ${BAILEYS_DB_NAME}` : (dbData.status.error ?? 'Schema missing or partial'),
+    },
+    {
+      label: 'Event Delivery',
+      status: dbData.counts.events > 0 ? 'healthy' : overviewEventSource === 'legacy_runtime' ? 'degraded' : 'unknown',
+      detail: dbData.counts.events > 0 ? `${dbData.counts.events} events in Baileys DB` : (overviewEventSource === 'legacy_runtime' ? 'Events still coming from legacy runtime' : 'No events yet'),
+    },
+    {
+      label: 'Queue',
+      status: dbData.counts.sendLogs > 0 ? 'healthy' : 'unknown',
+      detail: `${dbData.counts.sendLogs} send logs`,
+    },
+  ] as const;
 
   return NextResponse.json({
     config: {
@@ -154,31 +238,42 @@ export async function GET() {
       database: BAILEYS_DB_NAME,
       pairingEnabled: true,
       qrEnabled: true,
+      runtimeLabel: 'legacy getouch-wa',
+      runtimeMode: 'legacy',
+      runtimeDatabase: 'getouch.co (runtime-managed legacy tables)',
+      newDatabaseInitialized: dbData.status.schemaApplied,
+      newDatabaseStatus: dbData.status.schemaApplied ? 'initialized' : (dbData.status.connected ? 'partial' : 'unavailable'),
+      cutoverReady: false,
+      cutoverBlocker: runtimeCutoverBlocker,
+      dbUrlSource: dbData.status.urlSource,
     },
     runtimeOk: overviewRes.ok,
     runtimeError: overviewRes.ok ? null : overviewRes.error,
     onlineState,
+    overviewEventSource,
     stats: {
-      ...totals,
+      ...runtimeTotals,
       uptime: formatUptime(overview.uptimeSeconds ?? null),
       uptimeSeconds: overview.uptimeSeconds ?? null,
       tenants: tenants.length,
-      messages24h: totals.messages24h ?? 0,
+      messages24h: runtimeTotals.messages24h ?? 0,
+      dbMessages24h: dbData.counts.messages24h,
+      dbEvents: dbData.counts.events,
+      dbSendLogs: dbData.counts.sendLogs,
     },
-    sessions: sessions.map((s) => ({
-      id: s.id,
-      status: s.status,
-      qrAvailable: Boolean(s.qrAvailable),
-      phone: s.phone ?? s.user?.id ?? null,
-      tenantId: s.tenantId ?? null,
-      lastActivityAt: s.lastActivityAt ?? null,
-      messages24h: (s.messages24h?.inbound ?? 0) + (s.messages24h?.outbound ?? 0),
-    })),
+    runtime: {
+      container: 'getouch-wa',
+      defaultSessionId: sessionsRes.data?.defaultSessionId ?? null,
+      webhookStats: sessionsRes.data?.webhook?.stats ?? overview.webhook?.stats ?? {},
+      mode: 'legacy',
+    },
+    sessions,
     tenants,
     apiKeys: baileysKeys,
     apiKeyStats,
-    events: (eventsRes.data ?? []).slice(0, 25),
+    events,
     health,
+    database: dbData,
   });
 }
 
@@ -239,6 +334,14 @@ export async function POST(req: NextRequest) {
       if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const phone = String(body.phone ?? '').trim();
       if (!phone) return NextResponse.json({ error: 'missing_phone' }, { status: 400 });
+      const legacyDefaultSessionId = process.env.DEFAULT_SESSION_ID || 'default';
+      if (sessionId !== legacyDefaultSessionId) {
+        return NextResponse.json({
+          ok: false,
+          error: 'legacy_runtime_pairing_only_supports_default_session',
+          detail: `Current getouch-wa pairing only works on the default session (${legacyDefaultSessionId}). Per-session pairing needs the future schema-compatible Baileys runtime.`,
+        }, { status: 409 });
+      }
       const r = await waProxy(`/api/pairing-code`, { query: { phone, session: sessionId } });
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }
