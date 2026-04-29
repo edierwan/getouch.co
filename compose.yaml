@@ -31,7 +31,7 @@ services:
         aliases:
           - baileys-gateway
           - wa
-      - coolify
+      coolify:
 
   web:
     build:
