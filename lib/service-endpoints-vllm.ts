@@ -823,22 +823,23 @@ export async function getVllmDashboardStatus(): Promise<VllmDashboardStatus> {
   const successCount = usageRows.filter((row) => row.statusCode !== null && row.statusCode >= 200 && row.statusCode < 400).length;
   const successRate7d = usageRows.length ? Math.round((successCount / usageRows.length) * 1000) / 10 : null;
   const pepper = getApiKeyPepperStatus();
-  const openWebUi = deriveOpenWebUiStatus(runtime, gateway);
+  const normalizedRuntime = normalizeRuntimeStatus(runtime, null);
+  const openWebUi = deriveOpenWebUiStatus(normalizedRuntime, gateway);
   const checkedAt = new Date().toISOString();
 
   return normalizeVllmDashboardStatus({
     checkedAt: new Date().toISOString(),
     gateway,
-    runtime,
+    runtime: normalizedRuntime,
     errors: [],
-    backendState: deriveBackendState(gateway, runtime),
+    backendState: deriveBackendState(gateway, normalizedRuntime),
     serviceInfo: {
       publicEndpoint: gateway.publicBaseUrl,
       internalBackend: VLLM_INTERNAL_BACKEND,
       modelInternal: VLLM_INTERNAL_MODEL,
       modelAlias: VLLM_PUBLIC_ALIAS,
       gatewayVersion: toGatewayVersion(),
-      backendVersion: runtime.vllm.containerStatus === 'running' ? (remote.backendVersion || 'Unknown') : 'Not running',
+      backendVersion: normalizedRuntime.vllm.containerStatus === 'running' ? (remote.backendVersion || 'Unknown') : 'Not running',
       lastHealthCheck: gateway.checkedAt,
       gatewayStartedAt: remote.gatewayStartedAt,
       backendStartedAt: remote.backendStartedAt,
@@ -858,16 +859,16 @@ export async function getVllmDashboardStatus(): Promise<VllmDashboardStatus> {
       recentRequests,
     },
     openWebUi: {
-      url: runtime.links.openWebUi,
+      url: normalizedRuntime.links.openWebUi,
       expectedTab: 'External',
       expectedModel: VLLM_PUBLIC_ALIAS,
       providerBaseUrl: gateway.publicBaseUrl,
-      providerBaseUrls: runtime.openWebUi.providerBaseUrls,
+      providerBaseUrls: normalizedRuntime.openWebUi.providerBaseUrls,
       status: openWebUi.status,
       note: openWebUi.note,
     },
-    providerBaseUrls: runtime.openWebUi.providerBaseUrls,
-    providerApiKeysConfigured: runtime.openWebUi.providerKeysConfigured > 0,
+    providerBaseUrls: normalizedRuntime.openWebUi.providerBaseUrls,
+    providerApiKeysConfigured: normalizedRuntime.openWebUi.providerKeysConfigured > 0,
     openWebuiProviderStatus: toProviderState(openWebUi.status),
     openWebuiProviderModels: gateway.backend.ready ? [VLLM_PUBLIC_ALIAS] : [],
     apiKeys: keys,
@@ -877,7 +878,7 @@ export async function getVllmDashboardStatus(): Promise<VllmDashboardStatus> {
       successRate7d,
       lastCheckedAt: checkedAt,
     },
-    resourceUsage: buildResourceUsage(runtime),
+    resourceUsage: buildResourceUsage(normalizedRuntime),
   });
 }
 
