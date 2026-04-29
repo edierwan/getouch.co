@@ -11,7 +11,7 @@ import { EvolutionStyles } from '../../whatsapp-services/evolution/EvolutionCons
  *
  * The runtime currently lives in the `getouch-wa` container (wa.getouch.co).
  * This UI is built so that swapping the runtime later (fresh Baileys install
- * pointing at Postgres `Baileys`) requires no UI changes — it just re-points
+ * pointing at Postgres `baileys`) requires no UI changes — it just re-points
  * WA_URL / WA_API_KEY in the web container env.
  * ───────────────────────────────────────────────────────────────────── */
 
@@ -825,7 +825,7 @@ function PairingPanel({ sessions, onChanged, runtimeMode }: { sessions: SessionR
             </p>
           ) : (
             <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
-              Fresh runtime note: pairing works per session and writes session state directly to the <code>Baileys</code> database.
+              Fresh runtime note: pairing works per session and writes session state directly to the <code>baileys</code> database.
             </p>
           )}
         </div>
@@ -920,7 +920,7 @@ function SessionsTab({ data, onRefresh }: { data: OverviewData | null; onRefresh
           </button>
         </div>
         <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
-          Session IDs are lowercase slugs. Tenant ID is optional and lets the session bind directly into the Baileys database for multi-tenant routing.
+          Session IDs are lowercase slugs. Tenant ID is optional and lets the session bind directly into the <code>baileys</code> database for multi-tenant routing.
         </p>
       </section>
 

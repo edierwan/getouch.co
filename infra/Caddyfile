@@ -122,6 +122,11 @@ http://wa.getouch.co {
   reverse_proxy baileys-gateway:3001
 }
 
+http://evo.getouch.co {
+  import common_headers
+  reverse_proxy evolution-api:8080
+}
+
 http://wapi.getouch.co {
   import common_headers
 

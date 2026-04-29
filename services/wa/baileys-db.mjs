@@ -3,7 +3,7 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'Baileys';
+const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'baileys';
 const DIRECT_BAILEYS_DATABASE_URL = process.env.BAILEYS_DATABASE_URL || '';
 const FALLBACK_DATABASE_URL = process.env.DATABASE_URL || '';
 

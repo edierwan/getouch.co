@@ -125,7 +125,7 @@ const {
   recordSendAttempt: persistSendAttempt = async () => null,
 } = db;
 const RUNTIME_DATABASE = GATEWAY_MODE === 'baileys'
-  ? (typeof freshDb.getDatabaseName === 'function' ? freshDb.getDatabaseName() : process.env.BAILEYS_DB_NAME || 'Baileys')
+  ? (typeof freshDb.getDatabaseName === 'function' ? freshDb.getDatabaseName() : process.env.BAILEYS_DB_NAME || 'baileys')
   : deriveDatabaseName(process.env.DATABASE_URL, 'getouch.co');
 
 const logger = pino({ level: LOG_LEVEL });

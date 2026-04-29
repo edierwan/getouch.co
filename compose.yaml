@@ -140,9 +140,9 @@ services:
       AI_SESSION_TIMEOUT_MINUTES: ${AI_SESSION_TIMEOUT_MINUTES:-30}
       AI_GROUP_REPLY_CONTEXT_MINUTES: ${AI_GROUP_REPLY_CONTEXT_MINUTES:-10}
       AI_GROUP_PARTICIPANT_WINDOW_MINUTES: ${AI_GROUP_PARTICIPANT_WINDOW_MINUTES:-5}
-      BAILEYS_DB_NAME: ${BAILEYS_DB_NAME:-Baileys}
-      BAILEYS_DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-Baileys}
-      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-Baileys}
+      BAILEYS_DB_NAME: ${BAILEYS_DB_NAME:-baileys}
+      BAILEYS_DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-baileys}
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-baileys}
       LOG_LEVEL: ${WA_LOG_LEVEL:-info}
       BUILD_ID: ${BUILD_ID:-dev}
     volumes:
@@ -153,12 +153,15 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - edge
-
-  postgres:
+      edge:
+        aliases:
+          - baileys-gateway
       coolify:
         aliases:
           - wa
+
+  postgres:
+    image: postgres:16-alpine
     container_name: getouch-postgres
     restart: unless-stopped
     environment:

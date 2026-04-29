@@ -1,15 +1,15 @@
 -- =============================================================
--- Baileys Gateway — initial schema for the dedicated `Baileys` DB
+-- Baileys Gateway — initial schema for the dedicated `baileys` DB
 -- =============================================================
 --
 -- IMPORTANT — STAGED ONLY (not auto-applied):
 --   This file lives in /drizzle but is targeted at a SEPARATE
---   database called `Baileys`, not the main `getouch.co` DB.
+--   database called `baileys`, not the main `getouch.co` DB.
 --   It will NOT be picked up by the standard drizzle migrator
 --   that runs against `${APP_DB_NAME}`.
 --
 --   To apply on the VPS once approved:
---     docker exec -i getouch-postgres psql -U <admin> -d Baileys \
+--     docker exec -i getouch-postgres psql -U <admin> -d baileys \
 --       < drizzle/0009_baileys_init.sql
 --
 -- All FK references to the global tenant catalogue are kept as

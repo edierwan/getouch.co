@@ -1,6 +1,6 @@
 import postgres from 'postgres';
 
-const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'Baileys';
+const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'baileys';
 
 const REQUIRED_TABLES = [
   'sessions',

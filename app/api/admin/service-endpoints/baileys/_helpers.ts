@@ -16,7 +16,7 @@ export const WA_BASE_URL = process.env.WA_URL || 'http://wa:3001';
 export const WA_API_KEY = process.env.WA_API_KEY || '';
 export const WA_ADMIN_KEY = process.env.WA_ADMIN_KEY || process.env.WA_API_KEY || '';
 export const WA_PUBLIC_URL = process.env.WA_PUBLIC_URL || 'https://wa.getouch.co';
-export const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'Baileys';
+export const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'baileys';
 export const BAILEYS_DB_URL = process.env.BAILEYS_DATABASE_URL || '';
 
 export async function requireAdmin() {

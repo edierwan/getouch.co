@@ -66,6 +66,12 @@ Operational boundaries:
 - The portal talks to Evolution over the internal Docker network, not the public URL.
 - The Baileys gateway at `wa.getouch.co` remains separate and its primary number stays untouched.
 
+## WhatsApp Providers
+
+- Baileys Gateway is a WhatsApp service endpoint backed by PostgreSQL database `baileys`.
+- Evolution API is a WhatsApp service endpoint backed by PostgreSQL database `evolution`.
+- LINE and Telegram are not handled by Baileys or Evolution and need their own providers later.
+
 ## Container
 
 ```bash
