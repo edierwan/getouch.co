@@ -104,8 +104,8 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Evolution Gateway', href: '/admin/service-endpoints/evolution', icon: '◈' },
       { label: 'Baileys Gateway', href: '/admin/service-endpoints/baileys', icon: '◌' },
       { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
-      { label: 'Chatwoot', href: 'https://chatwoot.getouch.co', icon: '◌', external: true },
-      { label: 'Voice API', href: '#', icon: '◍', disabled: true },
+      { label: 'Chatwoot', href: '/admin/service-endpoints/chatwoot', icon: '◌' },
+      { label: 'FusionPBX / Voice', href: '#', icon: '◍', disabled: true },
     ],
   },
   {

@@ -421,7 +421,9 @@ http://analytics.getouch.co {
 
 http://chatwoot.getouch.co {
   import common_headers
-  reverse_proxy chatwoot-web:3000
+  reverse_proxy chatwoot-web:3000 {
+    header_up X-Forwarded-Proto https
+  }
 }
 
 http://bot.getouch.co,

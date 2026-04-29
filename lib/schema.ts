@@ -32,6 +32,7 @@ export const apiKeyValidationSource = pgEnum('central_api_key_validation_source'
   'unknown',
 ]);
 export const apiSecretStatus = pgEnum('central_api_secret_status', ['configured', 'missing', 'unknown']);
+export const chatwootTenantMappingStatus = pgEnum('chatwoot_tenant_mapping_status', ['pending', 'active', 'disabled']);
 
 /* ─── Users (central identity master) ─── */
 export const users = pgTable('users', {
@@ -123,6 +124,24 @@ export const difyConnections = pgTable(
   (table) => [
     uniqueIndex('dify_connections_domain_environment_idx').on(table.domain, table.environment),
     index('dify_connections_status_idx').on(table.status),
+  ],
+);
+
+/* ─── Chatwoot tenant control plane ─── */
+export const chatwootTenantMappings = pgTable(
+  'chatwoot_tenant_mappings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id').notNull().unique(),
+    chatwootAccountId: integer('chatwoot_account_id').notNull(),
+    chatwootInboxId: integer('chatwoot_inbox_id'),
+    status: chatwootTenantMappingStatus('status').default('pending').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('chatwoot_tenant_mappings_account_idx').on(table.chatwootAccountId),
+    index('chatwoot_tenant_mappings_status_idx').on(table.status),
   ],
 );
 
