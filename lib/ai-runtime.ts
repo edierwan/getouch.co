@@ -193,6 +193,7 @@ MIN_FREE_VRAM_MIB='${String(MIN_FREE_VRAM_MIB_FOR_TRIAL)}'
 COMPOSE_FILE='/home/deploy/apps/getouch.co/compose.yaml'
 HF_CACHE_DIR='/srv/apps/ai/huggingface'
 PUBLIC_PORTS='80/tcp,443/tcp'
+export ACTION VLLM_SERVICE VLLM_MODEL VLLM_ENDPOINT MIN_FREE_VRAM_MIB COMPOSE_FILE HF_CACHE_DIR PUBLIC_PORTS
 
 json_escape() {
   python3 - <<'PY' "$1"
