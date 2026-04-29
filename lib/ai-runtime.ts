@@ -329,7 +329,7 @@ status = {
 }
 
 # Host memory/disk
-rc, free_out, _ = run("free -h | awk 'NR==2{print $2""|""$3""|""$7} NR==3{print $2""|""$3}'")
+rc, free_out, _ = run("free -h | awk 'NR==2{print $2\"|\"$3\"|\"$7} NR==3{print $2\"|\"$3}'")
 if rc == 0 and free_out:
     rows = free_out.splitlines()
     if rows:
@@ -377,7 +377,7 @@ if rc != 0:
 
 # Docker state
 def inspect_container(name):
-    rc, out, _ = run(f"docker inspect {shlex.quote(name)} --format '{{{{.State.Status}}}}|{{{{range $k, $v := .NetworkSettings.Networks}}}}{{$k}}{{{{end}}}}|{{{{json .NetworkSettings.Ports}}}}' 2>/dev/null")
+  rc, out, _ = run(f"docker inspect {shlex.quote(name)} --format '{{{{.State.Status}}}}|{{{{range $k, $v := .NetworkSettings.Networks}}}}{{{{$k}}}}{{{{end}}}}|{{{{json .NetworkSettings.Ports}}}}' 2>/dev/null")
     if rc != 0 or not out:
         return 'missing', None, None
     parts = out.split('|', 2)
