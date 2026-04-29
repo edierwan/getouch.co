@@ -179,6 +179,13 @@ function normalizeSegment(value: string) {
   return value.replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
+function buildDownloadUrl(bucket: string, key: string) {
+  const url = new URL('/api/admin/object-storage/download', window.location.origin);
+  url.searchParams.set('bucket', bucket);
+  url.searchParams.set('key', key);
+  return url.toString();
+}
+
 /* ─── Top-level component ───────────────────────────────────── */
 export function ObjectStorageConsole() {
   const [tab, setTab] = useState<TabId>('overview');
@@ -859,7 +866,10 @@ function OverviewTab({
                       <>
                         <a
                           className="os-btn-mini"
-                          href={`https://s3.getouch.co/${previewBucket}/${previewPrefix}${object.name}`}
+                          href={buildDownloadUrl(
+                            previewBucket,
+                            previewPrefix ? `${previewPrefix}${object.name}` : object.name,
+                          )}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
@@ -1844,7 +1854,7 @@ function BrowserTab({ buckets, onChange }: { buckets: BucketInfo[]; onChange?: (
                     <>
                       <a
                         className="os-btn-mini"
-                        href={`https://s3.getouch.co/${bucket}/${prefix}${o.name}`}
+                        href={buildDownloadUrl(bucket, prefix ? `${prefix}${o.name}` : o.name)}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
