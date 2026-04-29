@@ -16,6 +16,7 @@ import {
 /* ─── Enums ─── */
 export const userRole = pgEnum('user_role', ['admin', 'user', 'pending']);
 export const difySetupStatus = pgEnum('dify_setup_status', ['active', 'inactive', 'draft']);
+export const difyTenantMappingStatus = pgEnum('dify_tenant_mapping_status', ['pending', 'active', 'disabled']);
 export const scheduledRestartType = pgEnum('scheduled_restart_type', ['one-time', 'daily', 'weekly']);
 export const objectStorageTenantStatus = pgEnum('object_storage_tenant_status', [
   'active', 'suspended', 'pending',
@@ -135,6 +136,23 @@ export const difyConnections = pgTable(
   (table) => [
     uniqueIndex('dify_connections_domain_environment_idx').on(table.domain, table.environment),
     index('dify_connections_status_idx').on(table.status),
+  ],
+);
+
+export const difyTenantMappings = pgTable(
+  'dify_tenant_mappings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id').notNull().unique(),
+    difyWorkspaceId: varchar('dify_workspace_id', { length: 120 }),
+    difyAppId: varchar('dify_app_id', { length: 120 }),
+    difyWorkflowId: varchar('dify_workflow_id', { length: 120 }),
+    status: difyTenantMappingStatus('status').default('pending').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('dify_tenant_mappings_status_idx').on(table.status),
   ],
 );
 

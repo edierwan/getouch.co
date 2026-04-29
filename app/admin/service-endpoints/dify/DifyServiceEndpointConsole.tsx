@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
+import type { SummaryCard } from '../../data';
 import { PageIntro, SummaryGrid } from '../../ui';
 
 type SecretInventoryItem = {
@@ -20,6 +21,8 @@ type DifyDashboardStatus = {
     publicEndpoint: string;
     appsCount: number | null;
     workflowsCount: number | null;
+    knowledgeBasesCount: number | null;
+    workerStatus: string;
     providerStatus: string;
     lastHealthCheck: string;
   };
@@ -27,20 +30,51 @@ type DifyDashboardStatus = {
     publicUrl: string;
     internalUrl: string | null;
     version: string | null;
+    databaseName: string;
     databaseStatus: string | null;
     redisStatus: string | null;
     storageStatus: string | null;
+    deploymentMode: string;
     lastHealthCheck: string;
     apiHealthEndpoint: string;
     apiHealthAvailable: boolean;
     appsApiStatus: string;
   };
+  runtimeComponents: Array<{
+    key: 'database' | 'redis' | 'worker' | 'sandbox' | 'plugin-daemon';
+    label: string;
+    status: 'healthy' | 'warning';
+    detail: string;
+    observable: boolean;
+  }>;
   quickActions: Array<{ label: string; href: string; external?: boolean }>;
   apiAccess: {
     managerUrl: string;
     secrets: SecretInventoryItem[];
     summary: string;
   };
+  tenantMappings: {
+    summary: string;
+    rows: Array<{
+      id: string;
+      tenantId: string;
+      difyWorkspaceId: string | null;
+      difyAppId: string | null;
+      difyWorkflowId: string | null;
+      status: string;
+      assignedBotWorkflow: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+  };
+  providerPlan: {
+    currentStatus: string;
+    currentEndpoint: string;
+    currentModelAlias: string;
+    futureEndpoint: string;
+    note: string;
+  };
+  integrationFlow: string[];
   usage: {
     recentHealthChecks: Array<{
       id: string;
@@ -74,6 +108,11 @@ function formatDateTime(value: string | null) {
 
 function formatCount(value: number | null) {
   return value === null ? 'Unavailable' : value.toLocaleString();
+}
+
+function formatAppsAndWorkflows(apps: number | null, workflows: number | null) {
+  if (apps === null && workflows === null) return 'Unavailable';
+  return `${formatCount(apps)} / ${formatCount(workflows)}`;
 }
 
 function statusClass(ok: boolean) {
@@ -127,9 +166,14 @@ export function DifyServiceEndpointConsole() {
     });
   }
 
-  const cards = data ? [
+  const runtimeByKey = new Map(data?.runtimeComponents.map((item) => [item.key, item]));
+  const workerComponent = runtimeByKey.get('worker');
+  const sandboxComponent = runtimeByKey.get('sandbox');
+  const pluginDaemonComponent = runtimeByKey.get('plugin-daemon');
+
+  const cards: SummaryCard[] = data ? [
     {
-      label: 'STATUS',
+      label: 'DIFY STATUS',
       value: data.summary.statusLabel,
       tone: data.summary.statusTone,
       detail: data.currentProbe.message,
@@ -142,22 +186,23 @@ export function DifyServiceEndpointConsole() {
       icon: '↗',
     },
     {
-      label: 'APPS COUNT',
-      value: formatCount(data.summary.appsCount),
-      detail: 'Portal-managed Dify app connections.',
-      icon: '▣',
-    },
-    {
-      label: 'WORKFLOWS COUNT',
-      value: formatCount(data.summary.workflowsCount),
-      detail: 'Portal-managed Dify workflow connections.',
+      label: 'APPS / WORKFLOWS',
+      value: formatAppsAndWorkflows(data.summary.appsCount, data.summary.workflowsCount),
+      detail: 'Portal-managed Dify app and workflow mappings.',
       icon: '⇄',
     },
     {
-      label: 'API KEYS / PROVIDERS',
-      value: data.summary.providerStatus,
-      detail: 'No secret values are exposed here.',
-      icon: '⚿',
+      label: 'KNOWLEDGE BASES',
+      value: formatCount(data.summary.knowledgeBasesCount),
+      detail: 'Not exposed by the public Dify endpoint yet.',
+      icon: '▤',
+    },
+    {
+      label: 'WORKER STATUS',
+      value: workerComponent?.observable ? 'Healthy' : 'Unknown',
+      tone: workerComponent?.observable ? 'healthy' : 'warning',
+      detail: workerComponent?.detail || data.summary.workerStatus,
+      icon: '◷',
     },
     {
       label: 'LAST HEALTH CHECK',
@@ -170,8 +215,8 @@ export function DifyServiceEndpointConsole() {
   return (
     <div>
       <PageIntro
-        title="Dify Service Endpoint"
-        subtitle="Control and monitor the Dify workspace endpoint at https://dify.getouch.co."
+        title="Dify AI Workflow Platform"
+        subtitle="AI workflow, chatbot, and knowledge base service endpoint powered by Dify."
       />
 
       {loading && !data ? <section className="portal-panel">Loading Dify endpoint status…</section> : null}
@@ -185,7 +230,7 @@ export function DifyServiceEndpointConsole() {
             <div className="portal-panel-head portal-panel-head-inline">
               <div>
                 <h3 className="portal-panel-title">Quick Actions</h3>
-                <p className="portal-page-sub">This page monitors the endpoint. The native Dify workspace at dify.getouch.co remains the source of truth for apps and workflows.</p>
+                <p className="portal-page-sub">The native Dify workspace at dify.getouch.co remains the source of truth for apps, workflows, and knowledge operations.</p>
               </div>
               <div className="portal-action-row">
                 {data.quickActions.map((action) => (
@@ -217,12 +262,14 @@ export function DifyServiceEndpointConsole() {
               </div>
               <div className="portal-info-table">
                 <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{data.serviceInformation.publicUrl}</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">Internal URL</span><span className="portal-info-table-value">{data.serviceInformation.internalUrl || 'Not exposed in portal runtime'}</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">Version</span><span className="portal-info-table-value">{data.serviceInformation.version || 'Not available from portal runtime'}</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">Database status</span><span className="portal-info-table-value">{data.serviceInformation.databaseStatus || 'Not exposed by public endpoint'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Database</span><span className="portal-info-table-value">{data.serviceInformation.databaseName}</span></div>
                 <div className="portal-info-table-row"><span className="portal-info-table-label">Redis status</span><span className="portal-info-table-value">{data.serviceInformation.redisStatus || 'Not exposed by public endpoint'}</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">Storage status</span><span className="portal-info-table-value">{data.serviceInformation.storageStatus || 'Not exposed by public endpoint'}</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">Last health check</span><span className="portal-info-table-value">{formatDateTime(data.serviceInformation.lastHealthCheck)}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Worker status</span><span className="portal-info-table-value">{workerComponent?.detail || data.summary.workerStatus}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Sandbox status</span><span className="portal-info-table-value">{sandboxComponent?.detail || 'Not exposed by public endpoint'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Plugin daemon status</span><span className="portal-info-table-value">{pluginDaemonComponent?.detail || 'Not exposed by public endpoint'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Version</span><span className="portal-info-table-value">{data.serviceInformation.version || 'Not available from portal runtime'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Deployment mode</span><span className="portal-info-table-value">{data.serviceInformation.deploymentMode}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Last checked</span><span className="portal-info-table-value">{formatDateTime(data.serviceInformation.lastHealthCheck)}</span></div>
                 <div className="portal-info-table-row"><span className="portal-info-table-label">Console API probe</span><span className="portal-info-table-value">{data.serviceInformation.appsApiStatus}</span></div>
               </div>
             </section>
@@ -230,25 +277,22 @@ export function DifyServiceEndpointConsole() {
             <section className="portal-panel">
               <div className="portal-panel-head">
                 <div>
-                  <h3 className="portal-panel-title">API Access</h3>
+                  <h3 className="portal-panel-title">Runtime Visibility</h3>
                 </div>
-                <a href={data.apiAccess.managerUrl} className="portal-action-link">Open Key Manager</a>
+                <span className={statusClass(data.runtimeComponents.some((item) => item.observable))}>
+                  {data.runtimeComponents.some((item) => item.observable) ? 'Live' : 'Limited'}
+                </span>
               </div>
-              <div className="portal-summary-detail" style={{ marginTop: 0, marginBottom: '0.9rem' }}>
-                {data.apiAccess.summary}
+              <div className="portal-activity-list">
+                {data.runtimeComponents.map((component) => (
+                  <div key={component.key} className="portal-activity-item">
+                    <strong>{component.label}</strong> · {component.observable ? 'observable' : 'not exposed'} · {component.detail}
+                  </div>
+                ))}
               </div>
-              {data.apiAccess.secrets.length > 0 ? (
-                <div className="portal-info-table">
-                  {data.apiAccess.secrets.map((secret) => (
-                    <div key={secret.envName} className="portal-info-table-row">
-                      <span className="portal-info-table-label">{secret.envName}</span>
-                      <span className="portal-info-table-value">{secret.secretType} · {secret.status} · managed by {secret.managedBy}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="portal-summary-detail">No Dify-specific secrets are wired into the portal runtime.</div>
-              )}
+              <div className="portal-summary-detail" style={{ marginTop: '1rem' }}>
+                {data.serviceInformation.databaseStatus}
+              </div>
             </section>
           </div>
 
@@ -256,7 +300,58 @@ export function DifyServiceEndpointConsole() {
             <section className="portal-panel">
               <div className="portal-panel-head">
                 <div>
-                  <h3 className="portal-panel-title">Usage / Activity</h3>
+                  <h3 className="portal-panel-title">Future Tenant Mapping</h3>
+                </div>
+                <span className={statusClass(data.tenantMappings.rows.length > 0)}>
+                  {data.tenantMappings.rows.length > 0 ? 'Mapped' : 'Empty'}
+                </span>
+              </div>
+              {data.tenantMappings.rows.length > 0 ? (
+                <div className="portal-activity-list">
+                  {data.tenantMappings.rows.map((mapping) => (
+                    <div key={mapping.id} className="portal-activity-item">
+                      <strong>Portal tenant_id {mapping.tenantId}</strong>
+                      {` · workspace ${mapping.difyWorkspaceId || 'unassigned'}`}
+                      {` · app ${mapping.difyAppId || 'unassigned'}`}
+                      {` · workflow ${mapping.difyWorkflowId || 'unassigned'}`}
+                      {` · status ${mapping.status}`}
+                      {` · assigned ${mapping.assignedBotWorkflow || 'not assigned'}`}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="portal-summary-detail">{data.tenantMappings.summary}</div>
+                  <div className="portal-activity-list" style={{ marginTop: '1rem' }}>
+                    <div className="portal-activity-item">Tracked fields will be: Portal tenant_id, Dify workspace id, Dify app id, Dify workflow id, status, and assigned bot/workflow.</div>
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="portal-panel">
+              <div className="portal-panel-head">
+                <div>
+                  <h3 className="portal-panel-title">Model Provider Plan</h3>
+                </div>
+                <a href={data.apiAccess.managerUrl} className="portal-action-link">Open Key Manager</a>
+              </div>
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Current status</span><span className="portal-info-table-value">{data.providerPlan.currentStatus}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">vLLM API</span><span className="portal-info-table-value">{data.providerPlan.currentEndpoint}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Model alias</span><span className="portal-info-table-value">{data.providerPlan.currentModelAlias}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Future LiteLLM URL</span><span className="portal-info-table-value">{data.providerPlan.futureEndpoint}</span></div>
+              </div>
+              <div className="portal-summary-detail" style={{ marginTop: '1rem', marginBottom: '0.9rem' }}>{data.providerPlan.note}</div>
+              <div className="portal-summary-detail">Portal-visible Dify key inventory: {data.apiAccess.summary}</div>
+            </section>
+          </div>
+
+          <div className="portal-detail-grid" style={{ marginBottom: '1.2rem' }}>
+            <section className="portal-panel">
+              <div className="portal-panel-head">
+                <div>
+                  <h3 className="portal-panel-title">Last Health Checks</h3>
                 </div>
                 <span className={statusClass(data.usage.recentHealthChecks.length > 0)}>
                   {data.usage.recentHealthChecks.length > 0 ? 'Tracked' : 'Empty'}
@@ -275,24 +370,21 @@ export function DifyServiceEndpointConsole() {
                 <div className="portal-summary-detail">No recent Dify health checks are stored in the portal database yet.</div>
               )}
               <div className="portal-summary-detail" style={{ marginTop: '1rem' }}>
-                {data.usage.recentApiCallsAvailable
-                  ? 'Recent Dify API calls are available.'
-                  : 'Recent Dify API calls are not wired into the portal yet, so this section stays empty by design.'}
+                Managed Dify connections tracked in portal: {data.managedConnections.total} total, {data.managedConnections.active} active.
               </div>
             </section>
 
             <section className="portal-panel">
               <div className="portal-panel-head">
                 <div>
-                  <h3 className="portal-panel-title">How To Use</h3>
+                  <h3 className="portal-panel-title">Future Bot / Handover Flow</h3>
                 </div>
-                <span className={statusClass(true)}>Info</span>
+                <span className={statusClass(false)}>Planned</span>
               </div>
               <div className="portal-activity-list">
-                <div className="portal-activity-item">External apps and operators should continue using dify.getouch.co for the native Dify UI and API surface.</div>
-                <div className="portal-activity-item">The Getouch portal page at /service-endpoints/dify is a control and status view for endpoint reachability, connection inventory, and key wiring.</div>
-                <div className="portal-activity-item">No Dify secrets are rendered here. Use the central API Key Manager for managed keys and the native Dify workspace for app-level administration.</div>
-                <div className="portal-activity-item">Managed connections tracked in portal: {data.managedConnections.total} total, {data.managedConnections.active} active.</div>
+                {data.integrationFlow.map((item) => (
+                  <div key={item} className="portal-activity-item">{item}</div>
+                ))}
               </div>
             </section>
           </div>
