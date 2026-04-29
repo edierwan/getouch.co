@@ -405,7 +405,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 
