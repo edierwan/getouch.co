@@ -29,13 +29,8 @@ import pino from 'pino';
 
 import { SessionManager, isValidSessionId } from './session-manager.mjs';
 import { WebhookDispatcher } from './webhook-dispatcher.mjs';
-import {
-  initDb, isDbReady, logMessage, logEvent, getMessages, getStats, getPersistedEvents,
-  createApiKey, listApiKeys, revokeApiKey, disableApiKey, enableApiKey, regenerateApiKey,
-  assignKeyToApp, deleteApiKey, validateApiKey, recordKeyUsage,
-  createApp, listApps, getApp, updateApp, deleteApp, toggleAppStatus,
-  getOverviewStats, getSetting, getSettings, setSetting, hashApiKey,
-} from './db.mjs';
+import * as legacyDb from './db.mjs';
+import * as freshDb from './baileys-db.mjs';
 import { consoleHtml } from './ui.mjs';
 
 function parseBoolean(value, fallback = false) {
@@ -49,10 +44,21 @@ function parseBoolean(value, fallback = false) {
   return fallback;
 }
 
+function deriveDatabaseName(databaseUrl, fallback = 'unknown') {
+  if (!databaseUrl) return fallback;
+  try {
+    const parsed = new URL(databaseUrl);
+    return parsed.pathname.replace(/^\//, '') || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 const PORT = Number(process.env.PORT || 3001);
+const GATEWAY_MODE = process.env.WA_GATEWAY_MODE === 'baileys' ? 'baileys' : 'legacy';
 const API_KEY = process.env.WA_API_KEY || '';
 const ADMIN_KEY = process.env.WA_ADMIN_KEY || API_KEY;
 const LEGACY_AUTH_DIR = process.env.WA_AUTH_DIR || '/app/data/auth';
@@ -80,6 +86,47 @@ const AI_GROUP_REPLY_CONTEXT_MINUTES = Math.max(1, Number(process.env.AI_GROUP_R
 const AI_GROUP_REPLY_CONTEXT_MS = AI_GROUP_REPLY_CONTEXT_MINUTES * 60 * 1000;
 const AI_GROUP_PARTICIPANT_WINDOW_MINUTES = Math.max(1, Number(process.env.AI_GROUP_PARTICIPANT_WINDOW_MINUTES || '5'));
 const AI_GROUP_PARTICIPANT_WINDOW_MS = AI_GROUP_PARTICIPANT_WINDOW_MINUTES * 60 * 1000;
+const SERVICE_NAME = GATEWAY_MODE === 'baileys'
+  ? (process.env.WA_SERVICE_NAME || 'baileys-gateway')
+  : 'getouch-wa';
+
+const db = GATEWAY_MODE === 'baileys' ? freshDb : legacyDb;
+const {
+  initDb,
+  isDbReady,
+  logMessage,
+  logEvent,
+  getMessages,
+  getStats,
+  getPersistedEvents,
+  createApiKey,
+  listApiKeys,
+  revokeApiKey,
+  disableApiKey,
+  enableApiKey,
+  regenerateApiKey,
+  assignKeyToApp,
+  deleteApiKey,
+  validateApiKey,
+  recordKeyUsage,
+  createApp,
+  listApps,
+  getApp,
+  updateApp,
+  deleteApp,
+  toggleAppStatus,
+  getOverviewStats,
+  getSetting,
+  getSettings,
+  setSetting,
+  hashApiKey,
+  upsertSessionRecord: persistSessionRecord = async () => null,
+  deleteSessionRecord: persistDeleteSessionRecord = async () => false,
+  recordSendAttempt: persistSendAttempt = async () => null,
+} = db;
+const RUNTIME_DATABASE = GATEWAY_MODE === 'baileys'
+  ? (typeof freshDb.getDatabaseName === 'function' ? freshDb.getDatabaseName() : process.env.BAILEYS_DB_NAME || 'Baileys')
+  : deriveDatabaseName(process.env.DATABASE_URL, 'getouch.co');
 
 const logger = pino({ level: LOG_LEVEL });
 
@@ -445,15 +492,25 @@ const manager = new SessionManager({
     if (type === 'qr') {
       const r = manager.getSession(sessionId);
       webhooks.enqueue(sessionId, 'qr', { qr: r?.qrDataUrl || null, status: r?.status || null });
+      syncFreshSessionRecord(sessionId, { status: 'pending_qr', lastQrAt: new Date().toISOString() });
     } else if (type === 'connected') {
       const r = manager.getSession(sessionId);
       webhooks.enqueue(sessionId, 'connected', { phoneNumber: r?.phoneNumber || null });
+      syncFreshSessionRecord(sessionId, {
+        status: 'connected',
+        phone: r?.phoneNumber || null,
+        lastConnectedAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
+      });
     } else if (type === 'disconnected') {
       webhooks.enqueue(sessionId, 'disconnected', { detail });
+      syncFreshSessionRecord(sessionId, { status: 'disconnected', lastActivityAt: new Date().toISOString() });
     } else if (type === 'message.status') {
       webhooks.enqueue(sessionId, 'message.status', detail || {});
+      syncFreshSessionRecord(sessionId, { lastActivityAt: new Date().toISOString() });
     } else if (type === 'session.deleted') {
       webhooks.enqueue(sessionId, 'session.deleted', {});
+      removeFreshSessionRecord(sessionId);
     }
   },
   onMessage: (sessionId, msg, sock) => {
@@ -469,6 +526,11 @@ const manager = new SessionManager({
       content: text,
       messageId: msg.key.id,
       metadata: { sessionId },
+    });
+    syncFreshSessionRecord(sessionId, {
+      phone,
+      status: 'connected',
+      lastActivityAt: new Date().toISOString(),
     });
     webhooks.enqueue(sessionId, 'message.inbound', {
       from: senderJid,
@@ -522,10 +584,14 @@ initDb(logger).catch(() => {});
   await migrateLegacyAuthIfPresent();
   const discovered = await manager.discoverExisting({ autoStart: AUTO_START_SESSIONS });
   logger.info({ discovered, autoStart: AUTO_START_SESSIONS }, 'Discovered existing sessions');
+  if (GATEWAY_MODE === 'baileys') {
+    for (const sessionId of discovered) syncFreshSessionRecord(sessionId);
+  }
   if (AUTO_START_DEFAULT) {
     try {
       await manager.startSession(DEFAULT_SESSION_ID);
       addEvent('boot', `Default session "${DEFAULT_SESSION_ID}" auto-started`);
+      syncFreshSessionRecord(DEFAULT_SESSION_ID);
     } catch (err) {
       addEvent('error', `Failed to auto-start default session: ${err.message}`);
       logger.error({ err }, 'Failed to auto-start default session');
@@ -634,6 +700,32 @@ function defaultRuntime() {
   return manager.getSession(DEFAULT_SESSION_ID);
 }
 
+function syncFreshSessionRecord(sessionId, extra = {}) {
+  if (GATEWAY_MODE !== 'baileys' || !sessionId) return;
+  const runtime = manager.getSession(sessionId);
+  void persistSessionRecord({
+    sessionId,
+    tenantId: typeof extra.tenantId === 'string' && extra.tenantId ? extra.tenantId : null,
+    phone: typeof extra.phone === 'string' && extra.phone ? extra.phone : (runtime?.phoneNumber || null),
+    purpose: typeof extra.purpose === 'string' && extra.purpose ? extra.purpose : null,
+    notes: typeof extra.notes === 'string' ? extra.notes : null,
+    status: typeof extra.status === 'string' && extra.status ? extra.status : (runtime?.status || null),
+    lastQrAt: extra.lastQrAt || null,
+    lastConnectedAt: extra.lastConnectedAt || runtime?.connectedAt || null,
+    lastActivityAt: extra.lastActivityAt || runtime?.lastSeenAt || null,
+  }).catch((err) => logger.error({ err, sessionId }, 'Failed to sync Baileys session record'));
+}
+
+function removeFreshSessionRecord(sessionId) {
+  if (GATEWAY_MODE !== 'baileys' || !sessionId) return;
+  void persistDeleteSessionRecord(sessionId).catch((err) => logger.error({ err, sessionId }, 'Failed to delete Baileys session record'));
+}
+
+function recordFreshSendAttempt(payload) {
+  if (GATEWAY_MODE !== 'baileys') return;
+  void persistSendAttempt(payload).catch((err) => logger.error({ err, payload }, 'Failed to record Baileys send attempt'));
+}
+
 // ---------------------------------------------------------------------------
 // Sessions route handler (shared between /api/sessions and /sessions aliases)
 // ---------------------------------------------------------------------------
@@ -648,6 +740,12 @@ async function handleSessionRoute({ req, res, method, path, sessionId, sub }) {
     const id = body?.sessionId;
     if (!isValidSessionId(id)) return errorJson(res, 400, 'BAD_REQUEST', 'Invalid sessionId in body');
     const runtime = await manager.startSession(id);
+    syncFreshSessionRecord(id, {
+      tenantId: typeof body?.tenantId === 'string' ? body.tenantId : null,
+      purpose: typeof body?.purpose === 'string' ? body.purpose : null,
+      notes: typeof body?.notes === 'string' ? body.notes : null,
+      status: runtime.status,
+    });
     return json(res, 200, { sessionId: id, status: runtime.status, qr: runtime.qrDataUrl || null });
   }
 
@@ -662,7 +760,14 @@ async function handleSessionRoute({ req, res, method, path, sessionId, sub }) {
 
   // POST /sessions/:id  (start/ensure)
   if (!sub && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
     const runtime = await manager.startSession(sessionId);
+    syncFreshSessionRecord(sessionId, {
+      tenantId: typeof body?.tenantId === 'string' ? body.tenantId : null,
+      purpose: typeof body?.purpose === 'string' ? body.purpose : null,
+      notes: typeof body?.notes === 'string' ? body.notes : null,
+      status: runtime.status,
+    });
     return json(res, 200, { sessionId, status: runtime.status, qr: runtime.qrDataUrl || null });
   }
 
@@ -676,6 +781,7 @@ async function handleSessionRoute({ req, res, method, path, sessionId, sub }) {
   // DELETE /sessions/:id
   if (!sub && method === 'DELETE') {
     const existed = await manager.deleteSession(sessionId);
+    removeFreshSessionRecord(sessionId);
     return json(res, 200, { ok: true, existed });
   }
 
@@ -698,6 +804,7 @@ async function handleSessionRoute({ req, res, method, path, sessionId, sub }) {
   // POST /sessions/:id/reset
   if (sub === 'reset' && method === 'POST') {
     const runtime = await manager.resetSession(sessionId);
+    syncFreshSessionRecord(sessionId, { status: runtime.status });
     return json(res, 200, { sessionId, status: runtime.status, qr: runtime.qrDataUrl || null });
   }
 
@@ -716,10 +823,13 @@ async function handleSessionRoute({ req, res, method, path, sessionId, sub }) {
         messageId: result.messageId,
         metadata: { sessionId, source: 'wapi-multi' },
       });
+      syncFreshSessionRecord(sessionId, { lastActivityAt: new Date().toISOString() });
+      recordFreshSendAttempt({ sessionId, toNumber: normalizePhone(body.to), status: 'accepted', detail: body.type || 'text' });
       return json(res, 200, result);
     } catch (err) {
       const code = err.code || 'INTERNAL';
       const status = code === 'BAD_REQUEST' ? 400 : code === 'NOT_CONNECTED' ? 503 : 500;
+      recordFreshSendAttempt({ sessionId, toNumber: normalizePhone(body?.to), status: 'failed', detail: err.message });
       return errorJson(res, status, code, err.message);
     }
   }
@@ -742,7 +852,9 @@ const server = http.createServer(async (req, res) => {
       const def = defaultRuntime();
       return json(res, 200, {
         status: 'ok',
-        service: 'getouch-wa',
+        service: SERVICE_NAME,
+        runtimeMode: GATEWAY_MODE,
+        database: RUNTIME_DATABASE,
         sessions: manager.listSessions().length,
         defaultSessionId: DEFAULT_SESSION_ID,
         defaultStatus: def ? def.status : 'absent',
@@ -830,25 +942,31 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/pairing-code' && method === 'GET') {
       if (!(await requireAuth(req, res))) return;
       const rawPhone = parsed.searchParams.get('phone');
+      const requestedSessionId = parsed.searchParams.get('session');
+      const pairingSessionId = GATEWAY_MODE === 'baileys' && requestedSessionId && isValidSessionId(requestedSessionId)
+        ? requestedSessionId
+        : DEFAULT_SESSION_ID;
       const digits = normalizePhone(rawPhone);
       if (!digits) return json(res, 400, { error: 'Invalid phone number.' });
-      const def = await manager.startSession(DEFAULT_SESSION_ID);
-      if (def.status === 'connected') return json(res, 400, { error: 'Already connected — logout first to re-pair' });
-      if (!def.sock) return json(res, 503, { error: 'WhatsApp socket not initialized — wait a moment and retry' });
+      const def = await manager.startSession(pairingSessionId);
+      syncFreshSessionRecord(pairingSessionId, { status: def.status });
+      if (def.status === 'connected') return json(res, 400, { error: 'Already connected — logout first to re-pair', sessionId: pairingSessionId });
+      if (!def.sock) return json(res, 503, { error: 'WhatsApp socket not initialized — wait a moment and retry', sessionId: pairingSessionId });
       try {
         await Promise.race([
           def.socketReadyPromise,
           new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000)),
         ]);
       } catch {
-        return json(res, 503, { error: 'WhatsApp is still connecting — please wait a few seconds and try again' });
+        return json(res, 503, { error: 'WhatsApp is still connecting — please wait a few seconds and try again', sessionId: pairingSessionId });
       }
       try {
         const code = await def.sock.requestPairingCode(digits);
-        addEvent('pairing', `Pairing code generated for +${digits}`);
-        return json(res, 200, { pairingCode: code, phone: digits });
+        addEvent('pairing', `[${pairingSessionId}] Pairing code generated for +${digits}`);
+        syncFreshSessionRecord(pairingSessionId, { status: 'connecting' });
+        return json(res, 200, { pairingCode: code, phone: digits, sessionId: pairingSessionId });
       } catch (err) {
-        return json(res, 500, { error: 'Failed to generate pairing code', detail: err.message });
+        return json(res, 500, { error: 'Failed to generate pairing code', detail: err.message, sessionId: pairingSessionId });
       }
     }
 
@@ -860,9 +978,12 @@ const server = http.createServer(async (req, res) => {
       try {
         const r = await manager.sendMessage(DEFAULT_SESSION_ID, { to, type: 'text', text });
         logMessage(logger, { direction: 'out', phone: normalizePhone(to), jid: r.jid, messageType: 'text', content: text, messageId: r.messageId, metadata: { sessionId: DEFAULT_SESSION_ID, source: 'legacy' } });
+        syncFreshSessionRecord(DEFAULT_SESSION_ID, { lastActivityAt: new Date().toISOString() });
+        recordFreshSendAttempt({ sessionId: DEFAULT_SESSION_ID, toNumber: normalizePhone(to), status: 'accepted', detail: 'text' });
         return json(res, 200, { success: true, messageId: r.messageId, to: r.jid });
       } catch (err) {
         const status = err.code === 'NOT_CONNECTED' ? 503 : err.code === 'BAD_REQUEST' ? 400 : 500;
+        recordFreshSendAttempt({ sessionId: DEFAULT_SESSION_ID, toNumber: normalizePhone(to), status: 'failed', detail: err.message });
         return json(res, status, { error: err.message });
       }
     }
@@ -875,9 +996,12 @@ const server = http.createServer(async (req, res) => {
       try {
         const r = await manager.sendMessage(DEFAULT_SESSION_ID, { to, type: 'image', media: { url: imageUrl }, caption });
         logMessage(logger, { direction: 'out', phone: normalizePhone(to), jid: r.jid, messageType: 'image', content: caption || null, messageId: r.messageId, metadata: { sessionId: DEFAULT_SESSION_ID, source: 'legacy', imageUrl } });
+        syncFreshSessionRecord(DEFAULT_SESSION_ID, { lastActivityAt: new Date().toISOString() });
+        recordFreshSendAttempt({ sessionId: DEFAULT_SESSION_ID, toNumber: normalizePhone(to), status: 'accepted', detail: 'image' });
         return json(res, 200, { success: true, messageId: r.messageId, to: r.jid });
       } catch (err) {
         const status = err.code === 'NOT_CONNECTED' ? 503 : err.code === 'BAD_REQUEST' ? 400 : 500;
+        recordFreshSendAttempt({ sessionId: DEFAULT_SESSION_ID, toNumber: normalizePhone(to), status: 'failed', detail: err.message });
         return json(res, status, { error: err.message });
       }
     }
@@ -890,9 +1014,12 @@ const server = http.createServer(async (req, res) => {
       try {
         const r = await manager.sendMessage(DEFAULT_SESSION_ID, { to, type: 'document', media: { url: fileUrl }, fileName, caption });
         logMessage(logger, { direction: 'out', phone: normalizePhone(to), jid: r.jid, messageType: 'document', content: caption || fileName, messageId: r.messageId, metadata: { sessionId: DEFAULT_SESSION_ID, source: 'legacy', fileUrl, fileName } });
+        syncFreshSessionRecord(DEFAULT_SESSION_ID, { lastActivityAt: new Date().toISOString() });
+        recordFreshSendAttempt({ sessionId: DEFAULT_SESSION_ID, toNumber: normalizePhone(to), status: 'accepted', detail: 'document' });
         return json(res, 200, { success: true, messageId: r.messageId, to: r.jid });
       } catch (err) {
         const status = err.code === 'NOT_CONNECTED' ? 503 : err.code === 'BAD_REQUEST' ? 400 : 500;
+        recordFreshSendAttempt({ sessionId: DEFAULT_SESSION_ID, toNumber: normalizePhone(to), status: 'failed', detail: err.message });
         return json(res, status, { error: err.message });
       }
     }
@@ -901,6 +1028,7 @@ const server = http.createServer(async (req, res) => {
       if (!(await requireAuth(req, res))) return;
       await manager.resetSession(DEFAULT_SESSION_ID);
       addEvent('logout', `Default session "${DEFAULT_SESSION_ID}" logged out`);
+      syncFreshSessionRecord(DEFAULT_SESSION_ID, { status: 'disconnected' });
       return json(res, 200, { success: true, message: 'Logged out — session cleared' });
     }
 
@@ -908,6 +1036,7 @@ const server = http.createServer(async (req, res) => {
       if (!(await requireAuth(req, res))) return;
       await manager.resetSession(DEFAULT_SESSION_ID);
       addEvent('reset', `Default session "${DEFAULT_SESSION_ID}" force-reset`);
+      syncFreshSessionRecord(DEFAULT_SESSION_ID, { status: 'disconnected' });
       return json(res, 200, { success: true, message: 'Session reset — reconnecting' });
     }
 
@@ -922,6 +1051,9 @@ const server = http.createServer(async (req, res) => {
         sessionsDir: SESSIONS_DIR,
         maxConcurrent: MAX_CONCURRENT_SESSIONS,
         webhook: webhooks.snapshot(),
+        runtimeMode: GATEWAY_MODE,
+        serviceName: SERVICE_NAME,
+        databaseName: RUNTIME_DATABASE,
       });
     }
 
@@ -932,6 +1064,12 @@ const server = http.createServer(async (req, res) => {
       const id = body?.sessionId;
       if (!isValidSessionId(id)) return json(res, 400, { error: 'Invalid sessionId' });
       const r = await manager.startSession(id);
+      syncFreshSessionRecord(id, {
+        tenantId: typeof body?.tenantId === 'string' ? body.tenantId : null,
+        purpose: typeof body?.purpose === 'string' ? body.purpose : null,
+        notes: typeof body?.notes === 'string' ? body.notes : null,
+        status: r.status,
+      });
       return json(res, 200, r.toStatusJson());
     }
 
@@ -942,6 +1080,7 @@ const server = http.createServer(async (req, res) => {
       const id = am[1];
       if (!isValidSessionId(id)) return json(res, 400, { error: 'Invalid sessionId' });
       const r = await manager.resetSession(id);
+      syncFreshSessionRecord(id, { status: r.status });
       return json(res, 200, r.toStatusJson());
     }
 
@@ -952,6 +1091,7 @@ const server = http.createServer(async (req, res) => {
       const id = am[1];
       if (!isValidSessionId(id)) return json(res, 400, { error: 'Invalid sessionId' });
       const existed = await manager.deleteSession(id);
+      removeFreshSessionRecord(id);
       return json(res, 200, { ok: true, existed });
     }
 
@@ -1013,6 +1153,9 @@ const server = http.createServer(async (req, res) => {
         sessionTotals: totals,
         defaultSessionId: DEFAULT_SESSION_ID,
         webhook: webhooks.snapshot(),
+        runtimeMode: GATEWAY_MODE,
+        serviceName: SERVICE_NAME,
+        databaseName: RUNTIME_DATABASE,
       });
     }
 
@@ -1029,6 +1172,9 @@ const server = http.createServer(async (req, res) => {
         webhookSigningEnabled: webhooks.isEnabled(),
         webhookStats: webhooks.snapshot().stats,
         deployment: WA_DEPLOYMENT_LABEL,
+        runtimeMode: GATEWAY_MODE,
+        serviceName: SERVICE_NAME,
+        databaseName: RUNTIME_DATABASE,
       });
     }
 

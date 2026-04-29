@@ -369,14 +369,24 @@ export function BaileysConsole() {
       ) : null}
       {data && data.config.configured && !data.runtimeOk && tab === 'overview' ? (
         <div className="evo-banner evo-banner-warn">
-          ⚠ Runtime unreachable: <code>{data.runtimeError ?? 'unknown'}</code>. Check the <code>getouch-wa</code> container.
+          ⚠ Runtime unreachable: <code>{data.runtimeError ?? 'unknown'}</code>. Check the <code>{data.config.runtimeLabel}</code> container.
         </div>
       ) : null}
       {data ? (
-        <div className="evo-banner evo-banner-good">
-          Live session control is still proxied to <code>{data.config.runtimeLabel}</code>.
-          {' '}New database status: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
-          {' '}Cutover blocker: {data.config.cutoverBlocker}
+        <div className={`evo-banner ${data.config.runtimeMode === 'baileys' ? 'evo-banner-good' : 'evo-banner-warn'}`}>
+          {data.config.runtimeMode === 'baileys' ? (
+            <>
+              Live session control is running on <code>{data.config.runtimeLabel}</code>.
+              {' '}Runtime DB: <code>{data.config.runtimeDatabase}</code>.
+              {' '}Database sync: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
+            </>
+          ) : (
+            <>
+              Live session control is still proxied to <code>{data.config.runtimeLabel}</code>.
+              {' '}New database status: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
+              {' '}Cutover blocker: {data.config.cutoverBlocker}
+            </>
+          )}
         </div>
       ) : null}
 
@@ -607,7 +617,7 @@ function OverviewTab({
             )}
           </section>
 
-          <PairingPanel sessions={sessions} onChanged={onRefresh} />
+          <PairingPanel sessions={sessions} onChanged={onRefresh} runtimeMode={config.runtimeMode} />
 
           <section className="evo-panel">
             <div className="evo-panel-head">
@@ -671,7 +681,7 @@ function MiniStat({ label, value, tone }: { label: string; value: number; tone?:
 }
 
 /* ─── PAIRING PANEL ───────────────────────────────────── */
-function PairingPanel({ sessions, onChanged }: { sessions: SessionRow[]; onChanged: () => void }) {
+function PairingPanel({ sessions, onChanged, runtimeMode }: { sessions: SessionRow[]; onChanged: () => void; runtimeMode: string }) {
   const [mode, setMode] = useState<'qr' | 'pairing'>('qr');
   const [selectedSession, setSelectedSession] = useState<string>(sessions[0]?.id ?? '');
   const [phone, setPhone] = useState('');
@@ -809,9 +819,15 @@ function PairingPanel({ sessions, onChanged }: { sessions: SessionRow[]; onChang
           <p className="evo-cell-muted" style={{ fontSize: '0.75rem' }}>
             On the phone: <em>WhatsApp → Linked Devices → Link with phone number instead</em>.
           </p>
-          <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
-            Legacy runtime note: pairing currently works only on the default session. Per-session pairing is deferred until the new Baileys runtime replaces <code>getouch-wa</code>.
-          </p>
+          {runtimeMode === 'legacy' ? (
+            <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
+              Legacy runtime note: pairing currently works only on the default session. Per-session pairing is deferred until the new Baileys runtime replaces <code>getouch-wa</code>.
+            </p>
+          ) : (
+            <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
+              Fresh runtime note: pairing works per session and writes session state directly to the <code>Baileys</code> database.
+            </p>
+          )}
         </div>
       )}
 
@@ -851,6 +867,7 @@ function PairingPanel({ sessions, onChanged }: { sessions: SessionRow[]; onChang
 /* ─── SESSIONS TAB ────────────────────────────────────── */
 function SessionsTab({ data, onRefresh }: { data: OverviewData | null; onRefresh: () => void }) {
   const [newId, setNewId] = useState('');
+  const [newTenantId, setNewTenantId] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const sessions = data?.sessions ?? [];
@@ -874,8 +891,9 @@ function SessionsTab({ data, onRefresh }: { data: OverviewData | null; onRefresh
   const create = async () => {
     const id = slugifySessionId(newId);
     if (!id) { setErr('Enter a session id (lowercase, a–z, 0–9, -, _)'); return; }
-    await act('create_session', id);
+    await act('create_session', id, { tenantId: newTenantId.trim() || undefined });
     setNewId('');
+    setNewTenantId('');
   };
 
   return (
@@ -891,12 +909,18 @@ function SessionsTab({ data, onRefresh }: { data: OverviewData | null; onRefresh
             value={newId}
             onChange={(e) => setNewId(e.target.value)}
           />
+          <input
+            className="evo-input"
+            placeholder="tenant id (optional)"
+            value={newTenantId}
+            onChange={(e) => setNewTenantId(e.target.value)}
+          />
           <button type="button" className="evo-btn evo-btn-primary" onClick={() => void create()} disabled={busy !== null}>
             ＋ Create
           </button>
         </div>
         <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
-          Session IDs are lowercase slugs. After creation, scan the QR or request a pairing code from the Overview tab.
+          Session IDs are lowercase slugs. Tenant ID is optional and lets the session bind directly into the Baileys database for multi-tenant routing.
         </p>
       </section>
 

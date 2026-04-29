@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     depends_on:
       - web
-      - wa
+      - baileys-gateway
       - pgadmin
       - open-webui
       - searxng
@@ -27,7 +27,10 @@ services:
       - /data/getouch/caddy/data:/data
       - /data/getouch/caddy/config:/config
     networks:
-      - edge
+      edge:
+        aliases:
+          - baileys-gateway
+          - wa
       - coolify
 
   web:
@@ -60,6 +63,8 @@ services:
       context: ./services/wa
       dockerfile: Dockerfile
     container_name: getouch-wa
+    profiles:
+      - legacy-wa
     restart: unless-stopped
     depends_on:
       postgres:
@@ -101,8 +106,59 @@ services:
     networks:
       - edge
 
+  baileys-gateway:
+    build:
+      context: ./services/wa
+      dockerfile: Dockerfile
+    container_name: baileys-gateway
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${BAILEYS_GATEWAY_PORT:-3001}
+      WA_GATEWAY_MODE: baileys
+      WA_SERVICE_NAME: baileys-gateway
+      WA_API_KEY: ${WA_API_KEY}
+      WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
+      WAPI_SECRET: ${WAPI_SECRET:-}
+      WAPI_WEBHOOK_URL: ${WAPI_WEBHOOK_URL:-https://wapi.getouch.co/api/wa/events}
+      WA_AUTH_DIR: /app/data/auth
+      SESSIONS_DIR: ${BAILEYS_SESSIONS_DIR:-/app/data/sessions}
+      DEFAULT_SESSION_ID: ${BAILEYS_DEFAULT_SESSION_ID:-default}
+      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS:-0}
+      AUTO_START_DEFAULT_SESSION: ${BAILEYS_AUTO_START_DEFAULT_SESSION:-false}
+      AUTO_START_SESSIONS: ${BAILEYS_AUTO_START_SESSIONS:-true}
+      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://dify-nginx}
+      DIFY_APP_API_KEY: ${DIFY_APP_API_KEY:-}
+      WA_DIFY_AUTO_REPLY_ENABLED: ${WA_DIFY_AUTO_REPLY_ENABLED:-false}
+      WA_ACTIVE_RESPONDER: ${WA_ACTIVE_RESPONDER:-true}
+      WA_DEPLOYMENT_LABEL: ${WA_DEPLOYMENT_LABEL:-getouch.co}
+      WA_DIFY_APP_NAME: ${WA_DIFY_APP_NAME:-Serapod Receptionist Bot}
+      WA_ASSISTANT_MODEL_HINT: ${WA_ASSISTANT_MODEL_HINT:-llama3.1:8b}
+      AI_TRIGGER_NAME: ${AI_TRIGGER_NAME:-Sera}
+      AI_SESSION_TIMEOUT_MINUTES: ${AI_SESSION_TIMEOUT_MINUTES:-30}
+      AI_GROUP_REPLY_CONTEXT_MINUTES: ${AI_GROUP_REPLY_CONTEXT_MINUTES:-10}
+      AI_GROUP_PARTICIPANT_WINDOW_MINUTES: ${AI_GROUP_PARTICIPANT_WINDOW_MINUTES:-5}
+      BAILEYS_DB_NAME: ${BAILEYS_DB_NAME:-Baileys}
+      BAILEYS_DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-Baileys}
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-Baileys}
+      LOG_LEVEL: ${WA_LOG_LEVEL:-info}
+      BUILD_ID: ${BUILD_ID:-dev}
+    volumes:
+      - /data/getouch/baileys-gateway:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BAILEYS_GATEWAY_PORT:-3001}/healthz | grep -q '\"status\":\"ok\"' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+
   postgres:
-    image: postgres:16-alpine
+      coolify:
+        aliases:
+          - wa
     container_name: getouch-postgres
     restart: unless-stopped
     environment:

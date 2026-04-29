@@ -119,7 +119,7 @@ http://dify.getouch.co {
 
 http://wa.getouch.co {
   import common_headers
-  reverse_proxy wa:3001
+  reverse_proxy baileys-gateway:3001
 }
 
 http://wapi.getouch.co {

@@ -36,6 +36,9 @@ interface WaOverview {
   totals?: { messages?: number };
   webhook?: { stats?: Record<string, number> };
   uptimeSeconds?: number | null;
+  runtimeMode?: string | null;
+  serviceName?: string | null;
+  databaseName?: string | null;
 }
 
 interface WaEvent {
@@ -82,6 +85,9 @@ export async function GET() {
 
   const runtimeSessions: WaSession[] = sessionsRes.data?.sessions ?? [];
   const overview = overviewRes.data ?? {};
+  const runtimeMode = overview.runtimeMode === 'baileys' ? 'baileys' : 'legacy';
+  const runtimeLabel = overview.serviceName ?? (runtimeMode === 'baileys' ? 'baileys-gateway' : 'legacy getouch-wa');
+  const runtimeDatabase = overview.databaseName ?? (runtimeMode === 'baileys' ? BAILEYS_DB_NAME : 'getouch.co (runtime-managed legacy tables)');
   const runtimeTotals = overview.sessionTotals ?? {
     total: runtimeSessions.length,
     connected: runtimeSessions.filter((s) => s.status === 'connected').length,
@@ -101,7 +107,7 @@ export async function GET() {
       tenantId: session.tenantId ?? mirrored?.tenantId ?? null,
       lastActivityAt: session.lastActivityAt ?? mirrored?.lastActivityAt ?? null,
       messages24h: (session.messages24h?.inbound ?? 0) + (session.messages24h?.outbound ?? 0),
-      source: 'legacy_runtime' as const,
+      source: runtimeMode === 'baileys' ? 'baileys_runtime' as const : 'legacy_runtime' as const,
     };
   });
 
@@ -199,14 +205,15 @@ export async function GET() {
         source: 'legacy_runtime' as const,
       }));
 
-  const runtimeCutoverBlocker =
-    'Current getouch-wa still initializes and queries its legacy message_log/event_log/api_keys/connected_apps/admin_settings schema from DATABASE_URL. It does not yet read or write the new Baileys tables, so direct runtime cutover would strand the new schema unused.';
+  const runtimeCutoverBlocker = runtimeMode === 'baileys'
+    ? null
+    : 'Current getouch-wa still initializes and queries its legacy message_log/event_log/api_keys/connected_apps/admin_settings schema from DATABASE_URL. It does not yet read or write the new Baileys tables, so direct runtime cutover would strand the new schema unused.';
 
   const health = [
     {
-      label: 'Legacy Runtime',
+      label: runtimeMode === 'baileys' ? 'Baileys Runtime' : 'Legacy Runtime',
       status: configured && overviewRes.ok ? 'healthy' : configured ? 'degraded' : 'not_configured',
-      detail: configured ? 'getouch-wa on wa.getouch.co' : 'WA_API_KEY missing',
+      detail: configured ? `${runtimeLabel} on wa.getouch.co` : 'WA_API_KEY missing',
     },
     {
       label: 'WebSocket',
@@ -238,12 +245,12 @@ export async function GET() {
       database: BAILEYS_DB_NAME,
       pairingEnabled: true,
       qrEnabled: true,
-      runtimeLabel: 'legacy getouch-wa',
-      runtimeMode: 'legacy',
-      runtimeDatabase: 'getouch.co (runtime-managed legacy tables)',
+      runtimeLabel,
+      runtimeMode,
+      runtimeDatabase,
       newDatabaseInitialized: dbData.status.schemaApplied,
       newDatabaseStatus: dbData.status.schemaApplied ? 'initialized' : (dbData.status.connected ? 'partial' : 'unavailable'),
-      cutoverReady: false,
+      cutoverReady: runtimeMode === 'baileys' && dbData.status.schemaApplied,
       cutoverBlocker: runtimeCutoverBlocker,
       dbUrlSource: dbData.status.urlSource,
     },
@@ -262,10 +269,10 @@ export async function GET() {
       dbSendLogs: dbData.counts.sendLogs,
     },
     runtime: {
-      container: 'getouch-wa',
+      container: runtimeLabel,
       defaultSessionId: sessionsRes.data?.defaultSessionId ?? null,
       webhookStats: sessionsRes.data?.webhook?.stats ?? overview.webhook?.stats ?? {},
-      mode: 'legacy',
+      mode: runtimeMode,
     },
     sessions,
     tenants,
@@ -305,7 +312,10 @@ export async function POST(req: NextRequest) {
   switch (action) {
     case 'create_session': {
       if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
-      const r = await waProxy(`/admin/sessions`, { method: 'POST', body: { sessionId } });
+      const tenantId = body.tenantId != null ? String(body.tenantId) : undefined;
+      const purpose = body.purpose != null ? String(body.purpose) : undefined;
+      const notes = body.notes != null ? String(body.notes) : undefined;
+      const r = await waProxy(`/admin/sessions`, { method: 'POST', body: { sessionId, tenantId, purpose, notes } });
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }
     case 'reset_session': {
@@ -334,8 +344,10 @@ export async function POST(req: NextRequest) {
       if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const phone = String(body.phone ?? '').trim();
       if (!phone) return NextResponse.json({ error: 'missing_phone' }, { status: 400 });
+      const runtimeOverview = await waProxy<WaOverview>('/admin/overview');
+      const pairingRuntimeMode = runtimeOverview.data?.runtimeMode === 'baileys' ? 'baileys' : 'legacy';
       const legacyDefaultSessionId = process.env.DEFAULT_SESSION_ID || 'default';
-      if (sessionId !== legacyDefaultSessionId) {
+      if (pairingRuntimeMode !== 'baileys' && sessionId !== legacyDefaultSessionId) {
         return NextResponse.json({
           ok: false,
           error: 'legacy_runtime_pairing_only_supports_default_session',

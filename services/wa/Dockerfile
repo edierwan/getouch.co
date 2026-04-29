@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-COPY server.mjs db.mjs ui.mjs session-manager.mjs webhook-dispatcher.mjs ./
+COPY server.mjs db.mjs baileys-db.mjs ui.mjs session-manager.mjs webhook-dispatcher.mjs ./
 
 # Auth data persisted via Docker volume at /app/data
 RUN mkdir -p /app/data
