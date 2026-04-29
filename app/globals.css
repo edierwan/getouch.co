@@ -1562,6 +1562,18 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
   line-height: 1.45;
 }
 
+.portal-summary-grid-compact .portal-summary-value {
+  font-size: clamp(1rem, 1.55vw + 0.65rem, 1.5rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.portal-summary-grid-compact .portal-summary-detail {
+  font-size: 0.76rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .portal-panel {
   padding: 1.2rem 1.2rem;
 }

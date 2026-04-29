@@ -150,6 +150,10 @@ function sanitizeDashboardError(errorMessage: string | null | undefined) {
   return compact.length > 220 ? `${compact.slice(0, 217)}...` : compact;
 }
 
+function isCentralWiringPending(gatewayKeyCount: number, centralKeyCount: number) {
+  return gatewayKeyCount > 0 && centralKeyCount === 0;
+}
+
 function defaultGatewayStatus(errorMessage: string | null): GatewayStatus {
   return {
     checkedAt: new Date().toISOString(),
@@ -489,7 +493,7 @@ export function createDegradedVllmDashboardStatus(errorMessage?: string | null):
       expiredKeys: 0,
       envKeyCount: 0,
       envKeys: [],
-      centralWiringPending: true,
+      centralWiringPending: isCentralWiringPending(0, 0),
       requestsLast7Days: 0,
       successRate7d: null,
       keys: [],
@@ -847,7 +851,7 @@ export async function getVllmDashboardStatus(): Promise<VllmDashboardStatus> {
       expiredKeys: keys.filter((key) => key.status === 'expired').length,
       envKeyCount: gateway.auth.keyCount,
       envKeys: getGatewayKeyInventory(),
-      centralWiringPending: true,
+      centralWiringPending: isCentralWiringPending(gateway.auth.keyCount, keys.length),
       requestsLast7Days: usageRows.length,
       successRate7d,
       keys,

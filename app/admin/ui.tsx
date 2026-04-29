@@ -28,9 +28,9 @@ export function PageIntro({ title, subtitle }: { title: string; subtitle: string
   );
 }
 
-export function SummaryGrid({ cards }: { cards: SummaryCard[] }) {
+export function SummaryGrid({ cards, className }: { cards: SummaryCard[]; className?: string }) {
   return (
-    <div className="portal-summary-grid">
+    <div className={className ? `portal-summary-grid ${className}` : 'portal-summary-grid'}>
       {cards.map((card) => (
         <section key={card.label} className="portal-summary-card">
           <div className="portal-summary-head">

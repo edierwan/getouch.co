@@ -141,18 +141,21 @@ export const DASHBOARD_SUMMARY: SummaryCard[] = [
   { label: 'TOTAL SERVICES', value: '13', icon: '▤' },
   { label: 'HEALTHY', value: '13', tone: 'healthy', icon: '♡' },
   { label: 'DEGRADED', value: '0', tone: 'warning', icon: '△' },
-  { label: 'APPLICATIONS', value: '1', icon: '▣' },
+  { label: 'PUBLIC APPS', value: '4', icon: '▣' },
   { label: 'MAIL', value: 'OK', tone: 'active', icon: '✉' },
   { label: 'AI ENGINE', value: 'Active', tone: 'active', icon: '◎' },
 ];
 
 export const QUICK_ACTIONS = [
+  { label: 'Getouch.co', href: 'https://getouch.co', external: true },
+  { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
+  { label: 'News CMS', href: '/news-cms' },
+  { label: 'Portal Users', href: '/admin/users' },
   { label: 'Open Coolify', href: 'https://coolify.getouch.co', external: true },
   { label: 'Open Webmail', href: 'https://mail.getouch.co', external: true },
   { label: 'Mail Admin', href: 'https://mail.getouch.co', external: true },
   { label: 'Open pgAdmin', href: 'https://db.getouch.co', external: true },
   { label: 'Open Grafana', href: 'https://grafana.getouch.co', external: true },
-  { label: 'Portal Users', href: '/admin/users' },
 ];
 
 export const DASHBOARD_SERVICES: ResourceRow[] = [

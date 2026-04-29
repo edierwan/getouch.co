@@ -672,8 +672,16 @@ async function requireAuth(req, res) {
 function requireAdmin(req, res) {
   const key = ADMIN_KEY || API_KEY;
   if (!key) { json(res, 500, { error: 'Admin key not configured' }); return false; }
-  const provided = req.headers['x-api-key'] || req.headers['x-admin-key'];
-  if (!provided || provided !== key) { json(res, 401, { error: 'Unauthorized — invalid or missing admin key' }); return false; }
+  const providedAdmin = req.headers['x-admin-key'];
+  const providedApi = req.headers['x-api-key'];
+  const matches = (value) => {
+    if (Array.isArray(value)) return value.some((entry) => entry === key);
+    return value === key;
+  };
+  if ((!providedAdmin && !providedApi) || (!matches(providedAdmin) && !matches(providedApi))) {
+    json(res, 401, { error: 'Unauthorized — invalid or missing admin key' });
+    return false;
+  }
   return true;
 }
 

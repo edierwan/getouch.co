@@ -65,9 +65,13 @@ export async function waProxy<T = unknown>(path: string, opts: WaProxyOptions = 
   }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const useAdmin = opts.auth === 'admin' && WA_ADMIN_KEY;
-  if (useAdmin) headers['X-Admin-Key'] = WA_ADMIN_KEY;
-  headers['X-API-Key'] = WA_API_KEY;
+  const isAdminPath = url.pathname === '/admin' || url.pathname.startsWith('/admin/');
+  const useAdmin = (opts.auth === 'admin' || (opts.auth !== 'api' && isAdminPath)) && WA_ADMIN_KEY;
+  if (useAdmin) {
+    headers['X-Admin-Key'] = WA_ADMIN_KEY;
+  } else {
+    headers['X-API-Key'] = WA_API_KEY;
+  }
 
   try {
     const res = await fetch(url.toString(), {

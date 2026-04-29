@@ -179,7 +179,7 @@ export function DifyServiceEndpointConsole() {
 
       {data ? (
         <>
-          <SummaryGrid cards={cards} />
+          <SummaryGrid cards={cards} className="portal-summary-grid-compact" />
 
           <section className="portal-panel" style={{ marginBottom: '1.2rem' }}>
             <div className="portal-panel-head portal-panel-head-inline">

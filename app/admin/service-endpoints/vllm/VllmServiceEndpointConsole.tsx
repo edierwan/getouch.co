@@ -518,6 +518,23 @@ export function VllmServiceEndpointConsole() {
     };
   }, [data]);
 
+  const backendBlocker = useMemo(() => {
+    if (!data) return null;
+    return data.runtime.actions.startBlockedReason
+      || data.runtime.vllm.blockedReason
+      || data.runtime.runtime.warning
+      || null;
+  }, [data]);
+
+  const maintenanceBlockReason = useMemo(() => {
+    if (!data) return null;
+    const ollamaResident = data.runtime.ollama.containerStatus === 'running' && Boolean(data.runtime.ollama.residentModel);
+    const vllmUndeployed = data.runtime.vllm.containerStatus === 'missing' || !data.runtime.vllm.configuredInCompose;
+    return ollamaResident && vllmUndeployed
+      ? 'Ollama is currently consuming VRAM; vLLM backend is not deployed/wired yet.'
+      : null;
+  }, [data]);
+
   const summaryCards = useMemo<SummaryCard[]>(() => {
     if (!data) return [];
 
@@ -543,7 +560,7 @@ export function VllmServiceEndpointConsole() {
           : data.runtime.vllm.containerStatus === 'missing'
             ? 'Not Deployed'
             : data.runtime.vllm.status,
-        detail: data.runtime.docker.vllmContainer,
+        detail: maintenanceBlockReason || backendBlocker || data.runtime.docker.vllmContainer,
         tone: toneForBackend(data.runtime.vllm.status),
         icon: '▣',
       },
@@ -576,7 +593,7 @@ export function VllmServiceEndpointConsole() {
         icon: '◔',
       },
     ];
-  }, [data]);
+  }, [backendBlocker, data, maintenanceBlockReason]);
 
   async function copyText(value: string, label: string) {
     try {
@@ -759,6 +776,17 @@ export function VllmServiceEndpointConsole() {
             <ul className="portal-warning-list">
               <li>CENTRAL_API_KEY_PEPPER is not in dedicated mode.</li>
               <li>Live API key creation is blocked until the dedicated pepper is configured.</li>
+            </ul>
+          </div>
+        ) : null}
+
+        {!data.gateway.backend.ready && (maintenanceBlockReason || backendBlocker || data.gateway.backend.message) ? (
+          <div className="portal-warning-box">
+            <div className="portal-warning-title">{maintenanceBlockReason ? 'Maintenance block' : 'Backend currently blocked'}</div>
+            <ul className="portal-warning-list">
+              {maintenanceBlockReason ? <li>{maintenanceBlockReason}</li> : null}
+              {data.gateway.backend.message ? <li>{data.gateway.backend.message}</li> : null}
+              {backendBlocker && backendBlocker !== data.gateway.backend.message && backendBlocker !== maintenanceBlockReason ? <li>{backendBlocker}</li> : null}
             </ul>
           </div>
         ) : null}
