@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { eq, sql } from 'drizzle-orm';
-import { objectStorageTenantMappings } from '@/lib/schema';
+import { objectStorageTenantMappings } from '@/lib/object-storage/schema';
 import { requireAdmin } from '../_helpers';
 import { logActivity } from '../_activity';
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
-import { objectStorageActivity, objectStorageAccessKeys, objectStorageTenantMappings } from '@/lib/schema';
+import { objectStorageActivity, objectStorageAccessKeys, objectStorageTenantMappings } from '@/lib/object-storage/schema';
 import { getMasterStatus, listBuckets, describeBucket, ENDPOINTS, STORAGE } from '@/lib/object-storage/seaweed';
 import { requireAdmin } from '../_helpers';
 

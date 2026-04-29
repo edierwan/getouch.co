@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { db } from '@/lib/db';
 import { eq, sql } from 'drizzle-orm';
-import { objectStorageAccessKeys } from '@/lib/schema';
+import { objectStorageAccessKeys } from '@/lib/object-storage/schema';
 import { requireAdmin } from '../_helpers';
 import { logActivity } from '../_activity';
 

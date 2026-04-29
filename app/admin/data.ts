@@ -80,7 +80,7 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
       { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
-      { label: 'Object Storage', href: '/admin/object-storage', icon: '▦' },
+      { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
       { label: 'Preprod Backups', href: '/admin/databases', icon: '⟲' },
     ],
   },
@@ -92,11 +92,6 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
-    label: 'APPLICATIONS',
-    accentRgb: '142, 202, 150',
-    items: [{ label: 'App Registry', href: '/admin/app-registry', icon: '▥' }],
-  },
-  {
     label: 'SERVICE ENDPOINTS',
     accentRgb: '78, 206, 199',
     items: [
@@ -105,6 +100,7 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Baileys Gateway', href: '/admin/service-endpoints/baileys', icon: '◌' },
       { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
       { label: 'Chatwoot', href: '/admin/service-endpoints/chatwoot', icon: '◌' },
+      { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
       { label: 'FusionPBX / Voice', href: '#', icon: '◍', disabled: true },
     ],
   },

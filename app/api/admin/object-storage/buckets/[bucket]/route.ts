@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteBucket, describeBucket } from '@/lib/object-storage/seaweed';
+import { deleteBucket, describeBucket, listObjects } from '@/lib/object-storage/seaweed';
 import { requireAdmin } from '../../_helpers';
 import { logActivity } from '../../_activity';
 
@@ -20,9 +20,17 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ bucket: 
   const force = new URL(req.url).searchParams.get('force') === '1';
 
   const info = await describeBucket(bucket);
-  if (!force && (info.objectCount ?? 0) > 0) {
+  const entries = force ? [] : await listObjects(bucket, '');
+  if (!force && entries.length > 0) {
+    const objectCount = entries.filter((entry) => !entry.FullPath.endsWith('/.keep') && entry.Mime).length;
+    const folderCount = entries.filter((entry) => !entry.Mime).length;
     return NextResponse.json(
-      { error: 'bucket_not_empty', objectCount: info.objectCount },
+      {
+        error: 'bucket_not_empty',
+        objectCount,
+        folderCount,
+        entryCount: entries.length,
+      },
       { status: 409 },
     );
   }

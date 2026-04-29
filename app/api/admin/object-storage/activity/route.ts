@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
-import { objectStorageActivity } from '@/lib/schema';
+import { objectStorageActivity } from '@/lib/object-storage/schema';
 import { requireAdmin } from '../_helpers';
 
 export const dynamic = 'force-dynamic';

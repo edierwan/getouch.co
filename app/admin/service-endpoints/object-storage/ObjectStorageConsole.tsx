@@ -122,6 +122,8 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'settings', label: 'Settings' },
 ];
 
+type ActionIntent = 'create-bucket' | 'create-access-key' | null;
+
 const SERVICE_OPTIONS = ['whatsapp', 'chatwoot', 'dify', 'voice', 'backups', 'temp', 'media'];
 const PERMISSION_OPTIONS = ['read', 'write', 'read-write', 'presign'];
 
@@ -168,9 +170,19 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+function normalizePrefix(value: string) {
+  const trimmed = value.replace(/^\/+/, '').replace(/\/+$/, '');
+  return trimmed ? `${trimmed}/` : '';
+}
+
+function normalizeSegment(value: string) {
+  return value.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
 /* ─── Top-level component ───────────────────────────────────── */
 export function ObjectStorageConsole() {
   const [tab, setTab] = useState<TabId>('overview');
+  const [actionIntent, setActionIntent] = useState<ActionIntent>(null);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -192,9 +204,27 @@ export function ObjectStorageConsole() {
     void reloadOverview();
   }, [reloadOverview]);
 
+  const handleConsoleMutation = useCallback(() => {
+    void reloadOverview();
+  }, [reloadOverview]);
+
+  const openBucketComposer = useCallback(() => {
+    setActionIntent('create-bucket');
+    setTab('buckets');
+  }, []);
+
+  const openAccessKeyComposer = useCallback(() => {
+    setActionIntent('create-access-key');
+    setTab('access-keys');
+  }, []);
+
   return (
     <div className="os-shell">
-      <ConsoleHeader overview={overview} onRefresh={reloadOverview} />
+      <ConsoleHeader
+        overview={overview}
+        onCreateBucket={openBucketComposer}
+        onCreateAccessKey={openAccessKeyComposer}
+      />
 
       <div className="os-tabs">
         {TABS.map((t) => (
@@ -212,11 +242,33 @@ export function ObjectStorageConsole() {
       {overviewError && tab === 'overview' ? <div className="os-banner os-banner-warn">⚠ {overviewError}</div> : null}
 
       <div className="os-tabpanel">
-        {tab === 'overview' && <OverviewTab data={overview} loading={overviewLoading} onRefresh={reloadOverview} />}
-        {tab === 'buckets' && <BucketsTab onChange={reloadOverview} />}
-        {tab === 'tenants' && <TenantsTab buckets={overview?.buckets ?? []} />}
-        {tab === 'access-keys' && <AccessKeysTab buckets={overview?.buckets ?? []} />}
-        {tab === 'browser' && <BrowserTab buckets={overview?.buckets ?? []} />}
+        {tab === 'overview' && (
+          <OverviewTab
+            data={overview}
+            loading={overviewLoading}
+            onRefresh={reloadOverview}
+            onCreateBucket={openBucketComposer}
+            onCreateAccessKey={openAccessKeyComposer}
+            onSelectTab={setTab}
+          />
+        )}
+        {tab === 'buckets' && (
+          <BucketsTab
+            onChange={handleConsoleMutation}
+            requestedOpen={actionIntent === 'create-bucket'}
+            onActionHandled={() => setActionIntent(null)}
+          />
+        )}
+        {tab === 'tenants' && <TenantsTab buckets={overview?.buckets ?? []} onChange={handleConsoleMutation} />}
+        {tab === 'access-keys' && (
+          <AccessKeysTab
+            buckets={overview?.buckets ?? []}
+            onChange={handleConsoleMutation}
+            requestedOpen={actionIntent === 'create-access-key'}
+            onActionHandled={() => setActionIntent(null)}
+          />
+        )}
+        {tab === 'browser' && <BrowserTab buckets={overview?.buckets ?? []} onChange={handleConsoleMutation} />}
         {tab === 'activity' && <ActivityTab />}
         {tab === 'settings' && <SettingsTab data={overview} />}
       </div>
@@ -227,16 +279,27 @@ export function ObjectStorageConsole() {
 }
 
 /* ─── Header ────────────────────────────────────────────────── */
-function ConsoleHeader({ overview, onRefresh }: { overview: OverviewData | null; onRefresh: () => void }) {
+function ConsoleHeader({
+  overview,
+  onCreateBucket,
+  onCreateAccessKey,
+}: {
+  overview: OverviewData | null;
+  onCreateBucket: () => void;
+  onCreateAccessKey: () => void;
+}) {
+  const runtimeLabel = !overview
+    ? null
+    : overview.metrics.bucketCount === 0 && overview.metrics.tenantCount === 0 && overview.metrics.totalUsedBytes === 0
+      ? 'Fresh install'
+      : overview.status === 'online'
+        ? 'Operational'
+        : 'Degraded';
+
   return (
     <header className="os-page-head">
-      <div className="os-breadcrumb">
-        <span className="os-crumb-muted">Service Endpoints</span>
-        <span className="os-crumb-sep">/</span>
-        <span className="os-crumb-active">Object Storage</span>
-      </div>
       <div className="os-page-head-row">
-        <div>
+        <div className="os-page-copy">
           <h1 className="os-title">Object Storage Gateway</h1>
           <p className="os-subtitle">
             <code>s3.getouch.co</code> is the file/browser console.{' '}
@@ -245,7 +308,7 @@ function ConsoleHeader({ overview, onRefresh }: { overview: OverviewData | null;
           <div className="os-badges">
             <span className="os-badge os-badge-violet">◉ Multi-tenant ready</span>
             <span className="os-badge os-badge-cyan">◎ S3 Compatible</span>
-            {overview ? <span className="os-badge os-badge-muted">Engine: SeaweedFS</span> : null}
+            {runtimeLabel ? <span className="os-badge os-badge-emerald">● {runtimeLabel}</span> : null}
           </div>
         </div>
         <div className="os-head-actions">
@@ -260,8 +323,11 @@ function ConsoleHeader({ overview, onRefresh }: { overview: OverviewData | null;
           >
             <span className="os-btn-ico">⌨</span> API Docs
           </a>
-          <button type="button" className="os-btn os-btn-ghost" onClick={onRefresh}>
-            <span className="os-btn-ico">↻</span> Refresh
+          <button type="button" className="os-btn os-btn-primary os-btn-primary-soft" onClick={onCreateBucket}>
+            <span className="os-btn-ico">＋</span> Create Bucket
+          </button>
+          <button type="button" className="os-btn os-btn-primary" onClick={onCreateAccessKey}>
+            <span className="os-btn-ico">✦</span> Generate Access Key
           </button>
         </div>
       </div>
@@ -270,11 +336,208 @@ function ConsoleHeader({ overview, onRefresh }: { overview: OverviewData | null;
 }
 
 /* ─── OVERVIEW TAB ──────────────────────────────────────────── */
-function OverviewTab({ data, loading, onRefresh }: { data: OverviewData | null; loading: boolean; onRefresh: () => void }) {
+function OverviewTab({
+  data,
+  loading,
+  onRefresh,
+  onCreateBucket,
+  onCreateAccessKey,
+  onSelectTab,
+}: {
+  data: OverviewData | null;
+  loading: boolean;
+  onRefresh: () => void;
+  onCreateBucket: () => void;
+  onCreateAccessKey: () => void;
+  onSelectTab: (tab: TabId) => void;
+}) {
+  const [tenantMappings, setTenantMappings] = useState<TenantMapping[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(true);
+  const [tenantsDegraded, setTenantsDegraded] = useState(false);
+  const [accessKeys, setAccessKeys] = useState<AccessKey[]>([]);
+  const [keysLoading, setKeysLoading] = useState(true);
+  const [keysDegraded, setKeysDegraded] = useState(false);
+  const [previewBucket, setPreviewBucket] = useState('');
+  const [previewPrefix, setPreviewPrefix] = useState('');
+  const [previewObjects, setPreviewObjects] = useState<ObjectEntry[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+
+  const bucketByName = useMemo(
+    () => new Map((data?.buckets ?? []).map((bucket) => [bucket.name, bucket])),
+    [data?.buckets],
+  );
+  const previewBreadcrumb = useMemo(() => previewPrefix.split('/').filter(Boolean), [previewPrefix]);
+
+  useEffect(() => {
+    if (!data || previewBucket) return;
+    const nextBucket = data.storage.defaultBucket || data.buckets[0]?.name || '';
+    if (nextBucket) setPreviewBucket(nextBucket);
+  }, [data, previewBucket]);
+
+  const loadOverviewCollections = useCallback(async () => {
+    if (!data) {
+      setTenantMappings([]);
+      setAccessKeys([]);
+      return;
+    }
+
+    setTenantsLoading(true);
+    setKeysLoading(true);
+
+    const [tenantResult, keyResult] = await Promise.allSettled([
+      fetchJson<{ tenants: TenantMapping[]; degraded?: boolean }>('/api/admin/object-storage/tenants'),
+      fetchJson<{ keys: AccessKey[]; degraded?: boolean }>('/api/admin/object-storage/access-keys'),
+    ]);
+
+    if (tenantResult.status === 'fulfilled') {
+      setTenantMappings(tenantResult.value.tenants);
+      setTenantsDegraded(Boolean(tenantResult.value.degraded));
+    } else {
+      setTenantMappings([]);
+      setTenantsDegraded(true);
+    }
+    setTenantsLoading(false);
+
+    if (keyResult.status === 'fulfilled') {
+      setAccessKeys(keyResult.value.keys);
+      setKeysDegraded(Boolean(keyResult.value.degraded));
+    } else {
+      setAccessKeys([]);
+      setKeysDegraded(true);
+    }
+    setKeysLoading(false);
+  }, [data]);
+
+  useEffect(() => {
+    if (!data) return;
+    void loadOverviewCollections();
+  }, [data, loadOverviewCollections]);
+
+  const loadPreview = useCallback(async () => {
+    if (!data || !previewBucket) {
+      setPreviewObjects([]);
+      setPreviewError(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const url = new URL('/api/admin/object-storage/objects', window.location.origin);
+      url.searchParams.set('bucket', previewBucket);
+      if (previewPrefix) url.searchParams.set('prefix', previewPrefix);
+      const payload = await fetchJson<{ objects: ObjectEntry[] }>(url.toString());
+      setPreviewObjects(payload.objects);
+    } catch (err) {
+      setPreviewObjects([]);
+      setPreviewError(err instanceof Error ? err.message : 'load_failed');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [data, previewBucket, previewPrefix]);
+
+  useEffect(() => {
+    if (!data) return;
+    void loadPreview();
+  }, [data, loadPreview]);
+
+  async function handlePreviewUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !previewBucket) return;
+
+    setPreviewBusy(true);
+    setPreviewError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('bucket', previewBucket);
+      formData.append('prefix', previewPrefix);
+      const response = await fetch('/api/admin/object-storage/objects', { method: 'POST', body: formData });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
+      }
+      event.target.value = '';
+      await loadPreview();
+      onRefresh();
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'upload_failed');
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function handlePreviewDelete(key: string) {
+    if (!previewBucket) return;
+    if (!confirm(`Delete ${key}?`)) return;
+
+    setPreviewBusy(true);
+    setPreviewError(null);
+    try {
+      const url = new URL('/api/admin/object-storage/objects', window.location.origin);
+      url.searchParams.set('bucket', previewBucket);
+      url.searchParams.set('key', key);
+      const response = await fetch(url.toString(), { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
+      }
+      await loadPreview();
+      onRefresh();
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'delete_failed');
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function handlePreviewCreateFolder() {
+    if (!previewBucket) return;
+    const folderName = normalizeSegment(prompt('Folder name') ?? '');
+    if (!folderName) return;
+
+    setPreviewBusy(true);
+    setPreviewError(null);
+    try {
+      const formData = new FormData();
+      const marker = new File([new Uint8Array()], '.keep', { type: 'text/plain' });
+      formData.append('file', marker);
+      formData.append('bucket', previewBucket);
+      formData.append('prefix', `${normalizePrefix(previewPrefix)}${folderName}/`);
+      const response = await fetch('/api/admin/object-storage/objects', { method: 'POST', body: formData });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
+      }
+      await loadPreview();
+      onRefresh();
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'create_folder_failed');
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
   if (loading && !data) return <div className="os-empty">Loading…</div>;
   if (!data) return <div className="os-empty">No data.</div>;
 
   const { metrics, master, endpoints, storage, buckets, recentActivity } = data;
+  const usedPercent =
+    metrics.totalCapacityBytes && metrics.totalCapacityBytes > 0
+      ? Math.max(0, Math.min(100, Math.round((metrics.totalUsedBytes / metrics.totalCapacityBytes) * 100)))
+      : null;
+  const statusSubtitle =
+    data.status === 'online'
+      ? metrics.bucketCount === 0 && metrics.tenantCount === 0 && metrics.totalUsedBytes === 0
+        ? 'Fresh install'
+        : 'All systems operational'
+      : master.error ?? 'Backend unreachable';
+  const requestCardSubtitle =
+    metrics.activity24hCount > 0
+      ? `${fmtNumber(metrics.activity24hCount)} admin events logged`
+      : 'No request telemetry wired yet';
 
   return (
     <div className="os-overview">
@@ -283,18 +546,28 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewData | null; 
           label="STATUS"
           value={data.status === 'online' ? 'Online' : 'Degraded'}
           tone={data.status === 'online' ? 'good' : 'bad'}
-          sub={data.status === 'online' ? 'All systems operational' : master.error ?? 'Backend unreachable'}
+          sub={statusSubtitle}
           icon="◉"
         />
-        <StatCard label="BUCKETS" value={fmtNumber(metrics.bucketCount)} sub={`${buckets.length} indexed`} icon="▦" />
-        <StatCard label="TENANTS" value={fmtNumber(metrics.tenantCount)} sub="Active tenants" icon="◌" />
+        <StatCard
+          label="BUCKETS"
+          value={fmtNumber(metrics.bucketCount)}
+          sub={metrics.bucketCount === 0 ? 'No buckets yet' : `${buckets.length} indexed`}
+          icon="▦"
+        />
+        <StatCard
+          label="TENANTS"
+          value={fmtNumber(metrics.tenantCount)}
+          sub={metrics.tenantCount === 0 ? 'No mappings yet' : 'Active tenant mappings'}
+          icon="◌"
+        />
         <StatCard
           label="STORAGE USED"
           value={fmtBytes(metrics.totalUsedBytes)}
-          sub={metrics.totalCapacityBytes ? `of ${fmtBytes(metrics.totalCapacityBytes)}` : 'Capacity n/a'}
+          sub={metrics.totalCapacityBytes ? `of ${fmtBytes(metrics.totalCapacityBytes)}` : 'Capacity unavailable'}
           icon="▥"
         />
-        <StatCard label="REQUESTS (24h)" value={fmtNumber(metrics.activity24hCount)} sub="Audit events" icon="↗" />
+        <StatCard label="REQUESTS (24h)" value="Unavailable" sub={requestCardSubtitle} icon="↗" />
         <StatCard
           label="API HEALTH"
           value={master.reachable ? 'Healthy' : 'Down'}
@@ -304,38 +577,65 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewData | null; 
         />
       </div>
 
-      <div className="os-grid-2">
+      <div className="os-dashboard-grid">
         <Panel
           title="Tenant Buckets"
-          right={<button type="button" className="os-link" onClick={onRefresh}>Refresh →</button>}
+          right={
+            <div className="os-panel-actions">
+              <button type="button" className="os-btn-mini" onClick={() => onSelectTab('tenants')}>Manage tenants</button>
+              <button type="button" className="os-btn-mini" onClick={onCreateBucket}>Create bucket</button>
+            </div>
+          }
         >
-          {buckets.length === 0 ? (
+          {tenantsLoading ? (
+            <div className="os-empty">Loading tenant mappings…</div>
+          ) : tenantMappings.length === 0 ? (
             <EmptyState
-              title="No buckets yet"
-              hint="Create your first bucket from the Buckets tab."
+              title={tenantsDegraded ? 'Tenant mappings unavailable' : 'No tenant storage mappings yet'}
+              hint={
+                tenantsDegraded
+                  ? 'Tenant mapping data needs the latest object-storage migrations.'
+                  : 'Assign a Portal tenant to a bucket/prefix to populate this dashboard.'
+              }
             />
           ) : (
-            <div className="os-table">
+            <div className="os-table os-table-dashboard-tenants">
               <div className="os-thead">
-                <div>Bucket</div>
+                <div>Tenant</div>
+                <div>Bucket / Prefix</div>
+                <div>Region</div>
                 <div>Objects</div>
                 <div>Usage</div>
                 <div>Status</div>
               </div>
-              {buckets.slice(0, 8).map((b) => (
-                <div key={b.name} className="os-tr">
-                  <div className="os-bucket-cell">
-                    <span className="os-avatar os-avatar-violet">{b.name.slice(0, 2).toUpperCase()}</span>
-                    <div>
-                      <div className="os-strong">{b.name}</div>
-                      <div className="os-muted-sm">{b.name === storage.defaultBucket ? 'Default service bucket' : 'Service bucket'}</div>
+              {tenantMappings.slice(0, 8).map((mapping) => {
+                const mappedBucket = bucketByName.get(mapping.bucket);
+                return (
+                  <div key={mapping.id} className="os-tr">
+                    <div className="os-bucket-cell">
+                      <span className="os-avatar os-avatar-violet">{(mapping.tenantName ?? mapping.tenantId).slice(0, 2).toUpperCase()}</span>
+                      <div>
+                        <div className="os-strong">{mapping.tenantName ?? mapping.tenantId}</div>
+                        <div className="os-muted-sm">{mapping.tenantId}</div>
+                      </div>
                     </div>
+                    <div className="os-data-stack">
+                      <div className="os-strong os-mono">{mapping.bucket}/{mapping.prefix}</div>
+                      <div className="os-muted-sm">{(mapping.services ?? []).join(', ') || 'No service scope set'}</div>
+                    </div>
+                    <div>{storage.region}</div>
+                    <div className="os-data-stack">
+                      <div>{mappedBucket ? fmtNumber(mappedBucket.objectCount) : 'Unavailable'}</div>
+                      <div className="os-muted-sm">bucket total</div>
+                    </div>
+                    <div className="os-data-stack">
+                      <div>{mappedBucket ? fmtBytes(mappedBucket.sizeBytes) : 'Unavailable'}</div>
+                      <div className="os-muted-sm">bucket total</div>
+                    </div>
+                    <div><span className={statusPill(mapping.status)}>{mapping.status}</span></div>
                   </div>
-                  <div>{fmtNumber(b.objectCount)}</div>
-                  <div>{fmtBytes(b.sizeBytes)}</div>
-                  <div><span className={statusPill('active')}>Active</span></div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Panel>
@@ -346,6 +646,21 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewData | null; 
             <CapacityRing label="Used Storage" value={metrics.totalUsedBytes} accent="#22c55e" />
             <CapacityRing label="Free" value={metrics.freeBytes} accent="#06b6d4" />
           </div>
+          <div className="os-capacity-progress-block">
+            <div className="os-capacity-progress-head">
+              <span>Overall capacity</span>
+              <span>{usedPercent === null ? 'Unavailable' : `${usedPercent}% used`}</span>
+            </div>
+            <div className="os-capacity-progress-track">
+              <span style={{ width: usedPercent === null ? '0%' : `${usedPercent}%` }} />
+            </div>
+          </div>
+          <div className="os-metric-grid">
+            <MiniMetricCard label="Bucket Objects" value={fmtNumber(metrics.totalObjects)} hint="Across indexed buckets" />
+            <MiniMetricCard label="API Traffic (24h)" value="Unavailable" hint="Request telemetry not wired" />
+            <MiniMetricCard label="Active Nodes" value={fmtNumber(master.active)} hint="SeaweedFS master status" />
+            <MiniMetricCard label="Free Volumes" value={fmtNumber(master.free)} hint="Remaining volume slots" />
+          </div>
           <div className="os-divider" />
           <div className="os-info-rows">
             <InfoRow label="Storage path" value={storage.dataPath} mono />
@@ -353,31 +668,92 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewData | null; 
             <InfoRow label="Volumes (free)" value={fmtNumber(master.free)} />
             <InfoRow label="Active nodes" value={fmtNumber(master.active)} />
           </div>
+          <div className="os-divider" />
+          <div className="os-top-tenants">
+            <div className="os-section-label">Top Tenants by Usage</div>
+            <EmptyState
+              title={tenantMappings.length === 0 ? 'No tenant mappings yet' : 'Per-tenant usage unavailable'}
+              hint={
+                tenantMappings.length === 0
+                  ? 'Tenant usage becomes meaningful after Portal tenant mappings exist.'
+                  : 'Bucket totals are available, but per-prefix usage telemetry is not tracked yet.'
+              }
+            />
+          </div>
         </Panel>
       </div>
 
-      <div className="os-grid-2">
-        <Panel title="Access Keys & Policies">
-          <KeySummary activeCount={metrics.activeKeyCount} />
+      <div className="os-dashboard-grid">
+        <Panel
+          title="Access Keys & Policies"
+          right={
+            <div className="os-panel-actions">
+              <button type="button" className="os-btn-mini" onClick={onCreateAccessKey}>Generate</button>
+              <button type="button" className="os-btn-mini" onClick={() => onSelectTab('access-keys')}>View all</button>
+            </div>
+          }
+        >
+          {keysLoading ? (
+            <div className="os-empty">Loading access keys…</div>
+          ) : accessKeys.length === 0 ? (
+            <EmptyState
+              title={keysDegraded ? 'Access key inventory unavailable' : 'No access keys issued'}
+              hint={
+                keysDegraded
+                  ? 'Access key metadata requires the latest object-storage migrations.'
+                  : 'Generate an S3-compatible key to populate this section.'
+              }
+            />
+          ) : (
+            <div className="os-table os-table-dashboard-keys">
+              <div className="os-thead">
+                <div>App / Service</div>
+                <div>Tenant</div>
+                <div>Key Prefix</div>
+                <div>Scope / Policy</div>
+                <div>Last Used</div>
+                <div>Status</div>
+              </div>
+              {accessKeys.slice(0, 5).map((key) => (
+                <div key={key.id} className="os-tr">
+                  <div className="os-data-stack">
+                    <div className="os-strong">{key.service ?? key.label}</div>
+                    <div className="os-muted-sm">{key.label}</div>
+                  </div>
+                  <div>{key.tenantId ?? 'Global'}</div>
+                  <div className="os-mono">{key.keyPrefix.slice(0, 8)}…{key.keyPrefix.slice(-4)}</div>
+                  <div className="os-data-stack">
+                    <div className="os-mono">{key.bucket ?? '*'}/{key.prefix ?? '*'}</div>
+                    <div className="os-muted-sm">{key.permission}</div>
+                  </div>
+                  <div>{timeAgo(key.lastUsedAt)}</div>
+                  <div><span className={statusPill(key.status)}>{key.status}</span></div>
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
 
-        <Panel title="Recent Activity">
+        <Panel
+          title="Recent Activity"
+          right={<button type="button" className="os-btn-mini" onClick={() => onSelectTab('activity')}>View all</button>}
+        >
           {recentActivity.length === 0 ? (
             <EmptyState title="No activity yet" hint="Admin actions appear here." />
           ) : (
             <div className="os-activity-list">
-              {recentActivity.map((e) => (
-                <div key={e.id} className="os-activity-item">
-                  <div className="os-activity-icon">{eventIcon(e.eventType)}</div>
+              {recentActivity.map((event) => (
+                <div key={event.id} className="os-activity-item">
+                  <div className="os-activity-icon">{eventIcon(event.eventType)}</div>
                   <div className="os-activity-body">
-                    <div className="os-strong">{humanizeEvent(e.eventType)}</div>
+                    <div className="os-strong">{humanizeEvent(event.eventType)}</div>
                     <div className="os-muted-sm">
-                      {e.bucket ? `${e.bucket}` : '—'}
-                      {e.objectKey ? ` · ${e.objectKey}` : ''}
-                      {e.tenantId ? ` · tenant ${e.tenantId}` : ''}
+                      {event.bucket ? `${event.bucket}` : '—'}
+                      {event.objectKey ? ` · ${event.objectKey}` : ''}
+                      {event.tenantId ? ` · tenant ${event.tenantId}` : ''}
                     </div>
                   </div>
-                  <div className="os-activity-time">{timeAgo(e.createdAt)}</div>
+                  <div className="os-activity-time">{timeAgo(event.createdAt)}</div>
                 </div>
               ))}
             </div>
@@ -385,16 +761,146 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewData | null; 
         </Panel>
       </div>
 
-      <Panel title="Endpoints">
-        <div className="os-endpoint-grid">
-          <EndpointRow label="File Console (Browser)" url={endpoints.fileConsole} />
-          <EndpointRow label="API Endpoint (S3 Compatible)" url={endpoints.s3Api} />
-          <EndpointRow label="Internal Gateway" url={endpoints.internal} />
-          <InfoRow label="S3 Compatibility" value={<span className={statusPill('active')}>100% Compatible</span>} />
-          <InfoRow label="Signature Version" value={storage.signatureVersion} />
-          <InfoRow label="Region" value={`${storage.region} (Default)`} />
-        </div>
-      </Panel>
+      <div className="os-dashboard-grid">
+        <Panel
+          title="Object Browser / File Console Preview"
+          right={
+            <div className="os-panel-actions">
+              <button type="button" className="os-btn-mini" onClick={() => onSelectTab('browser')}>Full browser</button>
+              <a className="os-btn-mini" href={endpoints.fileConsole} target="_blank" rel="noopener noreferrer">File console</a>
+            </div>
+          }
+        >
+          <div className="os-browser-toolbar os-browser-toolbar-compact">
+            <select
+              className="os-input os-input-narrow"
+              value={previewBucket}
+              onChange={(event) => {
+                setPreviewBucket(event.target.value);
+                setPreviewPrefix('');
+              }}
+            >
+              {buckets.length === 0 ? <option value="">— no buckets —</option> : null}
+              {buckets.map((bucket) => (
+                <option key={bucket.name} value={bucket.name}>{bucket.name}</option>
+              ))}
+            </select>
+            <div className="os-breadcrumb-row">
+              <button type="button" className="os-crumb" onClick={() => setPreviewPrefix('')}>{previewBucket || '/'}</button>
+              {previewBreadcrumb.map((part, index) => (
+                <span key={`${part}-${index}`} className="os-crumb-wrap">
+                  <span className="os-crumb-sep">/</span>
+                  <button
+                    type="button"
+                    className="os-crumb"
+                    onClick={() => setPreviewPrefix(`${previewBreadcrumb.slice(0, index + 1).join('/')}/`)}
+                  >
+                    {part}
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="os-spacer" />
+            <label className="os-btn os-btn-primary" style={{ cursor: previewBucket ? 'pointer' : 'not-allowed' }}>
+              <span className="os-btn-ico">↑</span> {previewBusy ? 'Uploading…' : 'Upload'}
+              <input type="file" hidden disabled={!previewBucket || previewBusy} onChange={handlePreviewUpload} />
+            </label>
+            <button type="button" className="os-btn os-btn-ghost" disabled={!previewBucket || previewBusy} onClick={handlePreviewCreateFolder}>
+              <span className="os-btn-ico">▣</span> Create Folder
+            </button>
+          </div>
+
+          {previewError ? <div className="os-banner os-banner-warn">⚠ {previewError}</div> : null}
+
+          <div className="os-table os-table-objects os-table-preview">
+            <div className="os-thead">
+              <div>Name</div>
+              <div>Type</div>
+              <div>Size</div>
+              <div>Last Modified</div>
+              <div className="os-th-actions">Actions</div>
+            </div>
+            {previewLoading ? (
+              <div className="os-empty">Loading preview…</div>
+            ) : !previewBucket ? (
+              <EmptyState title="No bucket selected" hint="Create or select a bucket to preview objects." />
+            ) : previewObjects.length === 0 ? (
+              <EmptyState title="Empty bucket or prefix" hint="Upload a file or create a folder to populate this preview." />
+            ) : (
+              previewObjects.slice(0, 8).map((object) => (
+                <div key={object.fullPath} className="os-tr">
+                  <div className="os-bucket-cell">
+                    <span className="os-avatar os-avatar-muted">{object.isFolder ? '▥' : '▤'}</span>
+                    {object.isFolder ? (
+                      <button
+                        type="button"
+                        className="os-link-strong"
+                        onClick={() => setPreviewPrefix(`${normalizePrefix(previewPrefix)}${normalizeSegment(object.name)}/`)}
+                      >
+                        {object.name}/
+                      </button>
+                    ) : (
+                      <span className="os-strong">{object.name}</span>
+                    )}
+                  </div>
+                  <div className="os-mono os-muted-sm">{object.type}</div>
+                  <div>{object.isFolder ? '—' : fmtBytes(object.size)}</div>
+                  <div>{timeAgo(object.lastModified)}</div>
+                  <div className="os-actions">
+                    {object.isFolder ? (
+                      <button
+                        type="button"
+                        className="os-btn-mini"
+                        onClick={() => setPreviewPrefix(`${normalizePrefix(previewPrefix)}${normalizeSegment(object.name)}/`)}
+                      >
+                        Browse
+                      </button>
+                    ) : (
+                      <>
+                        <a
+                          className="os-btn-mini"
+                          href={`https://s3.getouch.co/${previewBucket}/${previewPrefix}${object.name}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Open
+                        </a>
+                        <button
+                          type="button"
+                          className="os-btn-mini os-btn-mini-danger"
+                          onClick={() => handlePreviewDelete(previewPrefix ? `${previewPrefix}${object.name}` : object.name)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Panel>
+
+        <Panel title="Endpoints">
+          <div className="os-endpoint-grid">
+            <EndpointRow label="File Console (Browser)" url={endpoints.fileConsole} />
+            <EndpointRow label="API Endpoint (S3 Compatible)" url={endpoints.s3Api} />
+            <EndpointRow label="Internal Gateway URL" url={endpoints.internal} />
+            <InfoRow label="S3 Compatibility" value={<span className={statusPill('active')}>S3 Compatible</span>} />
+            <InfoRow label="Signature Version" value={storage.signatureVersion} />
+            <InfoRow label="Region" value={storage.region} />
+          </div>
+          <div className="os-divider" />
+          <div className="os-endpoint-actions">
+            <a className="os-btn os-btn-ghost" href={endpoints.fileConsole} target="_blank" rel="noopener noreferrer">
+              <span className="os-btn-ico">↗</span> Open browser console
+            </a>
+            <a className="os-btn os-btn-ghost" href={endpoints.s3Api} target="_blank" rel="noopener noreferrer">
+              <span className="os-btn-ico">⌘</span> Open API endpoint
+            </a>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -409,6 +915,16 @@ function StatCard({ label, value, sub, icon, tone }: { label: string; value: str
       <div className={`os-stat-value${tone ? ` os-stat-value-${tone}` : ''}`}>{value}</div>
       {sub ? <div className="os-stat-sub">{sub}</div> : null}
     </section>
+  );
+}
+
+function MiniMetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="os-mini-metric">
+      <div className="os-mini-metric-label">{label}</div>
+      <div className="os-mini-metric-value">{value}</div>
+      <div className="os-mini-metric-hint">{hint}</div>
+    </div>
   );
 }
 
@@ -473,7 +989,15 @@ function humanizeEvent(type: string): string {
 }
 
 /* ─── BUCKETS TAB ───────────────────────────────────────────── */
-function BucketsTab({ onChange }: { onChange: () => void }) {
+function BucketsTab({
+  onChange,
+  requestedOpen,
+  onActionHandled,
+}: {
+  onChange: () => void;
+  requestedOpen?: boolean;
+  onActionHandled?: () => void;
+}) {
   const [buckets, setBuckets] = useState<BucketInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -494,6 +1018,13 @@ function BucketsTab({ onChange }: { onChange: () => void }) {
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  useEffect(() => {
+    if (requestedOpen) {
+      setShowCreate(true);
+      onActionHandled?.();
+    }
+  }, [onActionHandled, requestedOpen]);
 
   async function handleDelete(name: string) {
     if (!confirm(`Delete bucket "${name}"? This requires the bucket to be empty (or use force).`)) return;
@@ -672,7 +1203,7 @@ function CreateBucketModal({ onClose, onCreated }: { onClose: () => void; onCrea
 }
 
 /* ─── TENANTS TAB ───────────────────────────────────────────── */
-function TenantsTab({ buckets }: { buckets: BucketInfo[] }) {
+function TenantsTab({ buckets, onChange }: { buckets: BucketInfo[]; onChange?: () => void }) {
   const [tenants, setTenants] = useState<TenantMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [degraded, setDegraded] = useState(false);
@@ -699,6 +1230,7 @@ function TenantsTab({ buckets }: { buckets: BucketInfo[] }) {
     if (!confirm('Remove tenant mapping?')) return;
     await fetch(`/api/admin/object-storage/tenants?id=${id}`, { method: 'DELETE' });
     void reload();
+    onChange?.();
   }
 
   return (
@@ -768,6 +1300,7 @@ function TenantsTab({ buckets }: { buckets: BucketInfo[] }) {
           onCreated={() => {
             setShowCreate(false);
             void reload();
+            onChange?.();
           }}
         />
       ) : null}
@@ -880,7 +1413,17 @@ function CreateTenantModal({ buckets, onClose, onCreated }: { buckets: BucketInf
 }
 
 /* ─── ACCESS KEYS TAB ───────────────────────────────────────── */
-function AccessKeysTab({ buckets }: { buckets: BucketInfo[] }) {
+function AccessKeysTab({
+  buckets,
+  onChange,
+  requestedOpen,
+  onActionHandled,
+}: {
+  buckets: BucketInfo[];
+  onChange?: () => void;
+  requestedOpen?: boolean;
+  onActionHandled?: () => void;
+}) {
   const [keys, setKeys] = useState<AccessKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [degraded, setDegraded] = useState(false);
@@ -902,15 +1445,24 @@ function AccessKeysTab({ buckets }: { buckets: BucketInfo[] }) {
 
   useEffect(() => { void reload(); }, [reload]);
 
+  useEffect(() => {
+    if (requestedOpen) {
+      setShowCreate(true);
+      onActionHandled?.();
+    }
+  }, [onActionHandled, requestedOpen]);
+
   async function revoke(id: string) {
     if (!confirm('Revoke this access key?')) return;
     await fetch(`/api/admin/object-storage/access-keys?id=${id}`, { method: 'DELETE' });
     void reload();
+    onChange?.();
   }
 
   async function rotate(id: string) {
     await fetch(`/api/admin/object-storage/access-keys?id=${id}&action=rotate`, { method: 'DELETE' });
     void reload();
+    onChange?.();
   }
 
   return (
@@ -983,6 +1535,7 @@ function AccessKeysTab({ buckets }: { buckets: BucketInfo[] }) {
             setShowCreate(false);
             setCreatedSecret(secret);
             void reload();
+            onChange?.();
           }}
         />
       ) : null}
@@ -1116,7 +1669,7 @@ function CreateAccessKeyModal({
 }
 
 /* ─── BROWSER TAB ───────────────────────────────────────────── */
-function BrowserTab({ buckets }: { buckets: BucketInfo[] }) {
+function BrowserTab({ buckets, onChange }: { buckets: BucketInfo[]; onChange?: () => void }) {
   const [bucket, setBucket] = useState<string>('');
   const [prefix, setPrefix] = useState('');
   const [objects, setObjects] = useState<ObjectEntry[]>([]);
@@ -1163,6 +1716,7 @@ function BrowserTab({ buckets }: { buckets: BucketInfo[] }) {
       }
       e.target.value = '';
       await reload();
+      onChange?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'upload_failed');
     } finally {
@@ -1177,6 +1731,33 @@ function BrowserTab({ buckets }: { buckets: BucketInfo[] }) {
     url.searchParams.set('key', key);
     await fetch(url.toString(), { method: 'DELETE' });
     void reload();
+    onChange?.();
+  }
+
+  async function handleCreateFolder() {
+    if (!bucket) return;
+    const folderName = normalizeSegment(prompt('Folder name') ?? '');
+    if (!folderName) return;
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      const marker = new File([new Uint8Array()], '.keep', { type: 'text/plain' });
+      fd.append('file', marker);
+      fd.append('bucket', bucket);
+      fd.append('prefix', `${normalizePrefix(prefix)}${folderName}/`);
+      const res = await fetch('/api/admin/object-storage/objects', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      await reload();
+      onChange?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'create_folder_failed');
+    } finally {
+      setUploading(false);
+    }
   }
 
   const breadcrumb = useMemo(() => prefix.split('/').filter(Boolean), [prefix]);
@@ -1218,6 +1799,9 @@ function BrowserTab({ buckets }: { buckets: BucketInfo[] }) {
             <span className="os-btn-ico">↑</span> {uploading ? 'Uploading…' : 'Upload'}
             <input type="file" hidden onChange={handleUpload} disabled={!bucket || uploading} />
           </label>
+          <button type="button" className="os-btn os-btn-ghost" onClick={handleCreateFolder} disabled={!bucket || uploading}>
+            <span className="os-btn-ico">▣</span> Create Folder
+          </button>
           <button type="button" className="os-btn os-btn-ghost" onClick={reload}>↻ Refresh</button>
         </div>
 
@@ -1557,6 +2141,7 @@ function ConsoleStyles() {
       .os-crumb-active { color: #cbd5e1; }
       .os-crumb-sep { margin: 0 6px; color: #475569; }
       .os-page-head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+      .os-page-copy { max-width: 760px; }
       .os-title { font-size: 28px; font-weight: 700; margin: 0 0 6px; color: #f1f5f9; }
       .os-subtitle { font-size: 13px; color: #94a3b8; margin: 0 0 12px; }
       .os-subtitle code { background: rgba(148, 163, 184, 0.12); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
@@ -1565,6 +2150,7 @@ function ConsoleStyles() {
       .os-badge-violet { color: #c4b5fd; border-color: rgba(168, 85, 247, 0.4); background: rgba(168, 85, 247, 0.1); }
       .os-badge-cyan { color: #67e8f9; border-color: rgba(34, 211, 238, 0.4); background: rgba(34, 211, 238, 0.08); }
       .os-badge-muted { color: #94a3b8; border-color: rgba(148, 163, 184, 0.3); background: rgba(148, 163, 184, 0.06); }
+      .os-badge-emerald { color: #86efac; border-color: rgba(34, 197, 94, 0.28); background: rgba(34, 197, 94, 0.1); }
       .os-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
       .os-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid; cursor: pointer; transition: all 0.15s; text-decoration: none; }
@@ -1572,6 +2158,7 @@ function ConsoleStyles() {
       .os-btn-ghost:hover { background: rgba(51, 65, 85, 0.8); border-color: rgba(148, 163, 184, 0.4); }
       .os-btn-primary { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); border-color: transparent; color: #fff; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25); }
       .os-btn-primary:hover { filter: brightness(1.1); }
+      .os-btn-primary-soft { background: linear-gradient(135deg, rgba(124, 58, 237, 0.3) 0%, rgba(168, 85, 247, 0.24) 100%); border-color: rgba(168, 85, 247, 0.4); }
       .os-btn-primary:disabled, .os-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
       .os-btn-ico { font-size: 14px; }
 
@@ -1611,6 +2198,8 @@ function ConsoleStyles() {
 
       .os-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
       @media (max-width: 1100px) { .os-grid-2 { grid-template-columns: 1fr; } }
+      .os-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.95fr); gap: 16px; margin-bottom: 16px; }
+      @media (max-width: 1100px) { .os-dashboard-grid { grid-template-columns: 1fr; } }
       .os-grid-2-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
       @media (max-width: 700px) { .os-grid-2-form { grid-template-columns: 1fr; } }
 
@@ -1618,12 +2207,15 @@ function ConsoleStyles() {
       .os-panel-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
       .os-panel-title { font-size: 13px; font-weight: 600; color: #cbd5e1; margin: 0; letter-spacing: 0.04em; }
       .os-panel-body { padding: 14px 18px; }
+      .os-panel-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
       .os-table { display: grid; gap: 0; }
       .os-thead, .os-tr { display: grid; padding: 10px 0; align-items: center; gap: 12px; }
       .os-thead { grid-template-columns: 2fr 1fr 1fr 1fr; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
       .os-tr { grid-template-columns: 2fr 1fr 1fr 1fr; border-bottom: 1px solid rgba(148, 163, 184, 0.05); font-size: 13px; }
       .os-tr:last-child { border-bottom: 0; }
+      .os-table-dashboard-tenants .os-thead, .os-table-dashboard-tenants .os-tr { grid-template-columns: 1.3fr 1.9fr 0.8fr 0.9fr 0.9fr 0.8fr; }
+      .os-table-dashboard-keys .os-thead, .os-table-dashboard-keys .os-tr { grid-template-columns: 1.45fr 0.9fr 1fr 1.6fr 0.9fr 0.8fr; }
       .os-table-buckets .os-thead, .os-table-buckets .os-tr { grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1.4fr; }
       .os-table-tenants .os-thead, .os-table-tenants .os-tr { grid-template-columns: 1.6fr 2fr 1.4fr 1fr 1fr 1.2fr; }
       .os-table-keys .os-thead, .os-table-keys .os-tr { grid-template-columns: 1.4fr 1.2fr 1fr 1.6fr 1fr 1fr 1fr 1.2fr; }
@@ -1633,6 +2225,7 @@ function ConsoleStyles() {
       .os-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
       .os-bucket-cell { display: flex; align-items: center; gap: 10px; }
+  .os-data-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .os-avatar { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
       .os-avatar-violet { background: rgba(168, 85, 247, 0.15); color: #c4b5fd; }
       .os-avatar-cyan { background: rgba(34, 211, 238, 0.15); color: #67e8f9; }
@@ -1655,10 +2248,21 @@ function ConsoleStyles() {
       .os-empty-hint { font-size: 12px; }
 
       .os-capacity-row { display: flex; gap: 16px; justify-content: space-around; padding: 8px 0 16px; }
+  .os-capacity-progress-block { margin-bottom: 14px; }
+  .os-capacity-progress-head { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+  .os-capacity-progress-track { height: 9px; border-radius: 999px; background: rgba(51, 65, 85, 0.8); overflow: hidden; }
+  .os-capacity-progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8b5cf6 0%, #c084fc 100%); }
       .os-ring { width: 110px; height: 110px; border-radius: 50%; border: 6px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
       .os-ring-value { font-size: 14px; font-weight: 600; color: #f1f5f9; }
       .os-ring-label { font-size: 10px; color: #94a3b8; margin-top: 2px; letter-spacing: 0.04em; }
       .os-divider { height: 1px; background: rgba(148, 163, 184, 0.1); margin: 8px 0; }
+  .os-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .os-mini-metric { border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; padding: 12px; background: rgba(15, 23, 42, 0.42); }
+  .os-mini-metric-label { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }
+  .os-mini-metric-value { font-size: 18px; font-weight: 600; color: #f1f5f9; }
+  .os-mini-metric-hint { margin-top: 4px; font-size: 11px; color: #94a3b8; }
+  .os-top-tenants { display: flex; flex-direction: column; gap: 10px; }
+  .os-section-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; }
 
       .os-info-rows { display: flex; flex-direction: column; gap: 6px; }
       .os-info-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.06); font-size: 13px; }
@@ -1685,6 +2289,7 @@ function ConsoleStyles() {
       .os-endpoint-label { color: #94a3b8; }
       .os-endpoint-url { color: #67e8f9; font-family: ui-monospace, monospace; font-size: 12px; text-decoration: none; }
       .os-endpoint-url:hover { text-decoration: underline; }
+      .os-endpoint-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
       .os-input { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; color: #e2e8f0; padding: 8px 10px; font-size: 13px; width: 100%; box-sizing: border-box; }
       .os-input:focus { outline: none; border-color: #a855f7; }
@@ -1708,6 +2313,7 @@ function ConsoleStyles() {
       .os-snippet { background: rgba(0,0,0,0.4); border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 6px; padding: 12px; font-size: 12px; font-family: ui-monospace, monospace; color: #cbd5e1; overflow-x: auto; white-space: pre; margin: 12px 0; }
 
       .os-browser-toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 0 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.08); margin-bottom: 12px; flex-wrap: wrap; }
+      .os-browser-toolbar-compact { padding-top: 0; }
       .os-spacer { flex: 1; }
       .os-breadcrumb-row { display: flex; align-items: center; gap: 4px; font-size: 13px; flex: 1; min-width: 200px; }
       .os-crumb { background: transparent; border: 0; color: #c4b5fd; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
@@ -1719,6 +2325,15 @@ function ConsoleStyles() {
       .os-test-row { display: inline-flex; align-items: center; gap: 8px; }
       .os-test-detail { margin-top: 12px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; }
       .os-test-step { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+
+      @media (max-width: 900px) {
+        .os-metric-grid { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 720px) {
+        .os-head-actions { width: 100%; }
+        .os-head-actions .os-btn { flex: 1 1 auto; justify-content: center; }
+      }
     `}</style>
   );
 }

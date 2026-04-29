@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
-import { objectStorageActivity } from '@/lib/schema';
+import { objectStorageActivity } from '@/lib/object-storage/schema';
 
 export async function logActivity(input: {
   eventType: string;
