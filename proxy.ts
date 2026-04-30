@@ -62,12 +62,13 @@ export async function proxy(request: NextRequest) {
   // Public diagnostic endpoint — must work without auth so operators can
   // verify which build is actually live (commit SHA, nav labels, etc).
   const isPublicDiagnostic = pathname === '/api/build-info';
+  const isPublicPortalApi = isPublicDiagnostic || pathname === '/api/auth/logout';
   const portalApiRequest =
-    portalHost && pathname.startsWith('/api/') && !isPublicDiagnostic;
+    portalHost && pathname.startsWith('/api/') && !isPublicPortalApi;
 
   if (portalHost) {
     // Public diagnostic — let it through without any auth/redirect logic.
-    if (isPublicDiagnostic) {
+    if (isPublicPortalApi) {
       return NextResponse.next();
     }
 
