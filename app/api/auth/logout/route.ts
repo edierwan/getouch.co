@@ -11,8 +11,23 @@ function getSessionCookieDomain() {
   return process.env.SESSION_COOKIE_DOMAIN || '.getouch.co';
 }
 
+function getPublicOrigin(request: NextRequest) {
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedHost) {
+    return `${forwardedProto || 'https'}://${forwardedHost}`;
+  }
+
+  const host = request.headers.get('host');
+  if (host && host !== '0.0.0.0:3000' && host !== '0.0.0.0') {
+    return `${request.nextUrl.protocol.replace(/:$/, '') || 'https'}://${host}`;
+  }
+
+  return process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+}
+
 export async function POST(request: NextRequest) {
-  const response = NextResponse.redirect(new URL('/auth/login', request.url), 303);
+  const response = NextResponse.redirect(new URL('/auth/login', getPublicOrigin(request)), 303);
   const domain = getSessionCookieDomain();
 
   response.cookies.set('session', '', {
