@@ -9,10 +9,9 @@ import { EvolutionStyles } from '../../whatsapp-services/evolution/EvolutionCons
  * Mounted at: /admin/service-endpoints/baileys
  * Backend:    /api/admin/service-endpoints/baileys (proxies to wa runtime)
  *
- * The runtime currently lives in the `getouch-wa` container (wa.getouch.co).
- * This UI is built so that swapping the runtime later (fresh Baileys install
- * pointing at Postgres `baileys`) requires no UI changes — it just re-points
- * WA_URL / WA_API_KEY in the web container env.
+ * The runtime is the `baileys-gateway` container exposed publicly at
+ * wa.getouch.co. Swapping the runtime container later requires no UI
+ * changes — it just re-points WA_URL / WA_API_KEY in the portal env.
  * ───────────────────────────────────────────────────────────────────── */
 
 type Tab =
@@ -78,7 +77,7 @@ interface EventRow {
   sessionId?: string | null;
   tenantId?: string | null;
   createdAt?: string;
-  source?: 'baileys_db' | 'legacy_runtime';
+  source?: 'baileys_db' | 'baileys_runtime';
 }
 
 interface HealthItem {
@@ -220,7 +219,7 @@ interface OverviewData {
     newDatabaseInitialized: boolean;
     newDatabaseStatus: string;
     cutoverReady: boolean;
-    cutoverBlocker: string;
+    cutoverBlocker: string | null;
     dbUrlSource: string;
   };
   runtime: {
@@ -232,7 +231,7 @@ interface OverviewData {
   runtimeOk: boolean;
   runtimeError: string | null;
   onlineState: 'online' | 'degraded' | 'offline';
-  overviewEventSource: 'baileys_db' | 'legacy_runtime' | 'empty';
+  overviewEventSource: 'baileys_db' | 'baileys_runtime' | 'empty';
   stats: {
     total: number;
     connected: number;
@@ -246,7 +245,7 @@ interface OverviewData {
     dbEvents: number;
     dbSendLogs: number;
   };
-  sessions: Array<SessionRow & { source: 'legacy_runtime' }>;
+  sessions: Array<SessionRow & { source: 'baileys_runtime' }>;
   tenants: TenantRow[];
   apiKeys: ApiKey[];
   apiKeyStats: { total: number; active: number; revoked: number; expired: number };
@@ -369,24 +368,14 @@ export function BaileysConsole() {
       ) : null}
       {data && data.config.configured && !data.runtimeOk && tab === 'overview' ? (
         <div className="evo-banner evo-banner-warn">
-          ⚠ Runtime unreachable: <code>{data.runtimeError ?? 'unknown'}</code>. Check the <code>{data.config.runtimeLabel}</code> container.
+          ⚠ Baileys runtime unreachable: <code>{data.runtimeError ?? 'unknown'}</code>. Internal URL: <code>{data.config.internalUrl}</code>.
         </div>
       ) : null}
-      {data ? (
-        <div className={`evo-banner ${data.config.runtimeMode === 'baileys' ? 'evo-banner-good' : 'evo-banner-warn'}`}>
-          {data.config.runtimeMode === 'baileys' ? (
-            <>
-              Live session control is running on <code>{data.config.runtimeLabel}</code>.
-              {' '}Runtime DB: <code>{data.config.runtimeDatabase}</code>.
-              {' '}Database sync: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
-            </>
-          ) : (
-            <>
-              Live session control is still proxied to <code>{data.config.runtimeLabel}</code>.
-              {' '}New database status: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
-              {' '}Cutover blocker: {data.config.cutoverBlocker}
-            </>
-          )}
+      {data && data.config.configured && data.runtimeOk && tab === 'overview' ? (
+        <div className="evo-banner evo-banner-good">
+          Fresh runtime active on <code>{data.config.runtimeLabel}</code>.
+          {' '}Runtime DB: <code>{data.config.runtimeDatabase}</code>.
+          {' '}Portal DB sync: <code>{data.config.newDatabaseStatus}</code> on <code>{data.config.database}</code>.
         </div>
       ) : null}
 
@@ -629,8 +618,8 @@ function OverviewTab({
             <div className="evo-panel-head">
               <h3 className="evo-panel-title">Event Log</h3>
               <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className={`evo-pill evo-pill-xs ${data.overviewEventSource === 'baileys_db' ? 'evo-pill-good' : data.overviewEventSource === 'legacy_runtime' ? 'evo-pill-info' : 'evo-pill-muted'}`}>
-                  {data.overviewEventSource === 'baileys_db' ? 'Baileys DB' : data.overviewEventSource === 'legacy_runtime' ? 'Legacy Runtime' : 'No Events'}
+                <span className={`evo-pill evo-pill-xs ${data.overviewEventSource === 'baileys_db' ? 'evo-pill-good' : data.overviewEventSource === 'baileys_runtime' ? 'evo-pill-info' : 'evo-pill-muted'}`}>
+                  {data.overviewEventSource === 'baileys_db' ? 'Baileys DB' : data.overviewEventSource === 'baileys_runtime' ? 'Runtime Stream' : 'No Events'}
                 </span>
                 <a href="/admin/api-keys?service=whatsapp" className="evo-btn evo-btn-ghost evo-btn-xs">View Full Log</a>
               </div>
@@ -825,15 +814,11 @@ function PairingPanel({ sessions, onChanged, runtimeMode }: { sessions: SessionR
           <p className="evo-cell-muted" style={{ fontSize: '0.75rem' }}>
             On the phone: <em>WhatsApp → Linked Devices → Link with phone number instead</em>.
           </p>
-          {runtimeMode === 'legacy' ? (
+          {runtimeMode === 'baileys' ? (
             <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
-              Legacy runtime note: pairing currently works only on the default session. Per-session pairing is deferred until the new Baileys runtime replaces <code>getouch-wa</code>.
+              Pairing works per session and writes session state directly to the <code>baileys</code> database.
             </p>
-          ) : (
-            <p className="evo-cell-muted" style={{ fontSize: '0.74rem' }}>
-              Fresh runtime note: pairing works per session and writes session state directly to the <code>baileys</code> database.
-            </p>
-          )}
+          ) : null}
         </div>
       )}
 
@@ -1117,7 +1102,7 @@ function TemplatesTab({ data }: { data: OverviewData | null }) {
 /* ─── MESSAGES TAB ────────────────────────────────────── */
 interface MessagesResponse {
   ok?: boolean;
-  source?: 'baileys_db' | 'legacy_runtime';
+  source?: 'baileys_db' | 'baileys_runtime';
   messages?: Array<{ id?: string; direction?: string; phone?: string; text?: string; status?: string; createdAt?: string; sessionId?: string | null }>;
 }
 
@@ -1143,7 +1128,7 @@ function MessagesTab() {
     } finally { setLoading(false); }
   }, []);
 
-  const [source, setSource] = useState<'baileys_db' | 'legacy_runtime' | null>(null);
+  const [source, setSource] = useState<'baileys_db' | 'baileys_runtime' | null>(null);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -1152,7 +1137,7 @@ function MessagesTab() {
       <div className="evo-panel-head">
         <h3 className="evo-panel-title">Messages</h3>
         <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {source ? <span className={`evo-pill evo-pill-xs ${source === 'baileys_db' ? 'evo-pill-good' : 'evo-pill-info'}`}>{source === 'baileys_db' ? 'Baileys DB' : 'Legacy Runtime'}</span> : null}
+          {source ? <span className={`evo-pill evo-pill-xs ${source === 'baileys_db' ? 'evo-pill-good' : 'evo-pill-info'}`}>{source === 'baileys_db' ? 'Baileys DB' : 'Runtime Stream'}</span> : null}
           <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => void reload()}>↻ Refresh</button>
         </div>
       </div>
@@ -1271,9 +1256,6 @@ function SettingsTab({ data }: { data: OverviewData | null }) {
           <tr><td className="evo-cell-muted">Missing tables</td><td>{(data?.database.status.missingTables ?? []).join(', ') || 'none'}</td></tr>
         </tbody>
       </table>
-      <div className="evo-preview" style={{ marginTop: '0.7rem' }}>
-        {cfg?.cutoverBlocker ?? '—'}
-      </div>
       <p className="evo-cell-muted" style={{ marginTop: '0.6rem', fontSize: '0.78rem' }}>
         Secrets are managed via portal env (<code>WA_API_KEY</code>, <code>WA_URL</code>, <code>BAILEYS_DATABASE_URL</code>) and never displayed here.
       </p>

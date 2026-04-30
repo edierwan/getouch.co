@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    source: 'legacy_runtime',
+    source: 'baileys_runtime',
     messages: (runtime.data?.rows ?? []).map((row) => ({
       id: row.id,
       direction: row.direction,

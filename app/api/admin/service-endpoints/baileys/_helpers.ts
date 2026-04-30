@@ -4,15 +4,15 @@ import { getSession } from '@/lib/auth';
 /**
  * Internal helper for the Baileys Gateway portal console.
  *
- * The Baileys runtime currently lives in the `getouch-wa` service
- * (wa.getouch.co). We proxy admin reads/writes through this Next.js
+ * The Baileys runtime is the `baileys-gateway` container exposed publicly
+ * at wa.getouch.co. We proxy admin reads/writes through this Next.js
  * layer so that:
  *   - browser code never sees the WA admin/api keys
- *   - we can later swap to a fresh container without touching the UI
+ *   - we can swap the runtime container without touching the UI
  *   - portal session/role checks are enforced before each call
  */
 
-export const WA_BASE_URL = process.env.WA_URL || 'http://wa:3001';
+export const WA_BASE_URL = process.env.WA_URL || 'http://baileys-gateway:3001';
 export const WA_API_KEY = process.env.WA_API_KEY || '';
 export const WA_ADMIN_KEY = process.env.WA_ADMIN_KEY || process.env.WA_API_KEY || '';
 export const WA_PUBLIC_URL = process.env.WA_PUBLIC_URL || 'https://wa.getouch.co';

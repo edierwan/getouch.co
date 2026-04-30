@@ -34,3 +34,34 @@
 
 - API keys remain sourced from the central API key manager in the portal database.
 - The Baileys runtime and the portal both use the lowercase service DB name going forward.
+
+## 2026-05-01 — Portal portal status fix
+
+- Root cause of "Runtime unreachable: fetch failed" + lingering "legacy
+  getouch-wa" UI text: the portal container had no `WA_URL` env, so the proxy
+  helper fell back to `http://wa:3001`. The legacy container `getouch-wa`
+  is stopped (Exited 137) but its DNS reservation for the alias `wa` still
+  lingered in the embedded Docker resolver, so the hostname resolved but
+  port 3001 was refused. The new runtime is reachable internally as
+  `http://baileys-gateway:3001` on the `getouch-edge` network.
+- Fix:
+  - Default for `WA_URL` switched to `http://baileys-gateway:3001` in
+    `app/api/admin/service-endpoints/baileys/_helpers.ts` and `lib/wa.ts`.
+  - All "legacy getouch-wa" / "Cutover blocker" / "Legacy Runtime" labels
+    removed from the portal Baileys console and route. Runtime mode is now
+    treated as `baileys` unconditionally; banners surface a fresh-runtime
+    "Online" panel when reachable and a sanitized "Baileys runtime
+    unreachable" diagnostic (with internal URL only) when not.
+  - Pairing-code path no longer carries the legacy default-session-only
+    fallback; it proxies straight to the runtime.
+- Auth: runtime expects `X-API-Key: $WA_API_KEY` for `/api/*` routes and
+  `X-Admin-Key: $WA_ADMIN_KEY` (falling back to `WA_API_KEY`) for `/admin/*`
+  routes. The portal proxy helper picks the correct header per path.
+- Verified `https://wa.getouch.co/healthz` returns
+  `service=baileys-gateway`, `runtimeMode=baileys`, `database=baileys`.
+- Internal reachability from the portal container:
+  - `wget -O- http://baileys-gateway:3001/healthz` → 200 OK
+  - `wget -O- http://wa:3001/healthz` → connection refused (legacy alias)
+- Optional follow-up: set `WA_URL=http://baileys-gateway:3001` and
+  `WA_PUBLIC_URL=https://wa.getouch.co` explicitly in the portal Coolify
+  env. With the new code default this is no longer required to function.

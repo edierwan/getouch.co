@@ -85,9 +85,9 @@ export async function GET() {
 
   const runtimeSessions: WaSession[] = sessionsRes.data?.sessions ?? [];
   const overview = overviewRes.data ?? {};
-  const runtimeMode = overview.runtimeMode === 'baileys' ? 'baileys' : 'legacy';
-  const runtimeLabel = overview.serviceName ?? (runtimeMode === 'baileys' ? 'baileys-gateway' : 'legacy getouch-wa');
-  const runtimeDatabase = overview.databaseName ?? (runtimeMode === 'baileys' ? BAILEYS_DB_NAME : 'getouch.co (runtime-managed legacy tables)');
+  const runtimeMode = 'baileys' as const;
+  const runtimeLabel = overview.serviceName ?? 'baileys-gateway';
+  const runtimeDatabase = overview.databaseName ?? BAILEYS_DB_NAME;
   const runtimeTotals = overview.sessionTotals ?? {
     total: runtimeSessions.length,
     connected: runtimeSessions.filter((s) => s.status === 'connected').length,
@@ -107,7 +107,7 @@ export async function GET() {
       tenantId: session.tenantId ?? mirrored?.tenantId ?? null,
       lastActivityAt: session.lastActivityAt ?? mirrored?.lastActivityAt ?? null,
       messages24h: (session.messages24h?.inbound ?? 0) + (session.messages24h?.outbound ?? 0),
-      source: runtimeMode === 'baileys' ? 'baileys_runtime' as const : 'legacy_runtime' as const,
+      source: 'baileys_runtime' as const,
     };
   });
 
@@ -181,7 +181,7 @@ export async function GET() {
 
   const overviewEventSource = dbData.events.length > 0
     ? 'baileys_db'
-    : (runtimeEventsRes.ok && (runtimeEventsRes.data?.length ?? 0) > 0 ? 'legacy_runtime' : 'empty');
+    : (runtimeEventsRes.ok && (runtimeEventsRes.data?.length ?? 0) > 0 ? 'baileys_runtime' : 'empty');
 
   const events = dbData.events.length > 0
     ? dbData.events.slice(0, 25).map((event) => ({
@@ -202,16 +202,12 @@ export async function GET() {
         sessionId: event.sessionId ?? null,
         tenantId: event.tenantId ?? null,
         createdAt: event.createdAt,
-        source: 'legacy_runtime' as const,
+        source: 'baileys_runtime' as const,
       }));
-
-  const runtimeCutoverBlocker = runtimeMode === 'baileys'
-    ? null
-    : 'Current getouch-wa still initializes and queries its legacy message_log/event_log/api_keys/connected_apps/admin_settings schema from DATABASE_URL. It does not yet read or write the new Baileys tables, so direct runtime cutover would strand the new schema unused.';
 
   const health = [
     {
-      label: runtimeMode === 'baileys' ? 'Baileys Runtime' : 'Legacy Runtime',
+      label: 'Baileys Runtime',
       status: configured && overviewRes.ok ? 'healthy' : configured ? 'degraded' : 'not_configured',
       detail: configured ? `${runtimeLabel} on wa.getouch.co` : 'WA_API_KEY missing',
     },
@@ -227,8 +223,8 @@ export async function GET() {
     },
     {
       label: 'Event Delivery',
-      status: dbData.counts.events > 0 ? 'healthy' : overviewEventSource === 'legacy_runtime' ? 'degraded' : 'unknown',
-      detail: dbData.counts.events > 0 ? `${dbData.counts.events} events in Baileys DB` : (overviewEventSource === 'legacy_runtime' ? 'Events still coming from legacy runtime' : 'No events yet'),
+      status: dbData.counts.events > 0 ? 'healthy' : overviewEventSource === 'baileys_runtime' ? 'degraded' : 'unknown',
+      detail: dbData.counts.events > 0 ? `${dbData.counts.events} events in Baileys DB` : (overviewEventSource === 'baileys_runtime' ? 'Events streaming from runtime; DB persistence pending' : 'No events yet'),
     },
     {
       label: 'Queue',
@@ -250,8 +246,8 @@ export async function GET() {
       runtimeDatabase,
       newDatabaseInitialized: dbData.status.schemaApplied,
       newDatabaseStatus: dbData.status.schemaApplied ? 'initialized' : (dbData.status.connected ? 'partial' : 'unavailable'),
-      cutoverReady: runtimeMode === 'baileys' && dbData.status.schemaApplied,
-      cutoverBlocker: runtimeCutoverBlocker,
+      cutoverReady: dbData.status.schemaApplied,
+      cutoverBlocker: null,
       dbUrlSource: dbData.status.urlSource,
     },
     runtimeOk: overviewRes.ok,
@@ -344,16 +340,6 @@ export async function POST(req: NextRequest) {
       if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const phone = String(body.phone ?? '').trim();
       if (!phone) return NextResponse.json({ error: 'missing_phone' }, { status: 400 });
-      const runtimeOverview = await waProxy<WaOverview>('/admin/overview');
-      const pairingRuntimeMode = runtimeOverview.data?.runtimeMode === 'baileys' ? 'baileys' : 'legacy';
-      const legacyDefaultSessionId = process.env.DEFAULT_SESSION_ID || 'default';
-      if (pairingRuntimeMode !== 'baileys' && sessionId !== legacyDefaultSessionId) {
-        return NextResponse.json({
-          ok: false,
-          error: 'legacy_runtime_pairing_only_supports_default_session',
-          detail: `Current getouch-wa pairing only works on the default session (${legacyDefaultSessionId}). Per-session pairing needs the future schema-compatible Baileys runtime.`,
-        }, { status: 409 });
-      }
       const r = await waProxy(`/api/pairing-code`, { query: { phone, session: sessionId } });
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }

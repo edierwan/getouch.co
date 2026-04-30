@@ -3,7 +3,7 @@
  * Uses WA_URL (default: http://wa:3001) and WA_API_KEY env vars.
  */
 
-const WA_URL = process.env.WA_URL || 'http://wa:3001';
+const WA_URL = process.env.WA_URL || 'http://baileys-gateway:3001';
 const WA_API_KEY = process.env.WA_API_KEY || '';
 
 /**
