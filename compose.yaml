@@ -204,6 +204,79 @@ services:
     networks:
       - edge
 
+  voice-fusionpbx:
+    build:
+      context: ./services/voice-fusionpbx
+    container_name: voice-fusionpbx
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VOICE_DB_HOST: postgres
+      VOICE_DB_PORT: 5432
+      VOICE_DB_NAME: ${VOICE_DB_NAME:-voice}
+      VOICE_DB_USER: ${APP_DB_USER:-getouch}
+      VOICE_DB_PASSWORD: ${APP_DB_PASSWORD}
+      FUSIONPBX_DOMAIN: ${FUSIONPBX_DOMAIN:-pbx.getouch.co}
+      FUSIONPBX_EVENT_SOCKET_HOST: voice-freeswitch
+      FUSIONPBX_EVENT_SOCKET_PORT: 8021
+      FUSIONPBX_EVENT_SOCKET_PASSWORD: ${FUSIONPBX_EVENT_SOCKET_PASSWORD}
+      FUSIONPBX_ADMIN_USERNAME: ${FUSIONPBX_ADMIN_USERNAME:-admin}
+      FUSIONPBX_ADMIN_PASSWORD: ${FUSIONPBX_ADMIN_PASSWORD}
+      FUSIONPBX_XML_CDR_USERNAME: ${FUSIONPBX_XML_CDR_USERNAME:-xmlcdr}
+      FUSIONPBX_XML_CDR_PASSWORD: ${FUSIONPBX_XML_CDR_PASSWORD}
+      FUSIONPBX_RTP_START_PORT: ${FUSIONPBX_RTP_START_PORT:-16384}
+      FUSIONPBX_RTP_END_PORT: ${FUSIONPBX_RTP_END_PORT:-16415}
+      FUSIONPBX_EXTERNAL_SIP_IP: ${FUSIONPBX_EXTERNAL_SIP_IP:-}
+      FUSIONPBX_EXTERNAL_RTP_IP: ${FUSIONPBX_EXTERNAL_RTP_IP:-}
+    volumes:
+      - /data/getouch/voice/fusionpbx/config:/etc/fusionpbx
+      - /data/getouch/voice/freeswitch/conf:/etc/freeswitch
+      - /data/getouch/voice/freeswitch/data:/var/lib/freeswitch
+      - /data/getouch/voice/freeswitch/scripts:/usr/share/freeswitch/scripts
+      - /data/getouch/voice/freeswitch/sounds:/usr/share/freeswitch/sounds
+      - /data/getouch/voice/fusionpbx/cache:/var/cache/fusionpbx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - edge
+
+  voice-freeswitch:
+    build:
+      context: ./services/voice-freeswitch
+    container_name: voice-freeswitch
+    restart: unless-stopped
+    depends_on:
+      voice-fusionpbx:
+        condition: service_healthy
+    environment:
+      SOUND_RATES: ${VOICE_SOUND_RATES:-8000:16000}
+      SOUND_TYPES: ${VOICE_SOUND_TYPES:-en-us-callie}
+      FUSIONPBX_EVENT_SOCKET_PASSWORD: ${FUSIONPBX_EVENT_SOCKET_PASSWORD}
+    ports:
+      - "5060:5060/udp"
+      - "5080:5080/udp"
+      - "${FUSIONPBX_RTP_START_PORT:-16384}-${FUSIONPBX_RTP_END_PORT:-16415}:${FUSIONPBX_RTP_START_PORT:-16384}-${FUSIONPBX_RTP_END_PORT:-16415}/udp"
+    volumes:
+      - /data/getouch/voice/fusionpbx/config:/etc/fusionpbx
+      - /data/getouch/voice/freeswitch/conf:/etc/freeswitch
+      - /data/getouch/voice/freeswitch/data:/var/lib/freeswitch
+      - /data/getouch/voice/freeswitch/scripts:/usr/share/freeswitch/scripts
+      - /data/getouch/voice/freeswitch/sounds:/usr/share/freeswitch/sounds
+    healthcheck:
+      test: ["CMD-SHELL", "fs_cli -p \"$${FUSIONPBX_EVENT_SOCKET_PASSWORD}\" -x 'status' | grep -qi 'UP' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - edge
+
   ollama:
     image: ollama/ollama:latest
     container_name: ollama

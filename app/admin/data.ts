@@ -101,7 +101,7 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
       { label: 'Chatwoot', href: '/admin/service-endpoints/chatwoot', icon: '◌' },
       { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
-      { label: 'FusionPBX / Voice', href: '#', icon: '◍', disabled: true },
+      { label: 'FusionPBX / Voice', href: '/admin/service-endpoints/voice', icon: '◍' },
     ],
   },
   {

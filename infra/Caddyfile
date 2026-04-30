@@ -117,6 +117,29 @@ http://dify.getouch.co {
   }
 }
 
+http://pbx.getouch.co {
+  import common_headers
+  import admin_auth
+  reverse_proxy voice-fusionpbx:8080 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
+http://voice.getouch.co {
+  import common_headers
+  import admin_auth
+
+  @voice_health path / /health /ready
+  handle @voice_health {
+    header Content-Type application/json
+    respond "{\"service\":\"voice-api\",\"status\":\"planned\",\"engine\":\"FusionPBX / FreeSWITCH\",\"pbx_ui\":\"https://pbx.getouch.co\"}" 200
+  }
+
+  handle {
+    respond "Future Getouch Voice API endpoint." 200
+  }
+}
+
 http://wa.getouch.co {
   import common_headers
   reverse_proxy baileys-gateway:3001
