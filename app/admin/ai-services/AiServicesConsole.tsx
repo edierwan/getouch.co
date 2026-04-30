@@ -300,6 +300,10 @@ function formatProviderModels(prefix: string, models: string[]) {
   return models.map((model) => `${prefix}:${model}`).join(', ');
 }
 
+function formatAssistantModelLabel(displayName: string) {
+  return displayName.toLowerCase().startsWith('assistant:') ? displayName : `assistant:${displayName}`;
+}
+
 function buttonClass(tone: RuntimeAction['tone']) {
   if (tone === 'danger') return 'portal-admin-btn portal-admin-btn-danger';
   if (tone === 'secondary') return 'portal-admin-btn portal-admin-btn-secondary';
@@ -720,7 +724,7 @@ export function AiServicesConsole() {
         </div>
         <div className="portal-info-table">
           <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{formatProviderModels('ollama', status.ollama.installedModels)}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.models.length ? status.assistant.models.map((model) => `assistant:${model.displayName}`).join(', ') : status.assistant.error || 'None reported'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.models.length ? status.assistant.models.map((model) => formatAssistantModelLabel(model.displayName)).join(', ') : status.assistant.error || 'None reported'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant default in Open WebUI</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.defaultModelId ? `assistant:${status.assistant.defaultModelId}` : 'Not set'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Planned vLLM alias</span><span className="portal-info-table-value">vllm:getouch-qwen3-14b {status.vllm.configuredInCompose ? '· configured' : '· planned / not deployed'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Provider routing</span><span className="portal-info-table-value portal-ai-runtime-wrap">Open WebUI currently resolves through Ollama plus assistant/pipeline providers. vLLM remains a future routed backend until deployment is approved.</span></div>
