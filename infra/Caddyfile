@@ -117,9 +117,37 @@ http://dify.getouch.co {
   }
 }
 
+http://pbx.getouch.co {
+  import common_headers
+  import admin_auth
+  reverse_proxy voice-fusionpbx:8080 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
+http://voice.getouch.co {
+  import common_headers
+  import admin_auth
+
+  @voice_health path / /health /ready
+  handle @voice_health {
+    header Content-Type application/json
+    respond "{\"service\":\"voice-api\",\"status\":\"planned\",\"engine\":\"FusionPBX / FreeSWITCH\",\"pbx_ui\":\"https://pbx.getouch.co\"}" 200
+  }
+
+  handle {
+    respond "Future Getouch Voice API endpoint." 200
+  }
+}
+
 http://wa.getouch.co {
   import common_headers
-  reverse_proxy wa:3001
+  reverse_proxy baileys-gateway:3001
+}
+
+http://evo.getouch.co {
+  import common_headers
+  reverse_proxy evolution-api:8080
 }
 
 http://wapi.getouch.co {
@@ -132,7 +160,7 @@ http://wapi.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy nql6rdsjrcmlvcee1o2dz8wd-183603359318:3000
+    reverse_proxy nql6rdsjrcmlvcee1o2dz8wd-045741258840:3000
   }
 }
 
@@ -146,7 +174,7 @@ http://wapi-dev.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy t1xhkiq5wah66nss0onb7fpf-183423542974:3000
+    reverse_proxy t1xhkiq5wah66nss0onb7fpf-094245442471:3000
   }
 }
 
@@ -400,7 +428,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-web:3000
   }
 }
 
@@ -416,7 +444,9 @@ http://analytics.getouch.co {
 
 http://chatwoot.getouch.co {
   import common_headers
-  reverse_proxy chatwoot-web:3000
+  reverse_proxy chatwoot-web:3000 {
+    header_up X-Forwarded-Proto https
+  }
 }
 
 http://bot.getouch.co,

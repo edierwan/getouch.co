@@ -6,6 +6,7 @@ import {
   timestamp,
   boolean,
   integer,
+  bigint,
   jsonb,
   pgEnum,
   uniqueIndex,
@@ -15,7 +16,17 @@ import {
 /* ─── Enums ─── */
 export const userRole = pgEnum('user_role', ['admin', 'user', 'pending']);
 export const difySetupStatus = pgEnum('dify_setup_status', ['active', 'inactive', 'draft']);
-export const scheduledRestartType = pgEnum('scheduled_restart_type', ['one-time', 'daily', 'weekly']);
+export const difyTenantMappingStatus = pgEnum('dify_tenant_mapping_status', ['pending', 'active', 'disabled']);
+export const objectStorageTenantStatus = pgEnum('object_storage_tenant_status', [
+  'active', 'suspended', 'pending',
+]);
+export const objectStorageAccessKeyStatus = pgEnum('object_storage_access_key_status', [
+  'active', 'revoked', 'rotating', 'expired',
+]);
+export const objectStorageAccessKeyPermission = pgEnum('object_storage_access_key_permission', [
+  'read', 'write', 'read-write', 'presign',
+]);
+
 export const apiKeyEnvironment = pgEnum('central_api_key_environment', ['live', 'test']);
 export const apiKeyStatusEnum = pgEnum('central_api_key_status', [
   'active',
@@ -32,6 +43,7 @@ export const apiKeyValidationSource = pgEnum('central_api_key_validation_source'
   'unknown',
 ]);
 export const apiSecretStatus = pgEnum('central_api_secret_status', ['configured', 'missing', 'unknown']);
+export const chatwootTenantMappingStatus = pgEnum('chatwoot_tenant_mapping_status', ['pending', 'active', 'disabled']);
 
 /* ─── Users (central identity master) ─── */
 export const users = pgTable('users', {
@@ -126,53 +138,38 @@ export const difyConnections = pgTable(
   ],
 );
 
-/* ─── Scheduled server restart control plane ─── */
-export const scheduledRestarts = pgTable(
-  'scheduled_restarts',
+export const difyTenantMappings = pgTable(
+  'dify_tenant_mappings',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    targetHost: varchar('target_host', { length: 160 }).notNull(),
-    targetLabel: varchar('target_label', { length: 160 }).notNull(),
-    enabled: boolean('enabled').default(false).notNull(),
-    scheduleType: scheduledRestartType('schedule_type').default('daily').notNull(),
-    timezone: varchar('timezone', { length: 80 }).notNull(),
-    oneTimeAt: timestamp('one_time_at', { withTimezone: true }),
-    dailyTime: varchar('daily_time', { length: 5 }),
-    weeklyDay: integer('weekly_day'),
-    weeklyTime: varchar('weekly_time', { length: 5 }),
-    note: text('note'),
-    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
-    lastAppliedAt: timestamp('last_applied_at', { withTimezone: true }),
-    lastAppliedBy: varchar('last_applied_by', { length: 255 }),
-    lastRemoteStatus: varchar('last_remote_status', { length: 40 }),
-    lastRemoteMessage: text('last_remote_message'),
-    lastRemoteSyncAt: timestamp('last_remote_sync_at', { withTimezone: true }),
-    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    tenantId: uuid('tenant_id').notNull().unique(),
+    difyWorkspaceId: varchar('dify_workspace_id', { length: 120 }),
+    difyAppId: varchar('dify_app_id', { length: 120 }),
+    difyWorkflowId: varchar('dify_workflow_id', { length: 120 }),
+    status: difyTenantMappingStatus('status').default('pending').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex('scheduled_restarts_target_host_idx').on(table.targetHost),
+    index('dify_tenant_mappings_status_idx').on(table.status),
   ],
 );
 
-export const scheduledRestartLogs = pgTable(
-  'scheduled_restart_logs',
+/* ─── Chatwoot tenant control plane ─── */
+export const chatwootTenantMappings = pgTable(
+  'chatwoot_tenant_mappings',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    restartId: uuid('restart_id').references(() => scheduledRestarts.id, { onDelete: 'cascade' }),
-    targetHost: varchar('target_host', { length: 160 }).notNull(),
-    eventType: varchar('event_type', { length: 60 }).notNull(),
-    status: varchar('status', { length: 40 }).notNull(),
-    summary: varchar('summary', { length: 255 }).notNull(),
-    details: jsonb('details').$type<Record<string, unknown>>().default({}).notNull(),
-    actorEmail: varchar('actor_email', { length: 255 }),
-    source: varchar('source', { length: 40 }).default('portal').notNull(),
+    tenantId: uuid('tenant_id').notNull().unique(),
+    chatwootAccountId: integer('chatwoot_account_id').notNull(),
+    chatwootInboxId: integer('chatwoot_inbox_id'),
+    status: chatwootTenantMappingStatus('status').default('pending').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    index('scheduled_restart_logs_target_host_idx').on(table.targetHost),
-    index('scheduled_restart_logs_created_at_idx').on(table.createdAt),
+    index('chatwoot_tenant_mappings_account_idx').on(table.chatwootAccountId),
+    index('chatwoot_tenant_mappings_status_idx').on(table.status),
   ],
 );
 
@@ -506,3 +503,81 @@ export const evolutionSettings = pgTable('evolution_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   updatedByEmail: varchar('updated_by_email', { length: 255 }),
 });
+
+/* ─── Object Storage Gateway control plane ───────────────────
+ * Portal-side metadata only. Real bucket/object data lives in
+ * SeaweedFS (/srv/archive/seaweedfs on host). Secrets are NEVER
+ * persisted here — only key prefixes and an optional secret hash.
+ * ─────────────────────────────────────────────────────────── */
+export const objectStorageTenantMappings = pgTable(
+  'object_storage_tenant_mappings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: varchar('tenant_id', { length: 120 }).notNull(),
+    tenantName: varchar('tenant_name', { length: 255 }),
+    bucket: varchar('bucket', { length: 120 }).notNull(),
+    prefix: varchar('prefix', { length: 255 }).notNull(),
+    services: jsonb('services').$type<string[]>().default([]).notNull(),
+    quotaBytes: bigint('quota_bytes', { mode: 'number' }),
+    policy: varchar('policy', { length: 40 }).default('read-write').notNull(),
+    retentionDays: integer('retention_days'),
+    status: objectStorageTenantStatus('status').default('active').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('object_storage_tenant_unique').on(table.tenantId, table.bucket, table.prefix),
+    index('object_storage_tenant_status_idx').on(table.status),
+    index('object_storage_tenant_bucket_idx').on(table.bucket),
+  ],
+);
+
+export const objectStorageAccessKeys = pgTable(
+  'object_storage_access_keys',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    label: varchar('label', { length: 160 }).notNull(),
+    tenantId: varchar('tenant_id', { length: 120 }),
+    bucket: varchar('bucket', { length: 120 }),
+    prefix: varchar('prefix', { length: 255 }),
+    permission: objectStorageAccessKeyPermission('permission').default('read-write').notNull(),
+    keyPrefix: varchar('key_prefix', { length: 40 }).notNull(),
+    secretHash: text('secret_hash'),
+    service: varchar('service', { length: 60 }),
+    ipAllowlist: jsonb('ip_allowlist').$type<string[]>().default([]).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    status: objectStorageAccessKeyStatus('status').default('active').notNull(),
+    createdBy: varchar('created_by', { length: 255 }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('object_storage_access_keys_status_idx').on(table.status),
+    index('object_storage_access_keys_tenant_idx').on(table.tenantId),
+  ],
+);
+
+export const objectStorageActivity = pgTable(
+  'object_storage_activity',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventType: varchar('event_type', { length: 80 }).notNull(),
+    tenantId: varchar('tenant_id', { length: 120 }),
+    bucket: varchar('bucket', { length: 120 }),
+    objectKey: text('object_key'),
+    actor: varchar('actor', { length: 255 }),
+    actorKeyPrefix: varchar('actor_key_prefix', { length: 40 }),
+    sourceIp: varchar('source_ip', { length: 64 }),
+    status: varchar('status', { length: 40 }).default('ok').notNull(),
+    details: jsonb('details').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('object_storage_activity_event_idx').on(table.eventType),
+    index('object_storage_activity_tenant_idx').on(table.tenantId),
+    index('object_storage_activity_created_idx').on(table.createdAt),
+  ],
+);

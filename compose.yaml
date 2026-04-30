@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     depends_on:
       - web
-      - wa
+      - baileys-gateway
       - pgadmin
       - open-webui
       - searxng
@@ -27,8 +27,11 @@ services:
       - /data/getouch/caddy/data:/data
       - /data/getouch/caddy/config:/config
     networks:
-      - edge
-      - coolify
+      edge:
+        aliases:
+          - baileys-gateway
+          - wa
+      coolify:
 
   web:
     build:
@@ -60,6 +63,8 @@ services:
       context: ./services/wa
       dockerfile: Dockerfile
     container_name: getouch-wa
+    profiles:
+      - legacy-wa
     restart: unless-stopped
     depends_on:
       postgres:
@@ -100,6 +105,60 @@ services:
       retries: 5
     networks:
       - edge
+
+  baileys-gateway:
+    build:
+      context: ./services/wa
+      dockerfile: Dockerfile
+    container_name: baileys-gateway
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${BAILEYS_GATEWAY_PORT:-3001}
+      WA_GATEWAY_MODE: baileys
+      WA_SERVICE_NAME: baileys-gateway
+      WA_API_KEY: ${WA_API_KEY}
+      WA_ADMIN_KEY: ${WA_ADMIN_KEY:-}
+      WAPI_SECRET: ${WAPI_SECRET:-}
+      WAPI_WEBHOOK_URL: ${WAPI_WEBHOOK_URL:-https://wapi.getouch.co/api/wa/events}
+      WA_AUTH_DIR: /app/data/auth
+      SESSIONS_DIR: ${BAILEYS_SESSIONS_DIR:-/app/data/sessions}
+      DEFAULT_SESSION_ID: ${BAILEYS_DEFAULT_SESSION_ID:-default}
+      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS:-0}
+      AUTO_START_DEFAULT_SESSION: ${BAILEYS_AUTO_START_DEFAULT_SESSION:-false}
+      AUTO_START_SESSIONS: ${BAILEYS_AUTO_START_SESSIONS:-true}
+      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://dify-nginx}
+      DIFY_APP_API_KEY: ${DIFY_APP_API_KEY:-}
+      WA_DIFY_AUTO_REPLY_ENABLED: ${WA_DIFY_AUTO_REPLY_ENABLED:-false}
+      WA_ACTIVE_RESPONDER: ${WA_ACTIVE_RESPONDER:-true}
+      WA_DEPLOYMENT_LABEL: ${WA_DEPLOYMENT_LABEL:-getouch.co}
+      WA_DIFY_APP_NAME: ${WA_DIFY_APP_NAME:-Serapod Receptionist Bot}
+      WA_ASSISTANT_MODEL_HINT: ${WA_ASSISTANT_MODEL_HINT:-llama3.1:8b}
+      AI_TRIGGER_NAME: ${AI_TRIGGER_NAME:-Sera}
+      AI_SESSION_TIMEOUT_MINUTES: ${AI_SESSION_TIMEOUT_MINUTES:-30}
+      AI_GROUP_REPLY_CONTEXT_MINUTES: ${AI_GROUP_REPLY_CONTEXT_MINUTES:-10}
+      AI_GROUP_PARTICIPANT_WINDOW_MINUTES: ${AI_GROUP_PARTICIPANT_WINDOW_MINUTES:-5}
+      BAILEYS_DB_NAME: ${BAILEYS_DB_NAME:-baileys}
+      BAILEYS_DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-baileys}
+      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-baileys}
+      LOG_LEVEL: ${WA_LOG_LEVEL:-info}
+      BUILD_ID: ${BUILD_ID:-dev}
+    volumes:
+      - /data/getouch/baileys-gateway:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BAILEYS_GATEWAY_PORT:-3001}/healthz | grep -q '\"status\":\"ok\"' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      edge:
+        aliases:
+          - baileys-gateway
+      coolify:
+        aliases:
+          - wa
 
   postgres:
     image: postgres:16-alpine
@@ -142,6 +201,79 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
+    networks:
+      - edge
+
+  voice-fusionpbx:
+    build:
+      context: ./services/voice-fusionpbx
+    container_name: voice-fusionpbx
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VOICE_DB_HOST: postgres
+      VOICE_DB_PORT: 5432
+      VOICE_DB_NAME: ${VOICE_DB_NAME:-voice}
+      VOICE_DB_USER: ${APP_DB_USER:-getouch}
+      VOICE_DB_PASSWORD: ${APP_DB_PASSWORD}
+      FUSIONPBX_DOMAIN: ${FUSIONPBX_DOMAIN:-pbx.getouch.co}
+      FUSIONPBX_EVENT_SOCKET_HOST: voice-freeswitch
+      FUSIONPBX_EVENT_SOCKET_PORT: 8021
+      FUSIONPBX_EVENT_SOCKET_PASSWORD: ${FUSIONPBX_EVENT_SOCKET_PASSWORD}
+      FUSIONPBX_ADMIN_USERNAME: ${FUSIONPBX_ADMIN_USERNAME:-admin}
+      FUSIONPBX_ADMIN_PASSWORD: ${FUSIONPBX_ADMIN_PASSWORD}
+      FUSIONPBX_XML_CDR_USERNAME: ${FUSIONPBX_XML_CDR_USERNAME:-xmlcdr}
+      FUSIONPBX_XML_CDR_PASSWORD: ${FUSIONPBX_XML_CDR_PASSWORD}
+      FUSIONPBX_RTP_START_PORT: ${FUSIONPBX_RTP_START_PORT:-16384}
+      FUSIONPBX_RTP_END_PORT: ${FUSIONPBX_RTP_END_PORT:-16415}
+      FUSIONPBX_EXTERNAL_SIP_IP: ${FUSIONPBX_EXTERNAL_SIP_IP:-}
+      FUSIONPBX_EXTERNAL_RTP_IP: ${FUSIONPBX_EXTERNAL_RTP_IP:-}
+    volumes:
+      - /data/getouch/voice/fusionpbx/config:/etc/fusionpbx
+      - /data/getouch/voice/freeswitch/conf:/etc/freeswitch
+      - /data/getouch/voice/freeswitch/data:/var/lib/freeswitch
+      - /data/getouch/voice/freeswitch/scripts:/usr/share/freeswitch/scripts
+      - /data/getouch/voice/freeswitch/sounds:/usr/share/freeswitch/sounds
+      - /data/getouch/voice/fusionpbx/cache:/var/cache/fusionpbx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - edge
+
+  voice-freeswitch:
+    build:
+      context: ./services/voice-freeswitch
+    container_name: voice-freeswitch
+    restart: unless-stopped
+    depends_on:
+      voice-fusionpbx:
+        condition: service_healthy
+    environment:
+      SOUND_RATES: ${VOICE_SOUND_RATES:-8000:16000}
+      SOUND_TYPES: ${VOICE_SOUND_TYPES:-en-us-callie}
+      FUSIONPBX_EVENT_SOCKET_PASSWORD: ${FUSIONPBX_EVENT_SOCKET_PASSWORD}
+    ports:
+      - "5060:5060/udp"
+      - "5080:5080/udp"
+      - "${FUSIONPBX_RTP_START_PORT:-16384}-${FUSIONPBX_RTP_END_PORT:-16415}:${FUSIONPBX_RTP_START_PORT:-16384}-${FUSIONPBX_RTP_END_PORT:-16415}/udp"
+    volumes:
+      - /data/getouch/voice/fusionpbx/config:/etc/fusionpbx
+      - /data/getouch/voice/freeswitch/conf:/etc/freeswitch
+      - /data/getouch/voice/freeswitch/data:/var/lib/freeswitch
+      - /data/getouch/voice/freeswitch/scripts:/usr/share/freeswitch/scripts
+      - /data/getouch/voice/freeswitch/sounds:/usr/share/freeswitch/sounds
+    healthcheck:
+      test: ["CMD-SHELL", "fs_cli -p \"$${FUSIONPBX_EVENT_SOCKET_PASSWORD}\" -x 'status' | grep -qi 'UP' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
     networks:
       - edge
 

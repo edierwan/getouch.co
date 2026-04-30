@@ -3,13 +3,10 @@ import { spawn } from 'node:child_process';
 import { sendWhatsAppText } from '@/lib/wa';
 
 const DIAGNOSTIC_TARGET_HOST = process.env.SHUTDOWN_DIAGNOSTIC_TARGET_HOST
-  || process.env.SCHEDULED_RESTART_TARGET_HOST
   || '100.84.14.93';
 const DIAGNOSTIC_TARGET_LABEL = process.env.SHUTDOWN_DIAGNOSTIC_TARGET_LABEL
-  || process.env.SCHEDULED_RESTART_TARGET_LABEL
   || 'Primary VPS';
 const DIAGNOSTIC_SSH_TARGET = process.env.SHUTDOWN_DIAGNOSTIC_SSH_TARGET
-  || process.env.SCHEDULED_RESTART_SSH_TARGET
   || `deploy@${DIAGNOSTIC_TARGET_HOST}`;
 const ALERT_TARGET_PHONE = process.env.SHUTDOWN_ALERT_PHONE || process.env.ADMIN_ALERT_WHATSAPP_TO || '';
 
