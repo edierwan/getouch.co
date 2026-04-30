@@ -134,6 +134,13 @@ function sanitizeLogLine(line: string) {
     .replace(/event_socket_password=\S+/gi, 'event_socket_password=[redacted]');
 }
 
+function isIgnorableVoiceLogLine(line: string) {
+  const trimmed = line.trim();
+  return trimmed === 'System has not been booted with systemd as init system (PID 1). Can\'t operate.'
+    || trimmed === 'Failed to connect to bus: Host is down'
+    || /^Created symlink \/etc\/systemd\/system\/.+\.service/.test(trimmed);
+}
+
 function summarizeContainer(
   state: { found: boolean; status: string; health: string | null },
   label: string,
@@ -622,8 +629,8 @@ export async function getVoiceDashboardStatus(): Promise<VoiceDashboardStatus> {
       extensionCount: remote.database.extensionCount,
       trunkCount: remote.database.trunkCount,
       logs: {
-        web: remote.logs.web.map(sanitizeLogLine),
-        freeswitch: remote.logs.freeswitch.map(sanitizeLogLine),
+        web: remote.logs.web.filter((line) => !isIgnorableVoiceLogLine(line)).map(sanitizeLogLine),
+        freeswitch: remote.logs.freeswitch.filter((line) => !isIgnorableVoiceLogLine(line)).map(sanitizeLogLine),
       },
     },
     tenantMapping: {

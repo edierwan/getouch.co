@@ -780,9 +780,6 @@ export function VllmServiceEndpointConsole() {
         ? 'Backend Down'
         : 'Degraded';
 
-  const publicEndpointLabel = vllmPlannedNotDeployed ? 'Disabled / planned' : data.serviceInfo.publicEndpoint;
-  const internalBackendLabel = vllmPlannedNotDeployed ? 'Not available until deployed' : data.serviceInfo.internalBackend;
-
   const cUrlExample = `curl -X POST https://vllm.getouch.co/v1/chat/completions \\
   -H "Authorization: Bearer <GETOUCH_VLLM_API_KEY>" \\
   -H "Content-Type: application/json" \\
@@ -819,18 +816,6 @@ export function VllmServiceEndpointConsole() {
           </div>
         ) : null}
 
-        {!data.gateway.backend.ready && (maintenanceBlockReason || backendBlocker || data.gateway.backend.message) ? (
-          <div className="portal-warning-box">
-            <div className="portal-warning-title">{maintenanceBlockReason ? 'Maintenance block' : 'Backend currently blocked'}</div>
-            <ul className="portal-warning-list">
-              {maintenanceBlockReason ? <li>{maintenanceBlockReason}</li> : null}
-              {data.gateway.backend.message ? <li>{data.gateway.backend.message}</li> : null}
-              {backendBlocker && backendBlocker !== data.gateway.backend.message && backendBlocker !== maintenanceBlockReason ? <li>{backendBlocker}</li> : null}
-              {vllmPlannedNotDeployed ? <li>{currentProviderNote}</li> : null}
-            </ul>
-          </div>
-        ) : null}
-
         <section className="portal-panel portal-panel-fill">
           <div className="portal-panel-head portal-panel-head-inline">
             <div>
@@ -840,25 +825,12 @@ export function VllmServiceEndpointConsole() {
             <div className="portal-action-row">
               <span className={statusClass(headerStatus === 'Active' ? 'healthy' : 'warning')}>{headerStatus}</span>
               <a href="#api-docs" className="portal-action-link">API Docs</a>
-              {!vllmPlannedNotDeployed ? <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button> : null}
+              <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button>
             </div>
           </div>
         </section>
 
         <SummaryGrid cards={summaryCards} />
-
-        {vllmPlannedNotDeployed ? (
-          <section className="portal-panel portal-panel-fill">
-            <div className="portal-warning-box">
-              <div className="portal-warning-title">vLLM deployment state</div>
-              <ul className="portal-warning-list">
-                <li>vLLM remains planned and is not deployed on this host right now.</li>
-                <li>{currentProviderNote}</li>
-                <li>GPU, uptime, request, and success metrics stay N/A until a real backend is deployed.</li>
-              </ul>
-            </div>
-          </section>
-        ) : null}
 
         <div className="portal-vllm-grid">
           <section className="portal-panel portal-panel-fill">
@@ -869,8 +841,8 @@ export function VllmServiceEndpointConsole() {
               </div>
             </div>
             <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Public Endpoint</span><span className="portal-info-table-value">{vllmPlannedNotDeployed ? publicEndpointLabel : <span className="portal-vllm-inline-copy">{publicEndpointLabel}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.publicEndpoint, 'Public endpoint')}>Copy</button></span>}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Internal Backend</span><span className="portal-info-table-value">{vllmPlannedNotDeployed ? internalBackendLabel : <span className="portal-vllm-inline-copy">{internalBackendLabel}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.internalBackend, 'Internal backend')}>Copy</button></span>}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Public Endpoint</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.publicEndpoint}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.publicEndpoint, 'Public endpoint')}>Copy</button></span></span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Internal Backend</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.internalBackend}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.internalBackend, 'Internal backend')}>Copy</button></span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Model (Internal)</span><span className="portal-info-table-value">{data.serviceInfo.modelInternal}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Model Alias (Public)</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.modelAlias}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.modelAlias, 'Model alias')}>Copy</button></span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Gateway Version</span><span className="portal-info-table-value">{data.serviceInfo.gatewayVersion || 'Unknown'}</span></div>
@@ -884,35 +856,26 @@ export function VllmServiceEndpointConsole() {
             <div className="portal-panel-head">
               <div>
                 <h3 className="portal-panel-title">Resource Usage (Backend)</h3>
-                <p className="portal-page-sub">Real GPU and host memory metrics from the AI runtime probe. These stay intentionally unavailable while vLLM is not deployed.</p>
+                <p className="portal-page-sub">Real GPU and host memory metrics from the AI runtime probe.</p>
               </div>
             </div>
-            {vllmPlannedNotDeployed ? (
-              <div className="portal-info-table">
-                <div className="portal-info-table-row"><span className="portal-info-table-label">GPU Memory</span><span className="portal-info-table-value">N/A</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">GPU Utilization</span><span className="portal-info-table-value">N/A</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">RAM Usage</span><span className="portal-info-table-value">N/A</span></div>
-                <div className="portal-info-table-row"><span className="portal-info-table-label">Current runtime</span><span className="portal-info-table-value portal-ai-runtime-wrap">{currentProviderNote}</span></div>
+            <div className="portal-vllm-meter-grid">
+              <div className="portal-vllm-meter-card">
+                <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuMemoryPercent)}><span>{resourceUsage.gpuMemoryPercent === null ? '—' : `${resourceUsage.gpuMemoryPercent}%`}</span></div>
+                <div className="portal-vllm-meter-title">GPU Memory</div>
+                <div className="portal-vllm-meter-sub">{resourceUsage.gpuMemoryLabel}</div>
               </div>
-            ) : (
-              <div className="portal-vllm-meter-grid">
-                <div className="portal-vllm-meter-card">
-                  <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuMemoryPercent)}><span>{resourceUsage.gpuMemoryPercent === null ? '—' : `${resourceUsage.gpuMemoryPercent}%`}</span></div>
-                  <div className="portal-vllm-meter-title">GPU Memory</div>
-                  <div className="portal-vllm-meter-sub">{resourceUsage.gpuMemoryLabel}</div>
-                </div>
-                <div className="portal-vllm-meter-card">
-                  <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuUtilPercent)}><span>{resourceUsage.gpuUtilPercent === null ? '—' : `${resourceUsage.gpuUtilPercent}%`}</span></div>
-                  <div className="portal-vllm-meter-title">GPU Utilization</div>
-                  <div className="portal-vllm-meter-sub">{resourceUsage.gpuUtilLabel}</div>
-                </div>
-                <div className="portal-vllm-meter-card">
-                  <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.ramPercent)}><span>{resourceUsage.ramPercent === null ? '—' : `${resourceUsage.ramPercent}%`}</span></div>
-                  <div className="portal-vllm-meter-title">RAM Usage</div>
-                  <div className="portal-vllm-meter-sub">{resourceUsage.ramLabel}</div>
-                </div>
+              <div className="portal-vllm-meter-card">
+                <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuUtilPercent)}><span>{resourceUsage.gpuUtilPercent === null ? '—' : `${resourceUsage.gpuUtilPercent}%`}</span></div>
+                <div className="portal-vllm-meter-title">GPU Utilization</div>
+                <div className="portal-vllm-meter-sub">{resourceUsage.gpuUtilLabel}</div>
               </div>
-            )}
+              <div className="portal-vllm-meter-card">
+                <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.ramPercent)}><span>{resourceUsage.ramPercent === null ? '—' : `${resourceUsage.ramPercent}%`}</span></div>
+                <div className="portal-vllm-meter-title">RAM Usage</div>
+                <div className="portal-vllm-meter-sub">{resourceUsage.ramLabel}</div>
+              </div>
+            </div>
             <p className="portal-page-sub">Last checked {formatDateTime(data.checkedAt)}. If the backend is not running, these values may be unavailable.</p>
           </section>
         </div>
@@ -924,7 +887,7 @@ export function VllmServiceEndpointConsole() {
                 <h3 className="portal-panel-title">API Access</h3>
                 <p className="portal-page-sub">Central API key inventory for AI scopes. Full key material is never shown here.</p>
               </div>
-              {!vllmPlannedNotDeployed ? <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button> : null}
+              <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button>
             </div>
             {data.apiAccess.centralWiringPending ? (
               <div className="portal-warning-box" style={{ marginBottom: '1rem' }}>
@@ -1032,7 +995,6 @@ export function VllmServiceEndpointConsole() {
               <div className="portal-info-table-row"><span className="portal-info-table-label">Open WebUI URL</span><span className="portal-info-table-value">{data.openWebUi.url}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Expected Tab</span><span className="portal-info-table-value">{data.openWebUi.expectedTab}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Expected Model</span><span className="portal-info-table-value">{data.openWebUi.expectedModel}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Current Provider Reality</span><span className="portal-info-table-value portal-ai-runtime-wrap">{currentProviderNote}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Provider Base URL</span><span className="portal-info-table-value">{data.openWebUi.providerBaseUrl}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Status</span><span className="portal-info-table-value"><span className={statusClass(toneForOpenWebUi(data.openWebUi.status))}>{data.openWebUi.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Configured Base URLs</span><span className="portal-info-table-value">{data.openWebUi.providerBaseUrls.length ? data.openWebUi.providerBaseUrls.join(', ') : 'No OpenAI-compatible providers configured'}</span></div>

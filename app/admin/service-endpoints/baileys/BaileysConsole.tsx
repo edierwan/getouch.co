@@ -477,7 +477,13 @@ function OverviewTab({
     <div className="evo-overview">
       {/* Top metric cards (matches reference: Status / Tenants / Active Sessions / Messages 24h / Onboarding Modes / Uptime) */}
       <div className="evo-stat-grid">
-        <StatCard label="STATUS" value={onlineLabel} sub={config.configured ? 'Runtime reachable' : 'Not configured'} icon="◐" tone={onlineTone} />
+        <StatCard
+          label="STATUS"
+          value={onlineLabel}
+          sub={!config.configured ? 'Not configured' : data.runtimeOk ? 'Runtime reachable' : 'Runtime unreachable'}
+          icon="◐"
+          tone={onlineTone}
+        />
         <StatCard label="TENANTS" value={fmtNumber(stats.tenants)} sub={stats.tenants === 0 ? 'No tenants yet' : `${stats.tenants} active`} icon="◉" />
         <StatCard label="ACTIVE SESSIONS" value={fmtNumber(stats.connected)} sub={stats.total > 0 ? `${stats.total} total` : 'No sessions yet'} icon="⌬" tone={stats.connected > 0 ? 'good' : undefined} />
         <StatCard label="MESSAGES (24H)" value={fmtNumber(stats.messages24h)} sub={stats.messages24h === 0 ? 'No traffic' : 'Last 24 hours'} icon="✉" tone="amber" />

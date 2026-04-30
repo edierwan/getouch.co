@@ -242,7 +242,7 @@ if [ "$admin_exists" = "0" ]; then
 fi
 
 php /var/www/fusionpbx/core/upgrade/upgrade.php --permissions >/dev/null || true
-php /var/www/fusionpbx/core/upgrade/upgrade.php --services >/dev/null || true
+php /var/www/fusionpbx/core/upgrade/upgrade.php --services >/dev/null 2>&1 || true
 
 php-fpm8.2 -D
 exec nginx -g 'daemon off;'
