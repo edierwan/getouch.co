@@ -14,13 +14,14 @@ function getSessionCookieDomain() {
 function getPublicOrigin(request: NextRequest) {
   const forwardedHost = request.headers.get('x-forwarded-host');
   const forwardedProto = request.headers.get('x-forwarded-proto');
+  const proto = forwardedProto || (process.env.NODE_ENV === 'production' ? 'https' : request.nextUrl.protocol.replace(/:$/, '') || 'http');
   if (forwardedHost) {
-    return `${forwardedProto || 'https'}://${forwardedHost}`;
+    return `${proto}://${forwardedHost}`;
   }
 
   const host = request.headers.get('host');
   if (host && host !== '0.0.0.0:3000' && host !== '0.0.0.0') {
-    return `${request.nextUrl.protocol.replace(/:$/, '') || 'https'}://${host}`;
+    return `${proto}://${host}`;
   }
 
   return process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
