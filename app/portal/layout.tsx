@@ -1,6 +1,5 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { logout } from '@/app/auth/actions';
 
 export default async function PortalLayout({
   children,
@@ -27,7 +26,7 @@ export default async function PortalLayout({
             <a href="/portal" className="portal-nav-link">Services</a>
             <a href="/portal/profile" className="portal-nav-link">Profile</a>
             <span className="portal-user">{session.name}</span>
-            <form action={logout}>
+            <form action="/api/auth/logout" method="post">
               <button type="submit" className="portal-logout">Logout</button>
             </form>
           </div>

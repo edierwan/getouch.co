@@ -2,16 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
 const getPortalAdminUrl = () => process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+const getMcpPublicBaseUrl = () => process.env.MCP_PUBLIC_BASE_URL || 'https://mcp.getouch.co';
+const getRequestHost = (request: NextRequest) => {
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = forwardedHost || request.headers.get('host') || '';
+  return host.split(':')[0].toLowerCase();
+};
 const getPortalAdminHost = () => {
   const adminUrl = new URL(getPortalAdminUrl());
   return adminUrl.host;
 };
+const getMcpPublicHost = () => {
+  const mcpUrl = new URL(getMcpPublicBaseUrl());
+  return mcpUrl.host;
+};
 const getPortalRootUrl = (request: NextRequest) => new URL('/', `https://${getPortalAdminHost()}`);
 const isPortalHost = (request: NextRequest) => {
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  const host = forwardedHost || request.headers.get('host') || '';
-  return host.split(':')[0].toLowerCase() === getPortalAdminHost().toLowerCase();
+  return getRequestHost(request) === getPortalAdminHost().toLowerCase();
 };
+const isMcpHost = (request: NextRequest) => getRequestHost(request) === getMcpPublicHost().toLowerCase();
 const getPortalInternalPath = (pathname: string) => {
   if (pathname === '/' || pathname === '') {
     return '/admin';
@@ -40,6 +49,16 @@ const getSecret = () => {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const portalHost = isPortalHost(request);
+  const mcpHost = isMcpHost(request);
+
+  if (mcpHost) {
+    if (pathname.startsWith('/api/mcp')) {
+      return NextResponse.next();
+    }
+
+    return NextResponse.rewrite(new URL('/mcp-site', request.url));
+  }
+
   // Public diagnostic endpoint — must work without auth so operators can
   // verify which build is actually live (commit SHA, nav labels, etc).
   const isPublicDiagnostic = pathname === '/api/build-info';

@@ -417,12 +417,12 @@ export function AiServicesConsole() {
       },
       {
         name: 'MCP',
-        description: 'Remote MCP endpoint for tooling and workflow exploration.',
+        description: 'Public developer page and bearer-authenticated Streamable HTTP endpoint.',
         type: 'PROTOCOL',
         status: 'ONLINE',
         tone: 'healthy' as const,
         href: 'https://mcp.getouch.co',
-        detail: 'No change to MCP routing or access.',
+        detail: 'Public root page plus `/mcp` bearer endpoint with central API key validation.',
       },
       {
         name: 'Open WebUI',

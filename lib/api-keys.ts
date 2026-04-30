@@ -308,6 +308,15 @@ export interface GatewayService {
 export function getGatewayServices(): GatewayService[] {
   return [
     {
+      id: 'mcp',
+      name: 'MCP Endpoint',
+      domain: 'mcp.getouch.co',
+      region: 'ap-southeast-1',
+      status: 'active',
+      validation: 'central',
+      description: 'Bearer-authenticated Streamable HTTP MCP endpoint.',
+    },
+    {
       id: 'vllm',
       name: 'vLLM API',
       domain: 'vllm.getouch.co',
@@ -542,6 +551,7 @@ export async function listAuditForKey(id: string, limit = 50) {
 /* ─── Scope catalog (UI uses this) ──────────────────────── */
 export const SCOPE_CATALOG: Record<string, string[]> = {
   ai: ['ai:chat', 'ai:embed', 'ai:models', 'ai:admin'],
+  mcp: ['mcp:connect', 'mcp:tools:list', 'mcp:tools:call', 'mcp:resources:read', 'mcp:admin'],
   model: [
     'model:getouch-qwen3-14b',
     'model:getouch-qwen3-30b',
@@ -555,7 +565,7 @@ export const SCOPE_CATALOG: Record<string, string[]> = {
   internal: ['internal:read', 'internal:write', 'internal:admin'],
 };
 
-export const SERVICE_CATALOG = ['ai', 'whatsapp', 'voice', 'webhooks', 'internal'] as const;
+export const SERVICE_CATALOG = ['ai', 'mcp', 'whatsapp', 'voice', 'webhooks', 'internal'] as const;
 
 // silence "unused" until we use `and` for filter combos
 void and;

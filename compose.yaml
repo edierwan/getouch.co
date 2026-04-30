@@ -607,36 +607,6 @@ services:
       - edge
 
   # ────────────────────────────────────────────────────────
-  # MCP Gateway — minimal remote MCP endpoint for exploration
-  # Exposes an isolated filesystem sandbox over Streamable HTTP.
-  # ────────────────────────────────────────────────────────
-  mcp-gateway:
-    image: node:22-alpine
-    container_name: mcp-gateway
-    restart: unless-stopped
-    command:
-      - sh
-      - -lc
-      - >-
-        npx -y supergateway
-        --stdio "npx -y @modelcontextprotocol/server-filesystem /workspace"
-        --outputTransport streamableHttp
-        --streamableHttpPath /mcp
-        --port 8000
-        --healthEndpoint /healthz
-    volumes:
-      - /data/getouch/mcp/workspace:/workspace
-      - /data/getouch/mcp/npm-cache:/root/.npm
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/healthz | grep -q ok || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    networks:
-      - edge
-
-  # ────────────────────────────────────────────────────────
   # SeaweedFS (S3-compatible storage)
   # Master, Volume, Filer and S3 gateway
   # Single-node setup (suitable for development / small deployments)

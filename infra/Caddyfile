@@ -180,15 +180,21 @@ http://wapi-dev.getouch.co {
 
 http://mcp.getouch.co {
   import common_headers
-  import admin_auth
 
-  @mcp_endpoint path /mcp /mcp/* /healthz
+  @mcp_endpoint path /mcp /mcp/
   handle @mcp_endpoint {
-    reverse_proxy mcp-gateway:8000
+    rewrite * /api/mcp
+    reverse_proxy getouch-web:3000
+  }
+
+  @mcp_health path /healthz
+  handle @mcp_health {
+    rewrite * /api/mcp/healthz
+    reverse_proxy getouch-web:3000
   }
 
   handle {
-    respond "Getouch MCP endpoint. Connect with Streamable HTTP at /mcp." 200
+    reverse_proxy getouch-web:3000
   }
 }
 

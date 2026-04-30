@@ -1,6 +1,5 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { logout } from '@/app/auth/actions';
 import { headers } from 'next/headers';
 import SidebarNav from './SidebarNav';
 
@@ -34,7 +33,7 @@ export default async function AdminLayout({
 
         <div className="portal-sidebar-footer">
           <span className="portal-user-name">{session.name}</span>
-          <form action={logout}>
+          <form action="/api/auth/logout" method="post">
             <button type="submit" className="portal-logout-btn">Logout</button>
           </form>
         </div>
@@ -47,7 +46,7 @@ export default async function AdminLayout({
           </div>
           <div className="portal-header-right">
             <span className="portal-badge">PRODUCTION</span>
-            <form action={logout}>
+            <form action="/api/auth/logout" method="post">
               <button type="submit" className="portal-header-logout">Logout</button>
             </form>
           </div>

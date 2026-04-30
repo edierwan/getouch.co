@@ -95,6 +95,7 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'SERVICE ENDPOINTS',
     accentRgb: '78, 206, 199',
     items: [
+      { label: 'MCP Endpoint', href: '/admin/service-endpoints/mcp', icon: '⌬' },
       { label: 'vLLM AI Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
       { label: 'Evolution Gateway', href: '/admin/service-endpoints/evolution', icon: '◈' },
       { label: 'Baileys Gateway', href: '/admin/service-endpoints/baileys', icon: '◌' },
@@ -633,7 +634,7 @@ export const AI_ROWS: ResourceRow[] = [
   },
   {
     name: 'MCP',
-    description: 'Remote MCP endpoint for tooling and workflow exploration.',
+    description: 'Public developer page and bearer-authenticated Streamable HTTP endpoint.',
     type: 'PROTOCOL',
     status: 'ONLINE',
     tone: 'healthy',

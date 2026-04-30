@@ -64,7 +64,7 @@ export async function GET() {
       gateways,
       secretInventory: getSecretInventory(),
       scopeCatalog: SCOPE_CATALOG,
-      services: ['ai', 'whatsapp', 'voice', 'webhooks', 'internal'],
+      services: ['ai', 'mcp', 'whatsapp', 'voice', 'webhooks', 'internal'],
       hashing: getApiKeyPepperStatus(),
     });
   } catch (err) {

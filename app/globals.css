@@ -979,6 +979,623 @@ a.service-card:hover { border-color: var(--accent); transform: translateY(-1px);
   .portal-app-shell .portal-hero-stats { width: 100%; justify-content: space-around; }
 }
 
+/* ─── MCP Public Page ─── */
+
+.mcp-site {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(3, 128, 109, 0.18), transparent 26%),
+    radial-gradient(circle at 85% 10%, rgba(233, 146, 32, 0.18), transparent 24%),
+    linear-gradient(180deg, #f6efe2 0%, #f3eee7 36%, #f7f6f2 100%);
+  color: #10231f;
+  font-family: 'Avenir Next', 'Trebuchet MS', sans-serif;
+}
+
+.mcp-site a {
+  color: inherit;
+}
+
+.mcp-site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(16px);
+  background: rgba(247, 246, 242, 0.8);
+  border-bottom: 1px solid rgba(16, 35, 31, 0.08);
+}
+
+.mcp-site-nav-inner {
+  width: min(1180px, calc(100% - 3rem));
+  margin: 0 auto;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mcp-site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.mcp-site-brand-mark {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #103c34;
+  color: #f8f4eb;
+}
+
+.mcp-site-links {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  font-size: 0.9rem;
+}
+
+.mcp-site-links a {
+  color: rgba(16, 35, 31, 0.76);
+}
+
+.mcp-site-console-link {
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  background: #103c34;
+  color: #f8f4eb !important;
+}
+
+.mcp-site-main {
+  width: min(1180px, calc(100% - 3rem));
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.mcp-site-hero {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 2rem;
+  align-items: stretch;
+}
+
+.mcp-site-kicker,
+.mcp-site-section-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(16, 60, 52, 0.08);
+  color: #135449;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mcp-site-hero-copy {
+  padding: 2rem 0;
+}
+
+.mcp-site-hero-copy h1 {
+  margin-top: 1rem;
+  font-family: 'Iowan Old Style', 'Georgia', serif;
+  font-size: clamp(3rem, 7vw, 5.1rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  max-width: 10ch;
+}
+
+.mcp-site-hero-copy p {
+  margin-top: 1.25rem;
+  max-width: 56ch;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: rgba(16, 35, 31, 0.78);
+}
+
+.mcp-site-hero-actions,
+.mcp-site-support-actions {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1.75rem;
+}
+
+.mcp-site-primary-action,
+.mcp-site-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.75rem 1.2rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.mcp-site-primary-action {
+  background: #103c34;
+  color: #f8f4eb;
+}
+
+.mcp-site-secondary-action {
+  border: 1px solid rgba(16, 35, 31, 0.16);
+  color: #17342e;
+}
+
+.mcp-site-endpoint-card,
+.mcp-site-capability-card,
+.mcp-site-code-card,
+.mcp-site-health-card,
+.mcp-site-compatibility-card {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(16, 35, 31, 0.08);
+  box-shadow: 0 20px 60px rgba(16, 35, 31, 0.08);
+}
+
+.mcp-site-endpoint-card {
+  border-radius: 28px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mcp-site-endpoint-head,
+.mcp-site-health-head,
+.mcp-site-section-head,
+.mcp-site-section-head-compact,
+.mcp-site-compatibility-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mcp-site-chip,
+.mcp-site-health-badge,
+.mcp-site-compatibility-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mcp-site-chip-healthy,
+.mcp-site-health-badge-healthy,
+.mcp-site-compatibility-status {
+  background: rgba(10, 142, 101, 0.12);
+  color: #0a6f55;
+}
+
+.mcp-site-chip-warning,
+.mcp-site-health-badge-warning {
+  background: rgba(206, 132, 23, 0.12);
+  color: #9f5d08;
+}
+
+.mcp-site-health-badge-degraded {
+  background: rgba(172, 42, 42, 0.12);
+  color: #a32727;
+}
+
+.mcp-site-small {
+  font-size: 0.82rem;
+  color: rgba(16, 35, 31, 0.58);
+}
+
+.mcp-site-endpoint-url {
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 18px;
+  background: #f4ede1;
+  overflow-wrap: anywhere;
+}
+
+.mcp-site-metric-grid,
+.mcp-site-capability-grid,
+.mcp-site-health-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.mcp-site-metric-card {
+  padding: 0.85rem 1rem;
+  border-radius: 18px;
+  background: rgba(16, 60, 52, 0.05);
+}
+
+.mcp-site-metric-card span,
+.mcp-site-compatibility-card p,
+.mcp-site-health-card p,
+.mcp-site-capability-card p,
+.mcp-site-section-head p,
+.mcp-site-support p {
+  color: rgba(16, 35, 31, 0.74);
+}
+
+.mcp-site-metric-card strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.05rem;
+}
+
+.mcp-site-section {
+  margin-top: 4rem;
+}
+
+.mcp-site-section-head h2,
+.mcp-site-support h2 {
+  margin-top: 0.8rem;
+  font-family: 'Iowan Old Style', 'Georgia', serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.03em;
+}
+
+.mcp-site-capability-card,
+.mcp-site-health-card,
+.mcp-site-compatibility-card,
+.mcp-site-code-card {
+  border-radius: 24px;
+  padding: 1.25rem;
+}
+
+.mcp-site-capability-card h3,
+.mcp-site-health-card h3,
+.mcp-site-compatibility-card h3 {
+  font-size: 1rem;
+}
+
+.mcp-site-section-split {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.mcp-site-steps {
+  margin-top: 1.2rem;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  color: rgba(16, 35, 31, 0.78);
+}
+
+.mcp-site-callout {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: #103c34;
+  color: #f8f4eb;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.mcp-site-code-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.mcp-site-code-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(16, 35, 31, 0.54);
+}
+
+.mcp-site-code-card pre {
+  margin-top: 0.85rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: #121d1a;
+  color: #ecf3ef;
+  overflow-x: auto;
+  font-size: 0.83rem;
+  line-height: 1.6;
+}
+
+.mcp-site-compatibility-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.mcp-site-support {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 28px;
+  background: rgba(16, 60, 52, 0.08);
+}
+
+/* ─── MCP Console ─── */
+
+.mcp-console-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mcp-console-notice {
+  margin-top: 1rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: 14px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.16);
+}
+
+.mcp-console-tabs {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+
+.mcp-console-tab {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  padding: 0.55rem 0.95rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mcp-console-tab-active {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text);
+  border-color: rgba(99, 102, 241, 0.28);
+}
+
+.mcp-console-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mcp-console-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.mcp-console-list-item {
+  padding: 0.95rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+}
+
+.mcp-console-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.45rem;
+}
+
+.mcp-console-list-item p,
+.mcp-console-subtext {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.mcp-console-code,
+.mcp-console-inline-code {
+  margin-top: 0.85rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.26);
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.mcp-console-inline-code {
+  margin-top: 0.55rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.mcp-console-table-wrap {
+  overflow-x: auto;
+}
+
+.mcp-console-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mcp-console-table th,
+.mcp-console-table td {
+  padding: 0.8rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.mcp-console-table th {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mcp-console-chip-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.mcp-console-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.mcp-console-chip-active {
+  border-color: rgba(99, 102, 241, 0.26);
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.mcp-console-secret-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  background: rgba(34, 197, 94, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mcp-console-secret-card code {
+  overflow-wrap: anywhere;
+}
+
+.mcp-console-tenant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.mcp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(8, 10, 14, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.mcp-modal-card {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border-radius: 22px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 1.25rem;
+}
+
+.mcp-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mcp-modal-close,
+.mcp-modal-secondary,
+.mcp-modal-primary {
+  min-height: 40px;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mcp-modal-close,
+.mcp-modal-secondary {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.mcp-modal-primary {
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.16);
+  color: var(--text);
+}
+
+.mcp-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  margin-top: 1rem;
+}
+
+.mcp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mcp-field span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.mcp-field input,
+.mcp-field select,
+.mcp-field textarea {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  padding: 0.75rem 0.9rem;
+  font: inherit;
+}
+
+.mcp-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+@media (max-width: 960px) {
+  .mcp-site-hero,
+  .mcp-site-section-split,
+  .mcp-console-grid,
+  .mcp-console-tenant-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .mcp-site-links {
+    display: none;
+  }
+
+  .mcp-site-main,
+  .mcp-site-nav-inner {
+    width: min(1180px, calc(100% - 1.5rem));
+  }
+
+  .mcp-site-metric-grid,
+  .mcp-site-capability-grid,
+  .mcp-site-health-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ─── Admin Portal Shell ─── */
 .portal-shell {
   display: flex; min-height: 100vh; background: var(--bg);
