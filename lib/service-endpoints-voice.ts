@@ -138,6 +138,8 @@ function isIgnorableVoiceLogLine(line: string) {
   const trimmed = line.trim();
   return trimmed === 'System has not been booted with systemd as init system (PID 1). Can\'t operate.'
     || trimmed === 'Failed to connect to bus: Host is down'
+    || trimmed === "chown: cannot access '/languages': No such file or directory"
+    || trimmed === "chown: cannot access '/voicemail': No such file or directory"
     || /^Created symlink \/etc\/systemd\/system\/.+\.service/.test(trimmed);
 }
 

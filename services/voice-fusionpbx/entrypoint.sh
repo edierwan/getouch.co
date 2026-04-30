@@ -26,6 +26,8 @@ if [ -z "$VOICE_DB_PASSWORD" ] || [ -z "$FUSIONPBX_EVENT_SOCKET_PASSWORD" ] || [
 fi
 
 mkdir -p \
+  /languages \
+  /voicemail \
   /etc/fusionpbx \
   /etc/freeswitch \
   /run/php \
@@ -199,7 +201,7 @@ else:
 vars_path.write_text(vars_text)
 PY
 
-chown -R www-data:www-data /etc/fusionpbx /etc/freeswitch /usr/share/freeswitch/scripts /var/cache/fusionpbx /var/lib/freeswitch /var/run/fusionpbx /var/www/fusionpbx
+chown -R www-data:www-data /languages /voicemail /etc/fusionpbx /etc/freeswitch /usr/share/freeswitch/scripts /var/cache/fusionpbx /var/lib/freeswitch /var/run/fusionpbx /var/www/fusionpbx
 
 export PGPASSWORD="$VOICE_DB_PASSWORD"
 until psql -h "$VOICE_DB_HOST" -p "$VOICE_DB_PORT" -U "$VOICE_DB_USER" -d "$VOICE_DB_NAME" -c 'select 1' >/dev/null 2>&1; do
