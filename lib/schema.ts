@@ -155,7 +155,6 @@ export const chatwootTenantMappings = pgTable(
   ],
 );
 
-/* ─── Scheduled server restart control plane ─── */
 /* ─── Centralized API Key Manager ─────────────────────────────
  * Stored as hash only. Plaintext is shown ONCE at creation and
  * never persisted. Services + scopes are kept as jsonb arrays
