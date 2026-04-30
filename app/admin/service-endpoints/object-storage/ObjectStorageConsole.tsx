@@ -541,10 +541,11 @@ function OverviewTab({
         ? 'Fresh install'
         : 'All systems operational'
       : master.error ?? 'Backend unreachable';
+  const activity24hValue = fmtNumber(metrics.activity24hCount);
   const requestCardSubtitle =
     metrics.activity24hCount > 0
       ? `${fmtNumber(metrics.activity24hCount)} admin events logged`
-      : 'No request telemetry wired yet';
+      : 'No admin events logged in the last 24 hours';
 
   return (
     <div className="os-overview">
@@ -574,7 +575,7 @@ function OverviewTab({
           sub={metrics.totalCapacityBytes ? `of ${fmtBytes(metrics.totalCapacityBytes)}` : 'Capacity unavailable'}
           icon="▥"
         />
-        <StatCard label="REQUESTS (24h)" value="Unavailable" sub={requestCardSubtitle} icon="↗" />
+        <StatCard label="REQUESTS (24h)" value={activity24hValue} sub={requestCardSubtitle} icon="↗" />
         <StatCard
           label="API HEALTH"
           value={master.reachable ? 'Healthy' : 'Down'}
@@ -664,7 +665,11 @@ function OverviewTab({
           </div>
           <div className="os-metric-grid">
             <MiniMetricCard label="Bucket Objects" value={fmtNumber(metrics.totalObjects)} hint="Across indexed buckets" />
-            <MiniMetricCard label="API Traffic (24h)" value="Unavailable" hint="Request telemetry not wired" />
+            <MiniMetricCard
+              label="API Traffic (24h)"
+              value={activity24hValue}
+              hint={metrics.activity24hCount > 0 ? 'Object storage admin events in the last 24 hours' : 'No admin events in the last 24 hours'}
+            />
             <MiniMetricCard label="Active Nodes" value={fmtNumber(master.active)} hint="SeaweedFS master status" />
             <MiniMetricCard label="Free Volumes" value={fmtNumber(master.free)} hint="Remaining volume slots" />
           </div>
