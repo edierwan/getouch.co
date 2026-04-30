@@ -479,47 +479,47 @@ if rc == 0 and webui_env:
     status['openWebUi']['vllmProviderConfigured'] = VLLM_ENDPOINT in base_urls
     status['assistant']['defaultModelId'] = env_map.get('DEFAULT_MODELS', '').strip() or None
 
-  rc, pipelines_env, _ = run("docker inspect open-webui-pipelines --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null")
-  pipeline_api_key = None
-  if rc == 0 and pipelines_env:
-    pipeline_env_map = {}
-    for line in pipelines_env.splitlines():
-      if '=' not in line:
-        continue
-      key, value = line.split('=', 1)
-      pipeline_env_map[key] = value
-    pipeline_api_key = pipeline_env_map.get('PIPELINES_API_KEY', '').strip() or None
+    rc, pipelines_env, _ = run("docker inspect open-webui-pipelines --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null")
+    pipeline_api_key = None
+    if rc == 0 and pipelines_env:
+      pipeline_env_map = {}
+      for line in pipelines_env.splitlines():
+        if '=' not in line:
+          continue
+        key, value = line.split('=', 1)
+        pipeline_env_map[key] = value
+      pipeline_api_key = pipeline_env_map.get('PIPELINES_API_KEY', '').strip() or None
 
-  if status['assistant']['containerStatus'] == 'running' and pipeline_api_key:
-    pipelines_script = (
-      "import urllib.request;"
-      f"req=urllib.request.Request('http://127.0.0.1:9099/v1/models', headers={{'Authorization': 'Bearer {pipeline_api_key}'}});"
-      "resp=urllib.request.urlopen(req, timeout=20);"
-      "print(resp.read().decode())"
-    )
-    rc, assistant_models_out, assistant_models_err = run(
-      f"docker exec open-webui-pipelines python3 -c {shlex.quote(pipelines_script)}"
-    )
-    status['assistant']['reachable'] = rc == 0
-    if rc == 0 and assistant_models_out:
-      try:
-        assistant_payload = json.loads(assistant_models_out)
-        models = assistant_payload.get('data') if isinstance(assistant_payload, dict) else []
-        if isinstance(models, list):
-          status['assistant']['models'] = [
-            {
-              'id': str(entry.get('id', '')).strip(),
-              'displayName': str(entry.get('name', '')).strip() or str(entry.get('id', '')).strip(),
-            }
-            for entry in models
-            if isinstance(entry, dict) and str(entry.get('id', '')).strip()
-          ]
-      except Exception:
-        status['assistant']['error'] = 'Assistant models returned malformed JSON.'
-    elif rc != 0:
-      status['assistant']['error'] = assistant_models_err or 'Assistant pipeline API not reachable'
-  elif status['assistant']['containerStatus'] == 'running':
-    status['assistant']['error'] = 'Assistant pipeline API key not configured'
+    if status['assistant']['containerStatus'] == 'running' and pipeline_api_key:
+      pipelines_script = (
+        "import urllib.request;"
+        f"req=urllib.request.Request('http://127.0.0.1:9099/v1/models', headers={{'Authorization': 'Bearer {pipeline_api_key}'}});"
+        "resp=urllib.request.urlopen(req, timeout=20);"
+        "print(resp.read().decode())"
+      )
+      rc, assistant_models_out, assistant_models_err = run(
+        f"docker exec open-webui-pipelines python3 -c {shlex.quote(pipelines_script)}"
+      )
+      status['assistant']['reachable'] = rc == 0
+      if rc == 0 and assistant_models_out:
+        try:
+          assistant_payload = json.loads(assistant_models_out)
+          models = assistant_payload.get('data') if isinstance(assistant_payload, dict) else []
+          if isinstance(models, list):
+            status['assistant']['models'] = [
+              {
+                'id': str(entry.get('id', '')).strip(),
+                'displayName': str(entry.get('name', '')).strip() or str(entry.get('id', '')).strip(),
+              }
+              for entry in models
+              if isinstance(entry, dict) and str(entry.get('id', '')).strip()
+            ]
+        except Exception:
+          status['assistant']['error'] = 'Assistant models returned malformed JSON.'
+      elif rc != 0:
+        status['assistant']['error'] = assistant_models_err or 'Assistant pipeline API not reachable'
+    elif status['assistant']['containerStatus'] == 'running':
+      status['assistant']['error'] = 'Assistant pipeline API key not configured'
 
 status['openWebUi']['vllmProviderUsable'] = status['openWebUi']['vllmProviderConfigured'] and status['vllm']['containerStatus'] == 'running'
 
