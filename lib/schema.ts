@@ -16,7 +16,6 @@ import {
 /* ─── Enums ─── */
 export const userRole = pgEnum('user_role', ['admin', 'user', 'pending']);
 export const difySetupStatus = pgEnum('dify_setup_status', ['active', 'inactive', 'draft']);
-export const scheduledRestartType = pgEnum('scheduled_restart_type', ['one-time', 'daily', 'weekly']);
 export const objectStorageTenantStatus = pgEnum('object_storage_tenant_status', [
   'active', 'suspended', 'pending',
 ]);
@@ -157,55 +156,6 @@ export const chatwootTenantMappings = pgTable(
 );
 
 /* ─── Scheduled server restart control plane ─── */
-export const scheduledRestarts = pgTable(
-  'scheduled_restarts',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    targetHost: varchar('target_host', { length: 160 }).notNull(),
-    targetLabel: varchar('target_label', { length: 160 }).notNull(),
-    enabled: boolean('enabled').default(false).notNull(),
-    scheduleType: scheduledRestartType('schedule_type').default('daily').notNull(),
-    timezone: varchar('timezone', { length: 80 }).notNull(),
-    oneTimeAt: timestamp('one_time_at', { withTimezone: true }),
-    dailyTime: varchar('daily_time', { length: 5 }),
-    weeklyDay: integer('weekly_day'),
-    weeklyTime: varchar('weekly_time', { length: 5 }),
-    note: text('note'),
-    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
-    lastAppliedAt: timestamp('last_applied_at', { withTimezone: true }),
-    lastAppliedBy: varchar('last_applied_by', { length: 255 }),
-    lastRemoteStatus: varchar('last_remote_status', { length: 40 }),
-    lastRemoteMessage: text('last_remote_message'),
-    lastRemoteSyncAt: timestamp('last_remote_sync_at', { withTimezone: true }),
-    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex('scheduled_restarts_target_host_idx').on(table.targetHost),
-  ],
-);
-
-export const scheduledRestartLogs = pgTable(
-  'scheduled_restart_logs',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    restartId: uuid('restart_id').references(() => scheduledRestarts.id, { onDelete: 'cascade' }),
-    targetHost: varchar('target_host', { length: 160 }).notNull(),
-    eventType: varchar('event_type', { length: 60 }).notNull(),
-    status: varchar('status', { length: 40 }).notNull(),
-    summary: varchar('summary', { length: 255 }).notNull(),
-    details: jsonb('details').$type<Record<string, unknown>>().default({}).notNull(),
-    actorEmail: varchar('actor_email', { length: 255 }),
-    source: varchar('source', { length: 40 }).default('portal').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index('scheduled_restart_logs_target_host_idx').on(table.targetHost),
-    index('scheduled_restart_logs_created_at_idx').on(table.createdAt),
-  ],
-);
-
 /* ─── Centralized API Key Manager ─────────────────────────────
  * Stored as hash only. Plaintext is shown ONCE at creation and
  * never persisted. Services + scopes are kept as jsonb arrays

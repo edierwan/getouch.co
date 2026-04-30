@@ -127,7 +127,6 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '246, 199, 108',
     items: [
       { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◔', external: true },
-      { label: 'Scheduled Restart', href: '/admin/scheduled-restart', icon: '↻' },
     ],
   },
   {

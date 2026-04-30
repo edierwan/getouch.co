@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process';
 
 const INFRA_SSH_TARGET = process.env.INFRA_METRICS_SSH_TARGET
   || process.env.SHUTDOWN_DIAGNOSTIC_SSH_TARGET
-  || process.env.SCHEDULED_RESTART_SSH_TARGET
   || 'deploy@100.84.14.93';
 
 const SSH_KEY_PATH = process.env.INFRA_METRICS_SSH_KEY_PATH || '/home/nextjs/.ssh/id_ed25519';

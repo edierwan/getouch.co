@@ -8,7 +8,6 @@ const CHATWOOT_EXPECTED_DATABASE = 'chatwoot';
 const DEFAULT_SSH_DIR = process.env.HOME ? `${process.env.HOME}/.ssh` : '/home/nextjs/.ssh';
 const CHATWOOT_SSH_TARGET = process.env.AI_RUNTIME_SSH_TARGET
   || process.env.INFRA_METRICS_SSH_TARGET
-  || process.env.SCHEDULED_RESTART_SSH_TARGET
   || 'deploy@100.84.14.93';
 const CHATWOOT_SSH_KEY_PATH = process.env.AI_RUNTIME_SSH_KEY_PATH
   || process.env.INFRA_METRICS_SSH_KEY_PATH

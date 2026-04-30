@@ -140,7 +140,7 @@ class Pipeline:
 
     def __init__(self):
         self.type = "manifold"
-        self.name = "Getouch Orchestrator"
+        self.name = "assistant: "
         self.pipelines = [
             {"id": "assistant", "name": "Getouch Smart Assistant"}
         ]

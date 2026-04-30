@@ -195,6 +195,7 @@ function normalizeDashboardPayload(payload: unknown): VllmDashboardStatus | null
   const runtimeOllama = asRecord(runtime?.ollama);
   const runtimeVllm = asRecord(runtime?.vllm);
   const runtimeOpenWebUi = asRecord(runtime?.openWebUi);
+  const runtimeAssistant = asRecord(runtime?.assistant);
   const runtimeDocker = asRecord(runtime?.docker);
   const runtimeHost = asRecord(runtime?.host);
   const runtimeActions = asRecord(runtime?.actions);
@@ -323,6 +324,24 @@ function normalizeDashboardPayload(payload: unknown): VllmDashboardStatus | null
         vllmProviderConfigured: asBoolean(runtimeOpenWebUi?.vllmProviderConfigured, false),
         vllmProviderUsable: asBoolean(runtimeOpenWebUi?.vllmProviderUsable, false),
         error: asNullableString(runtimeOpenWebUi?.error),
+      },
+      assistant: {
+        containerStatus: runtimeAssistant?.containerStatus === 'running' || runtimeAssistant?.containerStatus === 'stopped' || runtimeAssistant?.containerStatus === 'missing' || runtimeAssistant?.containerStatus === 'unknown'
+          ? runtimeAssistant.containerStatus
+          : 'unknown',
+        reachable: asBoolean(runtimeAssistant?.reachable, false),
+        defaultModelId: asNullableString(runtimeAssistant?.defaultModelId),
+        models: Array.isArray(runtimeAssistant?.models)
+          ? runtimeAssistant.models
+            .map((entry) => asRecord(entry))
+            .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+            .map((entry) => ({
+              id: asString(entry.id, ''),
+              displayName: asString(entry.displayName, asString(entry.id, 'Unknown assistant model')),
+            }))
+            .filter((entry) => entry.id.length > 0)
+          : [],
+        error: asNullableString(runtimeAssistant?.error),
       },
       docker: {
         network: asNullableString(runtimeDocker?.network),
@@ -535,6 +554,19 @@ export function VllmServiceEndpointConsole() {
       : null;
   }, [data]);
 
+  const vllmPlannedNotDeployed = useMemo(() => {
+    if (!data) return true;
+    return data.runtime.vllm.containerStatus === 'missing' || !data.runtime.vllm.configuredInCompose;
+  }, [data]);
+
+  const currentProviderNote = useMemo(() => {
+    if (!data) return 'Open WebUI models are currently not served by vLLM.';
+    const usesAssistantPipelines = data.openWebUi.providerBaseUrls.some((url) => url.includes('pipelines'));
+    return usesAssistantPipelines
+      ? 'Open WebUI models are currently served by Ollama and assistant/pipeline providers, not vLLM.'
+      : 'Open WebUI models are currently served by Ollama, not vLLM.';
+  }, [data]);
+
   const summaryCards = useMemo<SummaryCard[]>(() => {
     if (!data) return [];
 
@@ -548,20 +580,22 @@ export function VllmServiceEndpointConsole() {
     return [
       {
         label: 'STATUS',
-        value: data.gateway.backend.ready ? 'Healthy' : data.gateway.enabled ? 'Degraded' : 'Not Configured',
-        detail: `/ready: ${data.gateway.backend.ready ? '200' : '503'}`,
-        tone: toneForGateway(data.gateway.status),
+        value: vllmPlannedNotDeployed ? 'Planned' : data.gateway.backend.ready ? 'Healthy' : data.gateway.enabled ? 'Degraded' : 'Not Configured',
+        detail: vllmPlannedNotDeployed ? 'Awaiting approved deployment' : `/ready: ${data.gateway.backend.ready ? '200' : '503'}`,
+        tone: vllmPlannedNotDeployed ? 'warning' : toneForGateway(data.gateway.status),
         icon: '◉',
       },
       {
         label: 'BACKEND',
-        value: data.runtime.vllm.status === 'Running'
+        value: vllmPlannedNotDeployed
+          ? 'Not Deployed'
+          : data.runtime.vllm.status === 'Running'
           ? 'Running'
           : data.runtime.vllm.containerStatus === 'missing'
             ? 'Not Deployed'
             : data.runtime.vllm.status,
-        detail: maintenanceBlockReason || backendBlocker || data.runtime.docker.vllmContainer,
-        tone: toneForBackend(data.runtime.vllm.status),
+        detail: vllmPlannedNotDeployed ? currentProviderNote : maintenanceBlockReason || backendBlocker || data.runtime.docker.vllmContainer,
+        tone: vllmPlannedNotDeployed ? 'warning' : toneForBackend(data.runtime.vllm.status),
         icon: '▣',
       },
       {
@@ -573,27 +607,27 @@ export function VllmServiceEndpointConsole() {
       },
       {
         label: 'UPTIME',
-        value: formatDurationSince(uptimeStartedAt),
-        detail: uptimeLabel,
-        tone: uptimeStartedAt ? 'healthy' : 'warning',
+        value: vllmPlannedNotDeployed ? 'N/A' : formatDurationSince(uptimeStartedAt),
+        detail: vllmPlannedNotDeployed ? 'Backend not deployed' : uptimeLabel,
+        tone: vllmPlannedNotDeployed ? 'warning' : uptimeStartedAt ? 'healthy' : 'warning',
         icon: '⏱',
       },
       {
         label: 'TOTAL REQUESTS',
-        value: String(data.apiAccess.requestsLast7Days),
-        detail: 'Last 7 days',
-        tone: data.apiAccess.requestsLast7Days > 0 ? 'active' : 'warning',
+        value: vllmPlannedNotDeployed ? 'N/A' : String(data.apiAccess.requestsLast7Days),
+        detail: vllmPlannedNotDeployed ? 'Backend not deployed' : 'Last 7 days',
+        tone: vllmPlannedNotDeployed ? 'warning' : data.apiAccess.requestsLast7Days > 0 ? 'active' : 'warning',
         icon: '↺',
       },
       {
         label: 'SUCCESS RATE',
-        value: data.apiAccess.successRate7d === null ? 'No data' : `${data.apiAccess.successRate7d}%`,
-        detail: 'Last 7 days',
-        tone: data.apiAccess.successRate7d !== null && data.apiAccess.successRate7d >= 99 ? 'healthy' : 'warning',
+        value: vllmPlannedNotDeployed ? 'N/A' : data.apiAccess.successRate7d === null ? 'No data' : `${data.apiAccess.successRate7d}%`,
+        detail: vllmPlannedNotDeployed ? 'Backend not deployed' : 'Last 7 days',
+        tone: vllmPlannedNotDeployed ? 'warning' : data.apiAccess.successRate7d !== null && data.apiAccess.successRate7d >= 99 ? 'healthy' : 'warning',
         icon: '◔',
       },
     ];
-  }, [backendBlocker, data, maintenanceBlockReason]);
+  }, [backendBlocker, currentProviderNote, data, maintenanceBlockReason, vllmPlannedNotDeployed]);
 
   async function copyText(value: string, label: string) {
     try {
@@ -736,13 +770,18 @@ export function VllmServiceEndpointConsole() {
     return <section className="portal-panel">Unable to load vLLM service endpoint dashboard.</section>;
   }
 
-  const headerStatus = !data.gateway.enabled || data.gateway.auth.keyCount === 0
-    ? 'Not Configured'
+  const headerStatus = vllmPlannedNotDeployed
+    ? 'Planned'
+    : !data.gateway.enabled || data.gateway.auth.keyCount === 0
+      ? 'Not Configured'
     : data.gateway.backend.ready
       ? 'Active'
       : data.runtime.vllm.containerStatus === 'missing'
         ? 'Backend Down'
         : 'Degraded';
+
+  const publicEndpointLabel = vllmPlannedNotDeployed ? 'Disabled / planned' : data.serviceInfo.publicEndpoint;
+  const internalBackendLabel = vllmPlannedNotDeployed ? 'Not available until deployed' : data.serviceInfo.internalBackend;
 
   const cUrlExample = `curl -X POST https://vllm.getouch.co/v1/chat/completions \\
   -H "Authorization: Bearer <GETOUCH_VLLM_API_KEY>" \\
@@ -787,6 +826,7 @@ export function VllmServiceEndpointConsole() {
               {maintenanceBlockReason ? <li>{maintenanceBlockReason}</li> : null}
               {data.gateway.backend.message ? <li>{data.gateway.backend.message}</li> : null}
               {backendBlocker && backendBlocker !== data.gateway.backend.message && backendBlocker !== maintenanceBlockReason ? <li>{backendBlocker}</li> : null}
+              {vllmPlannedNotDeployed ? <li>{currentProviderNote}</li> : null}
             </ul>
           </div>
         ) : null}
@@ -800,12 +840,25 @@ export function VllmServiceEndpointConsole() {
             <div className="portal-action-row">
               <span className={statusClass(headerStatus === 'Active' ? 'healthy' : 'warning')}>{headerStatus}</span>
               <a href="#api-docs" className="portal-action-link">API Docs</a>
-              <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button>
+              {!vllmPlannedNotDeployed ? <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button> : null}
             </div>
           </div>
         </section>
 
         <SummaryGrid cards={summaryCards} />
+
+        {vllmPlannedNotDeployed ? (
+          <section className="portal-panel portal-panel-fill">
+            <div className="portal-warning-box">
+              <div className="portal-warning-title">vLLM deployment state</div>
+              <ul className="portal-warning-list">
+                <li>vLLM remains planned and is not deployed on this host right now.</li>
+                <li>{currentProviderNote}</li>
+                <li>GPU, uptime, request, and success metrics stay N/A until a real backend is deployed.</li>
+              </ul>
+            </div>
+          </section>
+        ) : null}
 
         <div className="portal-vllm-grid">
           <section className="portal-panel portal-panel-fill">
@@ -816,8 +869,8 @@ export function VllmServiceEndpointConsole() {
               </div>
             </div>
             <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Public Endpoint</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.publicEndpoint}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.publicEndpoint, 'Public endpoint')}>Copy</button></span></span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Internal Backend</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.internalBackend}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.internalBackend, 'Internal backend')}>Copy</button></span></span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Public Endpoint</span><span className="portal-info-table-value">{vllmPlannedNotDeployed ? publicEndpointLabel : <span className="portal-vllm-inline-copy">{publicEndpointLabel}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.publicEndpoint, 'Public endpoint')}>Copy</button></span>}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Internal Backend</span><span className="portal-info-table-value">{vllmPlannedNotDeployed ? internalBackendLabel : <span className="portal-vllm-inline-copy">{internalBackendLabel}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.internalBackend, 'Internal backend')}>Copy</button></span>}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Model (Internal)</span><span className="portal-info-table-value">{data.serviceInfo.modelInternal}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Model Alias (Public)</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.modelAlias}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.modelAlias, 'Model alias')}>Copy</button></span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Gateway Version</span><span className="portal-info-table-value">{data.serviceInfo.gatewayVersion || 'Unknown'}</span></div>
@@ -831,26 +884,35 @@ export function VllmServiceEndpointConsole() {
             <div className="portal-panel-head">
               <div>
                 <h3 className="portal-panel-title">Resource Usage (Backend)</h3>
-                <p className="portal-page-sub">Real GPU and host memory metrics from the AI runtime probe.</p>
+                <p className="portal-page-sub">Real GPU and host memory metrics from the AI runtime probe. These stay intentionally unavailable while vLLM is not deployed.</p>
               </div>
             </div>
-            <div className="portal-vllm-meter-grid">
-              <div className="portal-vllm-meter-card">
-                <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuMemoryPercent)}><span>{resourceUsage.gpuMemoryPercent === null ? '—' : `${resourceUsage.gpuMemoryPercent}%`}</span></div>
-                <div className="portal-vllm-meter-title">GPU Memory</div>
-                <div className="portal-vllm-meter-sub">{resourceUsage.gpuMemoryLabel}</div>
+            {vllmPlannedNotDeployed ? (
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">GPU Memory</span><span className="portal-info-table-value">N/A</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">GPU Utilization</span><span className="portal-info-table-value">N/A</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">RAM Usage</span><span className="portal-info-table-value">N/A</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Current runtime</span><span className="portal-info-table-value portal-ai-runtime-wrap">{currentProviderNote}</span></div>
               </div>
-              <div className="portal-vllm-meter-card">
-                <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuUtilPercent)}><span>{resourceUsage.gpuUtilPercent === null ? '—' : `${resourceUsage.gpuUtilPercent}%`}</span></div>
-                <div className="portal-vllm-meter-title">GPU Utilization</div>
-                <div className="portal-vllm-meter-sub">{resourceUsage.gpuUtilLabel}</div>
+            ) : (
+              <div className="portal-vllm-meter-grid">
+                <div className="portal-vllm-meter-card">
+                  <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuMemoryPercent)}><span>{resourceUsage.gpuMemoryPercent === null ? '—' : `${resourceUsage.gpuMemoryPercent}%`}</span></div>
+                  <div className="portal-vllm-meter-title">GPU Memory</div>
+                  <div className="portal-vllm-meter-sub">{resourceUsage.gpuMemoryLabel}</div>
+                </div>
+                <div className="portal-vllm-meter-card">
+                  <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.gpuUtilPercent)}><span>{resourceUsage.gpuUtilPercent === null ? '—' : `${resourceUsage.gpuUtilPercent}%`}</span></div>
+                  <div className="portal-vllm-meter-title">GPU Utilization</div>
+                  <div className="portal-vllm-meter-sub">{resourceUsage.gpuUtilLabel}</div>
+                </div>
+                <div className="portal-vllm-meter-card">
+                  <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.ramPercent)}><span>{resourceUsage.ramPercent === null ? '—' : `${resourceUsage.ramPercent}%`}</span></div>
+                  <div className="portal-vllm-meter-title">RAM Usage</div>
+                  <div className="portal-vllm-meter-sub">{resourceUsage.ramLabel}</div>
+                </div>
               </div>
-              <div className="portal-vllm-meter-card">
-                <div className="portal-vllm-meter-ring" style={meterStyle(resourceUsage.ramPercent)}><span>{resourceUsage.ramPercent === null ? '—' : `${resourceUsage.ramPercent}%`}</span></div>
-                <div className="portal-vllm-meter-title">RAM Usage</div>
-                <div className="portal-vllm-meter-sub">{resourceUsage.ramLabel}</div>
-              </div>
-            </div>
+            )}
             <p className="portal-page-sub">Last checked {formatDateTime(data.checkedAt)}. If the backend is not running, these values may be unavailable.</p>
           </section>
         </div>
@@ -862,7 +924,7 @@ export function VllmServiceEndpointConsole() {
                 <h3 className="portal-panel-title">API Access</h3>
                 <p className="portal-page-sub">Central API key inventory for AI scopes. Full key material is never shown here.</p>
               </div>
-              <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button>
+              {!vllmPlannedNotDeployed ? <button type="button" className="portal-action-link" onClick={() => setCreateOpen(true)}>Add API Key</button> : null}
             </div>
             {data.apiAccess.centralWiringPending ? (
               <div className="portal-warning-box" style={{ marginBottom: '1rem' }}>
@@ -970,6 +1032,7 @@ export function VllmServiceEndpointConsole() {
               <div className="portal-info-table-row"><span className="portal-info-table-label">Open WebUI URL</span><span className="portal-info-table-value">{data.openWebUi.url}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Expected Tab</span><span className="portal-info-table-value">{data.openWebUi.expectedTab}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Expected Model</span><span className="portal-info-table-value">{data.openWebUi.expectedModel}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Current Provider Reality</span><span className="portal-info-table-value portal-ai-runtime-wrap">{currentProviderNote}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Provider Base URL</span><span className="portal-info-table-value">{data.openWebUi.providerBaseUrl}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Status</span><span className="portal-info-table-value"><span className={statusClass(toneForOpenWebUi(data.openWebUi.status))}>{data.openWebUi.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Configured Base URLs</span><span className="portal-info-table-value">{data.openWebUi.providerBaseUrls.length ? data.openWebUi.providerBaseUrls.join(', ') : 'No OpenAI-compatible providers configured'}</span></div>

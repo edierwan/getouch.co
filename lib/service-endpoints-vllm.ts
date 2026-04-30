@@ -134,7 +134,6 @@ const DEFAULT_SSH_DIR = process.env.HOME ? `${process.env.HOME}/.ssh` : '/home/n
 const AI_RUNTIME_SSH_TARGET = process.env.AI_RUNTIME_SSH_TARGET
   || process.env.INFRA_METRICS_SSH_TARGET
   || process.env.SHUTDOWN_DIAGNOSTIC_SSH_TARGET
-  || process.env.SCHEDULED_RESTART_SSH_TARGET
   || 'deploy@100.84.14.93';
 const AI_RUNTIME_SSH_KEY_PATH = process.env.AI_RUNTIME_SSH_KEY_PATH
   || process.env.INFRA_METRICS_SSH_KEY_PATH
@@ -257,6 +256,11 @@ function normalizeRuntimeStatus(runtime: AiRuntimeStatus | null | undefined, err
       ...fallback.openWebUi,
       ...runtime.openWebUi,
       providerBaseUrls: Array.isArray(runtime.openWebUi?.providerBaseUrls) ? runtime.openWebUi.providerBaseUrls : [],
+    },
+    assistant: {
+      ...fallback.assistant,
+      ...runtime.assistant,
+      models: Array.isArray(runtime.assistant?.models) ? runtime.assistant.models : fallback.assistant.models,
     },
     docker: {
       ...fallback.docker,
@@ -667,6 +671,13 @@ function createFallbackRuntimeStatus(errorMessage: string | null): AiRuntimeStat
       ollamaProviderAvailable: false,
       vllmProviderConfigured: false,
       vllmProviderUsable: false,
+      error: errorMessage,
+    },
+    assistant: {
+      containerStatus: 'unknown',
+      reachable: false,
+      defaultModelId: null,
+      models: [],
       error: errorMessage,
     },
     docker: {

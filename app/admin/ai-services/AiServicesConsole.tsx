@@ -58,6 +58,13 @@ type AiRuntimeStatus = {
     vllmProviderUsable: boolean;
     error: string | null;
   };
+  assistant: {
+    containerStatus: 'running' | 'stopped' | 'missing' | 'unknown';
+    reachable: boolean;
+    defaultModelId: string | null;
+    models: Array<{ id: string; displayName: string }>;
+    error: string | null;
+  };
   docker: {
     network: string | null;
     openWebUiContainer: string;
@@ -288,6 +295,11 @@ function labelForBackendType(type: GatewayStatus['backend']['type']) {
   return 'Disabled';
 }
 
+function formatProviderModels(prefix: string, models: string[]) {
+  if (!models.length) return 'None reported';
+  return models.map((model) => `${prefix}:${model}`).join(', ');
+}
+
 function buttonClass(tone: RuntimeAction['tone']) {
   if (tone === 'danger') return 'portal-admin-btn portal-admin-btn-danger';
   if (tone === 'secondary') return 'portal-admin-btn portal-admin-btn-secondary';
@@ -455,12 +467,20 @@ export function AiServicesConsole() {
         name: 'Pipelines',
         description: 'Custom AI automation and orchestration pipelines.',
         type: 'AUTOMATION',
-        status: 'ACTIVE',
-        tone: 'active' as const,
-        detail: 'Pipeline routing stays on the existing Open WebUI path.',
+        status: status.assistant.reachable ? 'ACTIVE' : status.assistant.containerStatus.toUpperCase(),
+        tone: status.assistant.reachable ? 'active' as const : 'warning' as const,
+        detail: status.assistant.models.length
+          ? status.assistant.models.map((model) => model.displayName).join(', ')
+          : status.assistant.error || 'Pipeline routing stays on the existing Open WebUI path.',
       },
     ];
   }, [status, gatewayStatus]);
+
+  const assistantNamingWarning = useMemo(() => {
+    if (!status) return null;
+    const malformed = status.assistant.models.find((model) => /OrchestratorGetouch/i.test(model.displayName));
+    return malformed ? `Assistant display name still needs cleanup: ${malformed.displayName}` : null;
+  }, [status]);
 
   function openModal(key: ActionKey) {
     setPendingAction(ACTIONS[key]);
@@ -561,6 +581,7 @@ export function AiServicesConsole() {
             <li>{status.runtime.warning}</li>
             <li>Use maintenance mode: unload the current Ollama resident model before starting any vLLM trial.</li>
             <li>No public vLLM endpoint or subdomain is added in this phase.</li>
+            {assistantNamingWarning ? <li>{assistantNamingWarning}</li> : null}
           </ul>
         </div>
       ) : null}
@@ -652,6 +673,7 @@ export function AiServicesConsole() {
               <div className="portal-info-table">
                 <div className="portal-info-table-row"><span className="portal-info-table-label">Reachable</span><span className="portal-info-table-value">{status.openWebUi.reachable ? 'Yes' : status.openWebUi.error || 'No'}</span></div>
                 <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama provider</span><span className="portal-info-table-value">{status.openWebUi.ollamaProviderAvailable ? 'Available' : 'Missing'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant pipeline</span><span className="portal-info-table-value">{status.assistant.reachable ? 'Available' : status.assistant.error || status.assistant.containerStatus}</span></div>
                 <div className="portal-info-table-row"><span className="portal-info-table-label">vLLM provider</span><span className="portal-info-table-value">{status.openWebUi.vllmProviderConfigured ? 'Configured' : 'Not configured'}</span></div>
                 <div className="portal-info-table-row"><span className="portal-info-table-label">vLLM usable</span><span className="portal-info-table-value">{status.openWebUi.vllmProviderUsable ? 'Yes' : 'No'}</span></div>
                 <div className="portal-info-table-row"><span className="portal-info-table-label">Provider endpoints</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.openWebUi.providerBaseUrls.length ? status.openWebUi.providerBaseUrls.join(', ') : 'No OpenAI-compatible endpoints configured'}</span></div>
@@ -688,6 +710,22 @@ export function AiServicesConsole() {
           </div>
         </section>
       </div>
+
+      <section className="portal-panel portal-panel-fill">
+        <div className="portal-panel-head">
+          <div>
+            <h3 className="portal-panel-title">Provider Inventory</h3>
+            <p className="portal-page-sub">This separates live model inventory by provider so the admin view does not blur Ollama, assistant pipelines, and planned vLLM aliases.</p>
+          </div>
+        </div>
+        <div className="portal-info-table">
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{formatProviderModels('ollama', status.ollama.installedModels)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.models.length ? status.assistant.models.map((model) => `assistant:${model.displayName}`).join(', ') : status.assistant.error || 'None reported'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant default in Open WebUI</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.defaultModelId ? `assistant:${status.assistant.defaultModelId}` : 'Not set'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Planned vLLM alias</span><span className="portal-info-table-value">vllm:getouch-qwen3-14b {status.vllm.configuredInCompose ? '· configured' : '· planned / not deployed'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Provider routing</span><span className="portal-info-table-value portal-ai-runtime-wrap">Open WebUI currently resolves through Ollama plus assistant/pipeline providers. vLLM remains a future routed backend until deployment is approved.</span></div>
+        </div>
+      </section>
 
       <section id="ai-api-gateway-panel" className="portal-panel portal-panel-fill">
         <div className="portal-panel-head portal-panel-head-inline">
