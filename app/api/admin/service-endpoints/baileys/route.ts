@@ -41,6 +41,14 @@ interface WaOverview {
   databaseName?: string | null;
 }
 
+interface WaHealth {
+  status?: string;
+  service?: string | null;
+  runtimeMode?: string | null;
+  database?: string | null;
+  uptime?: number | null;
+}
+
 interface WaEvent {
   id?: string | number;
   type?: string;
@@ -52,11 +60,9 @@ interface WaEvent {
   createdAt?: string;
 }
 
-function classifyOnline(connected: number, total: number): 'online' | 'degraded' | 'offline' {
-  if (total === 0) return 'offline';
-  if (connected === 0) return 'offline';
-  if (connected < total) return 'degraded';
-  return 'online';
+function classifyOnline(runtimeReachable: boolean, configured: boolean): 'online' | 'offline' {
+  if (!configured) return 'offline';
+  return runtimeReachable ? 'online' : 'offline';
 }
 
 function formatUptime(seconds: number | null | undefined): string {
@@ -75,19 +81,23 @@ export async function GET() {
 
   const configured = isWaConfigured();
 
-  const [dbData, overviewRes, sessionsRes, runtimeEventsRes, keysList] = await Promise.all([
+  const [dbData, overviewRes, sessionsRes, runtimeEventsRes, healthRes, keysList] = await Promise.all([
     getBaileysDbPortalData(),
     waProxy<WaOverview>('/admin/overview'),
     waProxy<WaSessionsList>('/admin/sessions'),
     waProxy<WaEvent[]>('/admin/events', { query: { limit: 25 } }),
+    waProxy<WaHealth>('/healthz', { auth: 'api' }),
     listApiKeys().catch(() => []),
   ]);
 
   const runtimeSessions: WaSession[] = sessionsRes.data?.sessions ?? [];
   const overview = overviewRes.data ?? {};
+  const runtimeHealth = healthRes.data ?? {};
+  const runtimeReachable = healthRes.ok || overviewRes.ok || sessionsRes.ok;
+  const runtimeUptimeSeconds = overview.uptimeSeconds ?? runtimeHealth.uptime ?? null;
   const runtimeMode = 'baileys' as const;
-  const runtimeLabel = overview.serviceName ?? 'baileys-gateway';
-  const runtimeDatabase = overview.databaseName ?? BAILEYS_DB_NAME;
+  const runtimeLabel = runtimeHealth.service ?? overview.serviceName ?? 'baileys-gateway';
+  const runtimeDatabase = runtimeHealth.database ?? overview.databaseName ?? BAILEYS_DB_NAME;
   const runtimeTotals = overview.sessionTotals ?? {
     total: runtimeSessions.length,
     connected: runtimeSessions.filter((s) => s.status === 'connected').length,
@@ -177,7 +187,7 @@ export async function GET() {
   }
   const tenants = Array.from(tenantMap.values());
 
-  const onlineState = configured ? classifyOnline(runtimeTotals.connected, runtimeTotals.total) : 'offline';
+  const onlineState = classifyOnline(runtimeReachable, configured);
 
   const overviewEventSource = dbData.events.length > 0
     ? 'baileys_db'
@@ -208,8 +218,10 @@ export async function GET() {
   const health = [
     {
       label: 'Baileys Runtime',
-      status: configured && overviewRes.ok ? 'healthy' : configured ? 'degraded' : 'not_configured',
-      detail: configured ? `${runtimeLabel} on wa.getouch.co` : 'WA_API_KEY missing',
+      status: configured && runtimeReachable ? 'healthy' : configured ? 'degraded' : 'not_configured',
+      detail: configured
+        ? `${runtimeLabel} on wa.getouch.co${overviewRes.ok ? '' : ' (overview fallback active)'}`
+        : 'WA_API_KEY missing',
     },
     {
       label: 'WebSocket',
@@ -250,14 +262,25 @@ export async function GET() {
       cutoverBlocker: null,
       dbUrlSource: dbData.status.urlSource,
     },
-    runtimeOk: overviewRes.ok,
-    runtimeError: overviewRes.ok ? null : overviewRes.error,
+    diagnostics: {
+      reachable: runtimeReachable,
+      auth: sessionsRes.ok || overviewRes.ok ? 'valid' : (healthRes.ok ? 'unknown' : 'invalid'),
+      runtimeService: runtimeLabel,
+      runtimeDatabase,
+      endpoints: {
+        healthz: { ok: healthRes.ok, status: healthRes.status, error: healthRes.error ?? null },
+        overview: { ok: overviewRes.ok, status: overviewRes.status, error: overviewRes.error ?? null },
+        sessions: { ok: sessionsRes.ok, status: sessionsRes.status, error: sessionsRes.error ?? null },
+      },
+    },
+    runtimeOk: runtimeReachable,
+    runtimeError: runtimeReachable ? null : (healthRes.error ?? sessionsRes.error ?? overviewRes.error ?? null),
     onlineState,
     overviewEventSource,
     stats: {
       ...runtimeTotals,
-      uptime: formatUptime(overview.uptimeSeconds ?? null),
-      uptimeSeconds: overview.uptimeSeconds ?? null,
+      uptime: formatUptime(runtimeUptimeSeconds),
+      uptimeSeconds: runtimeUptimeSeconds,
       tenants: tenants.length,
       messages24h: runtimeTotals.messages24h ?? 0,
       dbMessages24h: dbData.counts.messages24h,
