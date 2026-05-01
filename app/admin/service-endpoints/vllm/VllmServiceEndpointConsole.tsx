@@ -231,7 +231,7 @@ function normalizeDashboardPayload(payload: unknown): VllmDashboardStatus | null
       publicBaseUrl: asString(gateway?.publicBaseUrl, 'https://vllm.getouch.co/v1'),
       publicHealthUrl: asString(gateway?.publicHealthUrl, 'https://vllm.getouch.co/health'),
       publicReadyUrl: asString(gateway?.publicReadyUrl, 'https://vllm.getouch.co/ready'),
-      docsUrl: asString(gateway?.docsUrl, 'https://portal.getouch.co/admin/service-endpoints/vllm#api-docs'),
+      docsUrl: asString(gateway?.docsUrl, 'https://portal.getouch.co/ai-services/vllm#api-docs'),
       status: (gateway?.status === 'Ready' || gateway?.status === 'Active' || gateway?.status === 'Not configured' || gateway?.status === 'Backend unavailable') ? gateway.status : 'Backend unavailable',
       enabled: asBoolean(gateway?.enabled, true),
       backend: {
@@ -259,7 +259,7 @@ function normalizeDashboardPayload(payload: unknown): VllmDashboardStatus | null
       },
       models: Array.isArray(gateway?.models) ? gateway.models as VllmDashboardStatus['gateway']['models'] : [],
       reservedDomains: {
-        litellm: asString(gatewayReservedDomains?.litellm, 'https://llm.getouch.co'),
+        litellm: asString(gatewayReservedDomains?.litellm, 'https://litellm.getouch.co'),
       },
     },
     runtime: {
@@ -1019,7 +1019,7 @@ export function VllmServiceEndpointConsole() {
             <div>This endpoint can be used in Open WebUI External Models.</div>
             <div>This endpoint can be used in Dify, n8n, OpenAI SDK clients, and custom applications.</div>
             <div>Model alias getouch-qwen3-14b maps to Qwen/Qwen3-14B-FP8.</div>
-            <div>llm.getouch.co remains reserved for future LiteLLM and is not used here.</div>
+            <div>litellm.getouch.co is reserved for the future LiteLLM routing layer and is not used by the vLLM gateway.</div>
           </div>
         </section>
       </div>

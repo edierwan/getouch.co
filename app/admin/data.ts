@@ -77,10 +77,10 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'INFRASTRUCTURE',
     accentRgb: '104, 187, 255',
     items: [
-      { label: 'Servers & Nodes', href: '/admin/servers', icon: '▣' },
-      { label: 'Databases', href: '/admin/databases', icon: '▤' },
-      { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
-      { label: 'Backups', href: '/admin/databases#backups', icon: '⟲' },
+      { label: 'Servers & Nodes', href: '/admin/infrastructure/servers', icon: '▣' },
+      { label: 'Databases', href: '/admin/infrastructure/databases', icon: '▤' },
+      { label: 'Object Storage', href: '/admin/infrastructure/object-storage', icon: '▦' },
+      { label: 'Backups', href: '/admin/infrastructure/backups', icon: '⟲' },
     ],
   },
   {
@@ -96,11 +96,11 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'AI SERVICES',
     accentRgb: '78, 206, 199',
     items: [
-      { label: 'vLLM Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
-      { label: 'LiteLLM Gateway', href: '/admin/service-endpoints/litellm', icon: '◎' },
+      { label: 'vLLM Gateway', href: '/admin/ai-services/vllm', icon: '◉' },
+      { label: 'LiteLLM Gateway', href: '/admin/ai-services/litellm', icon: '◎' },
       { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
-      { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
-      { label: 'MCP Endpoint', href: '/admin/service-endpoints/mcp', icon: '⌬' },
+      { label: 'Dify', href: '/admin/ai-services/dify', icon: '◍' },
+      { label: 'MCP Endpoint', href: '/admin/ai-services/mcp', icon: '⌬' },
     ],
   },
   {
@@ -114,25 +114,25 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'COMMUNICATIONS',
     accentRgb: '92, 210, 184',
     items: [
-      { label: 'Evolution Gateway', href: '/admin/service-endpoints/evolution', icon: '◈' },
-      { label: 'Baileys Gateway', href: '/admin/service-endpoints/baileys', icon: '◌' },
-      { label: 'Chatwoot', href: '/admin/service-endpoints/chatwoot', icon: '◌' },
-      { label: 'FusionPBX / Voice', href: '/admin/service-endpoints/voice', icon: '◍' },
+      { label: 'Evolution Gateway', href: '/admin/communications/evolution', icon: '◈' },
+      { label: 'Baileys Gateway', href: '/admin/communications/baileys', icon: '◌' },
+      { label: 'Chatwoot', href: '/admin/communications/chatwoot', icon: '◌' },
+      { label: 'FusionPBX / Voice', href: '/admin/communications/voice', icon: '◍' },
     ],
   },
   {
     label: 'DEVELOPER',
     accentRgb: '184, 156, 255',
     items: [
-      { label: 'API Keys', href: '/admin/api-keys', icon: '⚿' },
-      { label: 'Webhooks', href: '/admin/api-keys#webhooks', icon: '↺' },
-      { label: 'SDK & Docs', href: '/admin/api-keys#docs', icon: '⌥' },
+      { label: 'API Keys', href: '/admin/developer/api-keys', icon: '⚿' },
+      { label: 'Webhooks', href: '/admin/developer/webhooks', icon: '↺' },
+      { label: 'SDK & Docs', href: '/admin/developer/docs', icon: '⌥' },
     ],
   },
   {
     label: 'ACCESS',
     accentRgb: '196, 161, 255',
-    items: [{ label: 'Quick Links', href: '/admin/quick-links', icon: '⊞' }],
+    items: [{ label: 'Quick Links', href: '/admin/access/quick-links', icon: '⊞' }],
   },
 ];
 

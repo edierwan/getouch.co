@@ -129,11 +129,17 @@ export function DatabasesClient({
   initialNotice,
   initialError,
   platform,
+  breadcrumbPage = 'Databases',
+  title = 'Databases & Backups',
+  subtitle = 'Core platform databases, AI observability data stores, and preprod backup controls.',
 }: {
   initialOverview: PreprodBackupOverview | null;
   initialNotice?: string;
   initialError?: string;
   platform: PlatformServicesSnapshot;
+  breadcrumbPage?: string;
+  title?: string;
+  subtitle?: string;
 }) {
   const [overview, setOverview] = useState(initialOverview);
   const [notice, setNotice] = useState(initialNotice || '');
@@ -164,11 +170,8 @@ export function DatabasesClient({
 
   return (
     <div className="portal-body">
-      <Breadcrumb category="Infrastructure" page="Databases" />
-      <PageIntro
-        title="Databases & Backups"
-        subtitle="Core platform databases, AI observability data stores, and preprod backup controls."
-      />
+      <Breadcrumb category="Infrastructure" page={breadcrumbPage} />
+      <PageIntro title={title} subtitle={subtitle} />
 
       <SummaryGrid cards={summaryCards} />
 

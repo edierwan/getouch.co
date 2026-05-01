@@ -735,7 +735,7 @@ export function AiServicesConsole() {
         <div className="portal-panel-head portal-panel-head-inline">
           <div>
             <h3 className="portal-panel-title">AI API Gateway</h3>
-            <p className="portal-page-sub">Public OpenAI-compatible vLLM API foundation served on <code>vllm.getouch.co</code>, with gateway-side API key enforcement, backend abstraction, and model alias routing. <code>llm.getouch.co</code> is reserved for future LiteLLM and is not in use.</p>
+            <p className="portal-page-sub">Public OpenAI-compatible vLLM API foundation served on <code>vllm.getouch.co</code>, with gateway-side API key enforcement, backend abstraction, and model alias routing. <code>litellm.getouch.co</code> is the canonical LiteLLM gateway endpoint when that routing layer is deployed.</p>
           </div>
           <div className="portal-action-row">
             <button type="button" className="portal-action-link" onClick={() => startGatewayRefreshing(() => refreshGatewayStatus())}>
@@ -761,7 +761,7 @@ export function AiServicesConsole() {
           <div className="portal-ai-runtime-card">
             <div className="portal-ai-status-label">Public API Base URL</div>
             <div className="portal-ai-runtime-value portal-ai-runtime-value-small">{gatewayStatus.publicBaseUrl}</div>
-            <div className="portal-ai-note">All `/v1/*` calls require `Authorization: Bearer &lt;GETOUCH_VLLM_API_KEY&gt;`. `llm.getouch.co` reserved for future LiteLLM.</div>
+            <div className="portal-ai-note">All `/v1/*` calls require `Authorization: Bearer &lt;GETOUCH_VLLM_API_KEY&gt;`. `litellm.getouch.co` is reserved for the future LiteLLM routing layer.</div>
           </div>
           <div className="portal-ai-runtime-card">
             <div className="portal-ai-status-label">Gateway Status</div>

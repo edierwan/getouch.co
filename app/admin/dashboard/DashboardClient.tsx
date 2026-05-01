@@ -138,7 +138,7 @@ export default function DashboardClient({
       statusLabel: 'PLANNED',
       icon: '◉',
       accent: 'rgba(140,103,255,0.18)',
-      href: '/admin/service-endpoints/vllm',
+      href: '/admin/ai-services/vllm',
       publicSurface: true,
       rows: [
         { label: 'Public', value: 'vllm.getouch.co/v1' },
@@ -152,10 +152,11 @@ export default function DashboardClient({
       statusLabel: liteLlmStatus.label,
       icon: '◎',
       accent: 'rgba(110,166,255,0.16)',
-      href: '/admin/service-endpoints/litellm',
+      href: '/admin/ai-services/litellm',
       publicSurface: true,
       rows: [
         { label: 'Public', value: stripScheme(services.litellm.publicUrl) },
+        { label: 'Database', value: 'litellm' },
         { label: 'Runtime', value: litellmPrimary?.name || 'Not detected' },
       ],
     },
@@ -178,7 +179,7 @@ export default function DashboardClient({
       statusLabel: 'ONLINE',
       icon: '◍',
       accent: 'rgba(110,166,255,0.16)',
-      href: '/admin/service-endpoints/dify',
+      href: '/admin/ai-services/dify',
       publicSurface: true,
       rows: [{ label: 'Console', value: 'dify.getouch.co' }],
     },
@@ -189,7 +190,7 @@ export default function DashboardClient({
       statusLabel: 'ONLINE',
       icon: '⌬',
       accent: 'rgba(78,206,199,0.16)',
-      href: '/admin/service-endpoints/mcp',
+      href: '/admin/ai-services/mcp',
       publicSurface: true,
       rows: [{ label: 'Endpoint', value: 'mcp.getouch.co/mcp' }],
     },
@@ -220,7 +221,7 @@ export default function DashboardClient({
       statusLabel: 'ONLINE',
       icon: '◈',
       accent: 'rgba(46,226,129,0.16)',
-      href: '/admin/service-endpoints/evolution',
+      href: '/admin/communications/evolution',
       publicSurface: true,
       rows: [{ label: 'API', value: 'wa.getouch.co' }],
     },
@@ -231,7 +232,7 @@ export default function DashboardClient({
       statusLabel: 'RUNTIME OK',
       icon: '◌',
       accent: 'rgba(110,166,255,0.16)',
-      href: '/admin/service-endpoints/baileys',
+      href: '/admin/communications/baileys',
       rows: [{ label: 'Sessions', value: 'See console' }],
     },
     {
@@ -241,7 +242,7 @@ export default function DashboardClient({
       statusLabel: 'INSTALLED',
       icon: '◑',
       accent: 'rgba(110,166,255,0.16)',
-      href: '/admin/service-endpoints/chatwoot',
+      href: '/admin/communications/chatwoot',
       publicSurface: true,
       rows: [{ label: 'App', value: 'chatwoot.getouch.co' }],
     },
@@ -252,7 +253,7 @@ export default function DashboardClient({
       statusLabel: 'ONLINE',
       icon: '☎',
       accent: 'rgba(243,179,73,0.16)',
-      href: '/admin/service-endpoints/voice',
+      href: '/admin/communications/voice',
       rows: [{ label: 'Module', value: 'FusionPBX' }],
     },
   ];
@@ -301,7 +302,7 @@ export default function DashboardClient({
       statusLabel: 'HEALTHY',
       icon: '▤',
       accent: 'rgba(110,166,255,0.14)',
-      href: '/admin/databases',
+      href: '/admin/infrastructure/databases',
     },
     {
       name: 'ClickHouse',
@@ -310,7 +311,7 @@ export default function DashboardClient({
       statusLabel: clickhouseStatus.label,
       icon: '▥',
       accent: 'rgba(110,166,255,0.14)',
-      href: '/admin/databases',
+      href: '/admin/infrastructure/databases',
       rows: [
         { label: 'Public URL', value: stripScheme(services.clickhouse.publicUrl) },
         { label: 'Runtime', value: clickhousePrimary?.name || 'Not detected' },
@@ -323,7 +324,7 @@ export default function DashboardClient({
       statusLabel: redisStatus.label,
       icon: '◫',
       accent: 'rgba(46,226,129,0.14)',
-      href: '/admin/databases',
+      href: '/admin/infrastructure/backups',
       rows: [
         { label: 'Primary', value: services.redis.primary?.name || 'Not detected' },
         { label: 'Exposure', value: 'Internal only' },
@@ -336,7 +337,7 @@ export default function DashboardClient({
       statusLabel: 'ACTIVE',
       icon: '◉',
       accent: 'rgba(110,166,255,0.14)',
-      href: '/admin/servers',
+      href: '/admin/infrastructure/servers',
     },
     {
       name: 'Cloudflare Tunnel',
@@ -345,7 +346,7 @@ export default function DashboardClient({
       statusLabel: 'ACTIVE',
       icon: '◇',
       accent: 'rgba(243,179,73,0.14)',
-      href: '/admin/servers',
+      href: '/admin/infrastructure/servers',
     },
     {
       name: 'Mail Services',
@@ -365,7 +366,7 @@ export default function DashboardClient({
       statusLabel: 'ONLINE',
       icon: '▦',
       accent: 'rgba(110,166,255,0.14)',
-      href: '/admin/service-endpoints/object-storage',
+      href: '/admin/infrastructure/object-storage',
     },
     {
       name: 'pgAdmin',
@@ -395,7 +396,7 @@ export default function DashboardClient({
   }
   alerts.push({ title: 'vLLM Gateway not deployed', detail: 'Backend planned, public endpoint reserved.', tone: 'warning' });
   if (liteLlmStatus.tone === 'info') {
-    alerts.push({ title: 'LiteLLM Gateway not installed', detail: 'Model routing layer planned on llm.getouch.co.', tone: 'info' });
+    alerts.push({ title: 'LiteLLM Gateway not installed', detail: 'Model routing layer planned on litellm.getouch.co.', tone: 'info' });
   }
   if (n8nStatus.label === 'INSTALLED') {
     alerts.push({ title: 'n8n installed, metrics pending', detail: 'Workflow counts and execution metrics are not wired yet.', tone: 'info' });
@@ -448,7 +449,7 @@ export default function DashboardClient({
 
       <div className="dash-main-grid">
         <div className="dash-col-main">
-          <Section title="AI Stack Overview" link={{ label: 'View all AI services →', href: '/admin/service-endpoints/litellm' }} accent="rgba(140,103,255,0.4)">
+          <Section title="AI Stack Overview" link={{ label: 'View all AI services →', href: '/admin/ai-services/litellm' }} accent="rgba(140,103,255,0.4)">
             <div className="dash-svc-grid">
               {aiServices.map((card) => <ServiceCard key={card.name} card={card} />)}
             </div>
@@ -460,7 +461,7 @@ export default function DashboardClient({
             </div>
           </Section>
 
-          <Section title="Communications Overview" link={{ label: 'View all communications →', href: '/admin/service-endpoints/evolution' }} accent="rgba(78,206,199,0.4)">
+          <Section title="Communications Overview" link={{ label: 'View all communications →', href: '/admin/communications/evolution' }} accent="rgba(78,206,199,0.4)">
             <div className="dash-svc-grid">
               {commsServices.map((card) => <ServiceCard key={card.name} card={card} />)}
             </div>
@@ -481,11 +482,11 @@ export default function DashboardClient({
               <a href="https://ai.getouch.co" target="_blank" rel="noopener noreferrer" className="dash-action">Open WebUI</a>
               <a href="https://chatwoot.getouch.co" target="_blank" rel="noopener noreferrer" className="dash-action">Open Chatwoot</a>
               <a href={services.n8n.publicUrl || '/admin/automation/n8n'} target={services.n8n.publicUrl ? '_blank' : undefined} rel={services.n8n.publicUrl ? 'noopener noreferrer' : undefined} className="dash-action">Open n8n</a>
-              <a href="/admin/service-endpoints/litellm" className="dash-action">LiteLLM Gateway</a>
-              <a href="/admin/api-keys" className="dash-action">Manage API Keys</a>
-              <a href="/admin/service-endpoints/mcp" className="dash-action">MCP Endpoint</a>
-              <a href="/admin/service-endpoints/baileys" className="dash-action">Baileys Gateway</a>
-              <a href="/admin/quick-links" className="dash-action">Quick Links</a>
+              <a href="/admin/ai-services/litellm" className="dash-action">LiteLLM Gateway</a>
+              <a href="/admin/developer/api-keys" className="dash-action">Manage API Keys</a>
+              <a href="/admin/ai-services/mcp" className="dash-action">MCP Endpoint</a>
+              <a href="/admin/communications/baileys" className="dash-action">Baileys Gateway</a>
+              <a href="/admin/access/quick-links" className="dash-action">Quick Links</a>
             </div>
           </Panel>
 

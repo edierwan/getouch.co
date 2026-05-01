@@ -63,7 +63,7 @@ http://ai.getouch.co {
 }
 
 # Protected vLLM API gateway. Implemented inside portal app at /v1/*, /health, /ready.
-# llm.getouch.co is RESERVED for future LiteLLM and is NOT used here.
+# litellm.getouch.co is RESERVED for the future LiteLLM gateway and is NOT used here.
 http://vllm.getouch.co {
   import common_headers
 

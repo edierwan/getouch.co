@@ -399,7 +399,7 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
                 <div className="servers-action-sub">Monitoring &amp; metrics</div>
               </div>
             </a>
-            <a href="/admin/api-keys" className="servers-action">
+            <a href="/admin/developer/api-keys" className="servers-action">
               <span className="servers-action-icon">⚿</span>
               <div>
                 <div className="servers-action-name">API Keys</div>

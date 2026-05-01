@@ -159,7 +159,7 @@ function defaultGatewayStatus(errorMessage: string | null): GatewayStatus {
     publicBaseUrl: 'https://vllm.getouch.co/v1',
     publicHealthUrl: 'https://vllm.getouch.co/health',
     publicReadyUrl: 'https://vllm.getouch.co/ready',
-    docsUrl: 'https://portal.getouch.co/admin/service-endpoints/vllm#api-docs',
+    docsUrl: 'https://portal.getouch.co/ai-services/vllm#api-docs',
     status: 'Backend unavailable',
     enabled: true,
     backend: {
@@ -195,7 +195,7 @@ function defaultGatewayStatus(errorMessage: string | null): GatewayStatus {
       },
     ],
     reservedDomains: {
-      litellm: 'https://llm.getouch.co',
+      litellm: 'https://litellm.getouch.co',
     },
   };
 }

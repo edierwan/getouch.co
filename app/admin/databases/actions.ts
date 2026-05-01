@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/auth';
 import { queuePreprodRestore, runPreprodBackupNow } from '@/lib/preprod-backups';
 
-const PAGE_PATH = '/admin/databases';
+const PAGE_PATH = '/admin/infrastructure/databases';
 
 function redirectWith(params: URLSearchParams) {
   const query = params.toString();

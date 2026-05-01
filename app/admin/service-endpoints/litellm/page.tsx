@@ -45,11 +45,13 @@ export default async function LiteLlmServiceEndpointPage() {
         <div className="portal-info-table">
           <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Model routing layer between clients and model providers.</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public endpoint</span><span className="portal-info-table-value">{snapshot.litellm.publicUrl || 'Reserved only'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(snapshot.litellm.publicOriginCode)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">litellm.getouch.co ({formatOriginStatus(snapshot.litellm.publicOriginCode)})</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Database</span><span className="portal-info-table-value">litellm</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Internal endpoint</span><span className="portal-info-table-value">{snapshot.litellm.internalUrl || 'Awaiting deployment'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(primary))}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Container</span><span className="portal-info-table-value">{primary?.name || 'None detected'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">{primary?.health || primary?.status || 'No live runtime detected'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Health URLs</span><span className="portal-info-table-value">https://litellm.getouch.co/health · /health/liveliness · /v1/models</span></div>
         </div>
       </section>
 
@@ -61,6 +63,7 @@ export default async function LiteLlmServiceEndpointPage() {
           </div>
         </div>
         <div className="portal-info-table">
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Canonical slug</span><span className="portal-info-table-value">litellm</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">vLLM backend</span><span className="portal-info-table-value">Planned backend target</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama backend</span><span className="portal-info-table-value">Awaiting integration decision</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">OpenRouter / OpenAI</span><span className="portal-info-table-value">No provider config detected</span></div>

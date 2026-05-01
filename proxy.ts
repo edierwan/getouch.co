@@ -39,6 +39,27 @@ const getPortalPublicPath = (pathname: string) => {
 
   return pathname;
 };
+const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
+  '/service-endpoints/vllm': '/ai-services/vllm',
+  '/service-endpoints/litellm': '/ai-services/litellm',
+  '/service-endpoints/dify': '/ai-services/dify',
+  '/service-endpoints/mcp': '/ai-services/mcp',
+  '/service-endpoints/evolution': '/communications/evolution',
+  '/service-endpoints/baileys': '/communications/baileys',
+  '/service-endpoints/chatwoot': '/communications/chatwoot',
+  '/service-endpoints/voice': '/communications/voice',
+  '/service-endpoints/object-storage': '/infrastructure/object-storage',
+  '/servers': '/infrastructure/servers',
+  '/databases': '/infrastructure/databases',
+  '/api-keys': '/developer/api-keys',
+  '/quick-links': '/access/quick-links',
+  '/messaging': '/communications/baileys',
+  '/object-storage': '/infrastructure/object-storage',
+  '/whatsapp-services/evolution': '/communications/evolution',
+};
+const getCanonicalPortalPublicPath = (pathname: string) => {
+  return LEGACY_PORTAL_PUBLIC_PATHS[pathname] || pathname;
+};
 const getMainPortalUrl = (request: NextRequest) => new URL('/portal', request.url);
 
 const getSecret = () => {
@@ -77,10 +98,19 @@ export async function proxy(request: NextRequest) {
     }
 
     if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-      const publicPath = getPortalPublicPath(pathname);
+      const publicPath = getCanonicalPortalPublicPath(getPortalPublicPath(pathname));
       if (publicPath !== pathname) {
-        return NextResponse.redirect(new URL(publicPath, request.url));
+        const url = request.nextUrl.clone();
+        url.pathname = publicPath;
+        return NextResponse.redirect(url);
       }
+    }
+
+    const canonicalPublicPath = getCanonicalPortalPublicPath(pathname);
+    if (canonicalPublicPath !== pathname) {
+      const url = request.nextUrl.clone();
+      url.pathname = canonicalPublicPath;
+      return NextResponse.redirect(url);
     }
 
     const token = request.cookies.get('session')?.value;

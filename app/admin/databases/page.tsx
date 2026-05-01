@@ -4,11 +4,21 @@ import { getPlatformServicesSnapshot } from '@/lib/platform-services';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DatabasesPage({
+type DatabasesPageSearchParams = Promise<{ notice?: string; error?: string }>;
+
+type DatabasesPageOptions = {
+  searchParams?: DatabasesPageSearchParams;
+  breadcrumbPage?: string;
+  title?: string;
+  subtitle?: string;
+};
+
+export async function renderDatabasesPage({
   searchParams,
-}: {
-  searchParams?: Promise<{ notice?: string; error?: string }>;
-}) {
+  breadcrumbPage = 'Databases',
+  title = 'Databases & Backups',
+  subtitle = 'Core platform databases, AI observability data stores, and preprod backup controls.',
+}: DatabasesPageOptions = {}) {
   const resolvedSearchParams = (await searchParams) || {};
 
   let overview = null;
@@ -27,6 +37,17 @@ export default async function DatabasesPage({
       initialNotice={resolvedSearchParams.notice}
       initialError={resolvedSearchParams.error || overviewError}
       platform={platform}
+      breadcrumbPage={breadcrumbPage}
+      title={title}
+      subtitle={subtitle}
     />
   );
+}
+
+export default async function DatabasesPage({
+  searchParams,
+}: {
+  searchParams?: DatabasesPageSearchParams;
+}) {
+  return renderDatabasesPage({ searchParams });
 }

@@ -291,7 +291,7 @@ export function DifyServiceEndpointConsole() {
               </div>
               <div className="portal-activity-list">
                 <div className="portal-activity-item">External apps and operators should continue using dify.getouch.co for the native Dify UI and API surface.</div>
-                <div className="portal-activity-item">The Getouch portal page at /service-endpoints/dify is a control and status view for endpoint reachability, connection inventory, and key wiring.</div>
+                <div className="portal-activity-item">The Getouch portal page at /ai-services/dify is a control and status view for endpoint reachability, connection inventory, and key wiring.</div>
                 <div className="portal-activity-item">No Dify secrets are rendered here. Use the central API Key Manager for managed keys and the native Dify workspace for app-level administration.</div>
                 <div className="portal-activity-item">Managed connections tracked in portal: {data.managedConnections.total} total, {data.managedConnections.active} active.</div>
               </div>

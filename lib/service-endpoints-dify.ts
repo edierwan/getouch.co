@@ -188,7 +188,7 @@ export async function getDifyDashboardStatus(): Promise<DifyDashboardStatus> {
       { label: 'View Workflows', href: DIFY_APPS_URL, external: true },
     ],
     apiAccess: {
-      managerUrl: '/admin/api-keys',
+      managerUrl: '/admin/developer/api-keys',
       secrets,
       summary: providerStatus,
     },

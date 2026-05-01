@@ -217,10 +217,10 @@ payload = {
     'litellm': {
         'found': bool(litellm_containers),
         'containers': [strip_env(container) for container in litellm_containers],
-        'publicUrl': 'https://llm.getouch.co/v1',
-        'publicOriginCode': host_header_code('llm.getouch.co'),
+      'publicUrl': 'https://litellm.getouch.co/v1',
+      'publicOriginCode': host_header_code('litellm.getouch.co', '/health'),
         'internalUrl': 'http://litellm:4000/v1' if litellm_containers else None,
-        'notes': ['Reserved domain for future LiteLLM gateway.'],
+      'notes': ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
     },
     'langfuse': {
         'found': bool(langfuse_containers),
@@ -315,7 +315,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
     litellm: {
       found: false,
       containers: [],
-      publicUrl: 'https://llm.getouch.co/v1',
+      publicUrl: 'https://litellm.getouch.co/v1',
       publicOriginCode: null,
       internalUrl: null,
       notes: [error],
@@ -364,8 +364,8 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
         webhookUrl: typeof parsed.n8n?.webhookUrl === 'string' ? parsed.n8n.webhookUrl : null,
       },
       litellm: normalizeService(parsed.litellm, {
-        publicUrl: 'https://llm.getouch.co/v1',
-        notes: ['Reserved domain for future LiteLLM gateway.'],
+        publicUrl: 'https://litellm.getouch.co/v1',
+        notes: ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
       }),
       langfuse: normalizeService(parsed.langfuse, {
         publicUrl: 'https://langfuse.getouch.co',

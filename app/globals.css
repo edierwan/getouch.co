@@ -3608,7 +3608,7 @@ a.portal-resource-row-link:hover {
 }
 
 /* =====================================================
- * API Key Manager (/admin/api-keys)
+ * API Key Manager (/admin/developer/api-keys)
  * Dark theme tuned to match the rest of the portal.
  * ===================================================== */
 
@@ -3900,7 +3900,7 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
 }
 
 /* =====================================================
- * vLLM Gateway dashboard (/admin/service-endpoints/vllm)
+ * vLLM Gateway dashboard (/admin/ai-services/vllm)
  * Polished dark dashboard layout matching reference design.
  * ===================================================== */
 

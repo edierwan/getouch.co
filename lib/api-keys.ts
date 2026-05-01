@@ -346,7 +346,7 @@ export function getGatewayServices(): GatewayService[] {
     {
       id: 'litellm',
       name: 'LiteLLM',
-      domain: 'llm.getouch.co',
+      domain: 'litellm.getouch.co',
       region: 'reserved',
       status: 'planned',
       validation: 'planned',

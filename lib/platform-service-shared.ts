@@ -91,7 +91,7 @@ export function describeLiteLlm(snapshot: PlatformServicesSnapshot): PlatformDis
   if (snapshot.litellm.found) {
     return { label: 'DEGRADED', tone: 'warning', detail: 'LiteLLM containers exist but are not healthy.' };
   }
-  return { label: 'PLANNED', tone: 'info', detail: 'Reserved domain only. No live LiteLLM runtime detected yet.' };
+  return { label: 'PLANNED', tone: 'info', detail: 'Canonical litellm.getouch.co endpoint is reserved, but no live LiteLLM runtime is detected yet.' };
 }
 
 export function describeLangfuse(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {

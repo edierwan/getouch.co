@@ -221,7 +221,7 @@ function parseModelAliases(raw: string | undefined, backendType: GatewayBackendT
 // Pick the first non-empty value among multiple env names, in order.
 // Allows GETOUCH_VLLM_* (new, per 2026-04-27 plan) to override / co-exist
 // with GETOUCH_AI_* (legacy). vllm.getouch.co is the active vLLM API
-// domain; llm.getouch.co is reserved for future LiteLLM and is not used.
+// domain; litellm.getouch.co is the canonical LiteLLM gateway endpoint.
 function firstEnv(...names: string[]): string | undefined {
   for (const name of names) {
     const v = process.env[name];
@@ -399,7 +399,7 @@ export async function getGatewayStatus(): Promise<GatewayStatus> {
     },
     models: config.modelAliases.map((m) => ({ ...m })),
     reservedDomains: {
-      litellm: 'https://llm.getouch.co/v1',
+      litellm: 'https://litellm.getouch.co/v1',
     },
   };
 }
