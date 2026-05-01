@@ -343,7 +343,7 @@ export function BaileysConsole() {
 
   return (
     <div className="evo-shell">
-      <BaileysHeader data={data} onCreate={onCreateSession} />
+      <BaileysHeader data={data} loading={loading} onCreate={onCreateSession} />
 
       <div className="evo-tabs">
         {TABS.map((t) => (
@@ -396,10 +396,10 @@ export function BaileysConsole() {
 }
 
 /* ─── Header ──────────────────────────────────────────── */
-function BaileysHeader({ data, onCreate }: { data: OverviewData | null; onCreate: () => void }) {
+function BaileysHeader({ data, loading, onCreate }: { data: OverviewData | null; loading: boolean; onCreate: () => void }) {
   const state = data?.onlineState ?? 'offline';
-  const stateLabel = state === 'online' ? 'Online' : state === 'degraded' ? 'Degraded' : 'Offline';
-  const stateClass = state === 'online' ? 'evo-pill-good' : state === 'degraded' ? 'evo-pill-info' : 'evo-pill-bad';
+  const stateLabel = loading && !data ? 'Loading' : state === 'online' ? 'Online' : state === 'degraded' ? 'Degraded' : 'Offline';
+  const stateClass = loading && !data ? 'evo-pill-info' : state === 'online' ? 'evo-pill-good' : state === 'degraded' ? 'evo-pill-info' : 'evo-pill-bad';
   return (
     <header className="evo-page-head">
       <div className="evo-breadcrumb">
