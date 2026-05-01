@@ -305,6 +305,11 @@ function ConsoleHeader({
 
   return (
     <header className="os-page-head">
+      <div className="portal-vllm-breadcrumb" aria-label="Breadcrumb" style={{ marginBottom: 8 }}>
+        <span className="portal-vllm-breadcrumb-muted">Infrastructure</span>
+        <span className="portal-vllm-breadcrumb-sep">/</span>
+        <span className="portal-vllm-breadcrumb-active">Object Storage</span>
+      </div>
       <div className="os-page-head-row">
         <div className="os-page-copy">
           <h1 className="os-title">Object Storage Gateway</h1>

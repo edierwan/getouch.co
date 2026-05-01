@@ -1,5 +1,13 @@
-import { redirect } from 'next/navigation';
+import ServersClient from './ServersClient';
+import { getInfrastructureStorageSnapshot } from '@/lib/infrastructure';
 
-export default function ServersPage() {
-  redirect('/admin/infrastructure#servers');
+export const dynamic = 'force-dynamic';
+
+export default async function ServersPage() {
+  const storage = await getInfrastructureStorageSnapshot();
+  return (
+    <div className="portal-body">
+      <ServersClient storage={storage} />
+    </div>
+  );
 }

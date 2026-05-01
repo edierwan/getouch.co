@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState, useTransition } from 'react';
-import { PageIntro, SummaryGrid } from '../../ui';
+import { Breadcrumb, PageIntro, SummaryGrid } from '../../ui';
 
 type Tab = 'overview' | 'servers' | 'tools' | 'access' | 'clients' | 'activity' | 'tenants' | 'settings';
 
@@ -367,6 +367,7 @@ export function McpServiceEndpointConsole() {
 
   return (
     <>
+      <Breadcrumb category="AI Services" page="MCP Endpoint" />
       <PageIntro
         title="MCP Endpoint"
         subtitle="Public developer page, bearer-authenticated Streamable HTTP endpoint, central API-key integration, and operator controls for the Getouch MCP runtime."

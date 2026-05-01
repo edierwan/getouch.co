@@ -28,6 +28,16 @@ export function PageIntro({ title, subtitle }: { title: string; subtitle: string
   );
 }
 
+export function Breadcrumb({ category, page }: { category: string; page: string }) {
+  return (
+    <div className="portal-vllm-breadcrumb" aria-label="Breadcrumb">
+      <span className="portal-vllm-breadcrumb-muted">{category}</span>
+      <span className="portal-vllm-breadcrumb-sep">/</span>
+      <span className="portal-vllm-breadcrumb-active">{page}</span>
+    </div>
+  );
+}
+
 export function SummaryGrid({ cards, className }: { cards: SummaryCard[]; className?: string }) {
   return (
     <div className={className ? `portal-summary-grid ${className}` : 'portal-summary-grid'}>

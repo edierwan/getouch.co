@@ -12,7 +12,7 @@ const platformServices = [
     status: 'Live',
   },
   {
-    name: 'vLLM AI Gateway',
+    name: 'vLLM Gateway',
     description: 'OpenAI-compatible inference endpoint managed from the Getouch portal.',
     href: 'https://vllm.getouch.co/v1/models',
     status: 'Live',
@@ -55,7 +55,7 @@ export default function ServicesPage() {
           </a>
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             <div style={{ color: '#8d93ac', fontSize: '0.78rem', letterSpacing: '0.16em', fontWeight: 700 }}>
-              SERVICE ENDPOINTS
+              SERVICE INDEX
             </div>
             <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3.2rem)', lineHeight: 1.04, letterSpacing: '-0.04em' }}>
               All service access is now served by the Node app.

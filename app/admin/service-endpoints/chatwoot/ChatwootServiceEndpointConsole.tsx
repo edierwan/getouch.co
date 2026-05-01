@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { PageIntro, SummaryGrid } from '../../ui';
+import { Breadcrumb, PageIntro, SummaryGrid } from '../../ui';
 import type { ChatwootDashboardStatus } from '@/lib/service-endpoints-chatwoot';
 
 function formatDateTime(value: string | null) {
@@ -108,9 +108,10 @@ export function ChatwootServiceEndpointConsole() {
 
   return (
     <div>
+      <Breadcrumb category="Communications" page="Chatwoot" />
       <PageIntro
-        title="Chatwoot Support Inbox"
-        subtitle="Customer support inbox and human handover service endpoint powered by Chatwoot."
+        title="Chatwoot"
+        subtitle="Omnichannel customer support and human handover. The Chatwoot agent UI at https://chatwoot.getouch.co is the operator workspace; this page is the portal control and status view."
       />
 
       {loading && !data ? <section className="portal-panel">Loading Chatwoot endpoint status…</section> : null}

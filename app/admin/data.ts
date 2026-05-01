@@ -77,10 +77,10 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'INFRASTRUCTURE',
     accentRgb: '104, 187, 255',
     items: [
-      { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
+      { label: 'Servers & Nodes', href: '/admin/servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
       { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
-      { label: 'Backups', href: '/admin/databases', icon: '⟲' },
+      { label: 'Backups', href: '/admin/databases#backups', icon: '⟲' },
     ],
   },
   {

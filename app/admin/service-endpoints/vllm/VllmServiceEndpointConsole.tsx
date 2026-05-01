@@ -759,7 +759,7 @@ export function VllmServiceEndpointConsole() {
   }
 
   if (loading) {
-    return <section className="portal-panel">Loading vLLM service endpoint dashboard…</section>;
+    return <section className="portal-panel">Loading vLLM Gateway dashboard…</section>;
   }
 
   if (error && !data) {
@@ -767,7 +767,7 @@ export function VllmServiceEndpointConsole() {
   }
 
   if (!data) {
-    return <section className="portal-panel">Unable to load vLLM service endpoint dashboard.</section>;
+    return <section className="portal-panel">Unable to load vLLM Gateway dashboard.</section>;
   }
 
   const headerStatus = vllmPlannedNotDeployed
@@ -842,9 +842,12 @@ export function VllmServiceEndpointConsole() {
             </div>
             <div className="portal-info-table">
               <div className="portal-info-table-row"><span className="portal-info-table-label">Public Endpoint</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.publicEndpoint}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.publicEndpoint, 'Public endpoint')}>Copy</button></span></span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Internal Backend</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.internalBackend}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.internalBackend, 'Internal backend')}>Copy</button></span></span></div>
+              {vllmPlannedNotDeployed ? (
+                <div className="portal-info-table-row"><span className="portal-info-table-label" /><span className="portal-info-table-value portal-page-sub">Public endpoint reserved, pending approved deployment.</span></div>
+              ) : null}
+              <div className="portal-info-table-row"><span className="portal-info-table-label">{vllmPlannedNotDeployed ? 'Planned Internal Backend' : 'Internal Backend'}</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.internalBackend}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.internalBackend, 'Internal backend')}>Copy</button></span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Model (Internal)</span><span className="portal-info-table-value">{data.serviceInfo.modelInternal}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Model Alias (Public)</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.modelAlias}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.modelAlias, 'Model alias')}>Copy</button></span></span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">{vllmPlannedNotDeployed ? 'Planned Public Model Alias' : 'Model Alias (Public)'}</span><span className="portal-info-table-value"><span className="portal-vllm-inline-copy">{data.serviceInfo.modelAlias}<button type="button" className="portal-action-link" onClick={() => void copyText(data.serviceInfo.modelAlias, 'Model alias')}>Copy</button></span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Gateway Version</span><span className="portal-info-table-value">{data.serviceInfo.gatewayVersion || 'Unknown'}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Backend Version</span><span className="portal-info-table-value">{data.serviceInfo.backendVersion}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Last Health Check</span><span className="portal-info-table-value">{formatDateTime(data.serviceInfo.lastHealthCheck)}</span></div>
@@ -855,8 +858,8 @@ export function VllmServiceEndpointConsole() {
           <section className="portal-panel">
             <div className="portal-panel-head">
               <div>
-                <h3 className="portal-panel-title">Resource Usage (Backend)</h3>
-                <p className="portal-page-sub">Real GPU and host memory metrics from the AI runtime probe.</p>
+                <h3 className="portal-panel-title">{vllmPlannedNotDeployed ? 'Resource Usage (AI Host)' : 'Resource Usage (Backend)'}</h3>
+                <p className="portal-page-sub">{vllmPlannedNotDeployed ? 'Host metrics are available. vLLM gateway runtime is not deployed yet.' : 'Real GPU and host memory metrics from the AI runtime probe.'}</p>
               </div>
             </div>
             <div className="portal-vllm-meter-grid">

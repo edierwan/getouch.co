@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { PageIntro, SummaryGrid } from '../../ui';
+import { Breadcrumb, PageIntro, SummaryGrid } from '../../ui';
 
 type SecretInventoryItem = {
   service: string;
@@ -169,9 +169,10 @@ export function DifyServiceEndpointConsole() {
 
   return (
     <div>
+      <Breadcrumb category="AI Services" page="Dify" />
       <PageIntro
-        title="Dify Service Endpoint"
-        subtitle="Control and monitor the Dify workspace endpoint at https://dify.getouch.co."
+        title="Dify"
+        subtitle="AI workflow and bot builder. The Dify workspace at https://dify.getouch.co remains the source of truth for apps and workflows; this page is the monitoring and quick-action surface."
       />
 
       {loading && !data ? <section className="portal-panel">Loading Dify endpoint status…</section> : null}
