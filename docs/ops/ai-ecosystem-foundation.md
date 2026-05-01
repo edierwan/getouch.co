@@ -132,6 +132,13 @@ The missing foundation runtimes that were safe to install through built-in Cooli
 
 Airbyte remains blocked because the current Coolify release on this host does not ship a production-ready Airbyte template, and a custom stack was not introduced blindly into production.
 
+## Airbyte Next Safe Action
+
+- Status: Blocked pending a vetted custom Coolify-compatible stack.
+- Database: `airbyte` remains the prepared target database name.
+- Domain: `airbyte.getouch.co` remains the prepared public hostname.
+- Next safe action: review the official Airbyte self-managed production stack, adapt it explicitly for Coolify, and validate its database, worker, and storage requirements before any deployment.
+
 ## Security Guardrails Verified
 
 - Redis is internal-only. No public Redis route was detected.
