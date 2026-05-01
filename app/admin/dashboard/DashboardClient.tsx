@@ -55,6 +55,11 @@ function stripScheme(value: string | null | undefined) {
   return value.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
+function formatRouteCode(code: number | null | undefined) {
+  if (code === null || code === undefined) return 'Unknown';
+  return String(code);
+}
+
 function healthyCount(cards: ServiceCardModel[]) {
   return cards.filter((card) => card.tone === 'healthy' || card.tone === 'active').length;
 }
@@ -219,6 +224,7 @@ export default function DashboardClient({
   const authentikStatus = describeServiceProbe(authentikProbe, {
     requirePublicRoute: true,
     missingDetail: 'No Authentik runtime is installed yet.',
+    onlineDetail: 'Authentik is online on sso.getouch.co. Admin onboarding is still required.',
   });
   const difyProbe = getCatalogService(services, 'dify');
   const difyStatus = describeServiceProbe(difyProbe, {
@@ -234,16 +240,18 @@ export default function DashboardClient({
   const qdrantStatus = describeServiceProbe(qdrantProbe, {
     requirePublicRoute: true,
     missingDetail: 'Qdrant is not installed and the public route is not served.',
+    onlineDetail: 'Qdrant is online and protected by API auth.',
   });
   const airbyteProbe = getCatalogService(services, 'airbyte');
   const airbyteStatus = describeServiceProbe(airbyteProbe, {
     requirePublicRoute: true,
-    missingDetail: 'Airbyte is not installed and the public route is not served.',
+    missingDetail: 'Airbyte is still blocked because this Coolify version has no built-in production template.',
   });
   const infisicalProbe = getCatalogService(services, 'infisical');
   const infisicalStatus = describeServiceProbe(infisicalProbe, {
     requirePublicRoute: true,
     missingDetail: 'Infisical is not installed and the public route is not served.',
+    onlineDetail: 'Infisical is online. Admin onboarding is still required.',
   });
   const coolifyProbe = getCatalogService(services, 'coolify');
   const coolifyStatus = describeServiceProbe(coolifyProbe, {
@@ -314,7 +322,7 @@ export default function DashboardClient({
     }),
     {
       name: 'Authentik',
-      desc: 'SSO, identity, and central login for the future control plane.',
+      desc: 'SSO, identity, and central login for the control plane.',
       tone: authentikStatus.tone,
       statusLabel: authentikStatus.label,
       icon: '⚲',
@@ -322,7 +330,7 @@ export default function DashboardClient({
       href: '/admin/system/authentik',
       rows: [
         { label: 'Public', value: stripScheme(authentikProbe.publicUrl) },
-        { label: 'DB', value: 'authentik' },
+        { label: 'Setup', value: 'Admin onboarding' },
       ],
     },
   ];
@@ -351,7 +359,7 @@ export default function DashboardClient({
       href: '/admin/ai/litellm',
       rows: [
         { label: 'Public', value: stripScheme(services.litellm.publicUrl) },
-        { label: 'DB', value: 'litellm' },
+        { label: 'Edge', value: formatRouteCode(services.litellm.publicEdgeCode) },
       ],
     },
     {
@@ -390,7 +398,7 @@ export default function DashboardClient({
       href: '/admin/ai/qdrant',
       rows: [
         { label: 'Public', value: stripScheme(qdrantProbe.publicUrl) },
-        { label: 'Auth', value: 'Required' },
+        { label: 'Access', value: 'API auth required' },
       ],
     },
   ];
@@ -432,7 +440,7 @@ export default function DashboardClient({
       href: '/admin/automation/airbyte',
       rows: [
         { label: 'Public', value: stripScheme(airbyteProbe.publicUrl) },
-        { label: 'DB', value: 'airbyte' },
+        { label: 'Install', value: 'Coolify blocked' },
       ],
     },
   ];
@@ -568,7 +576,7 @@ export default function DashboardClient({
       href: '/admin/infra/databases',
       rows: [
         { label: 'Public', value: stripScheme(services.clickhouse.publicUrl) },
-        { label: 'Runtime', value: services.clickhouse.containers[0]?.name || 'Not detected' },
+        { label: 'Exposure', value: 'Internal only' },
       ],
     },
     {
@@ -610,7 +618,7 @@ export default function DashboardClient({
       href: '/admin/observability/langfuse',
       rows: [
         { label: 'Public', value: stripScheme(services.langfuse.publicUrl) },
-        { label: 'DB', value: 'langfuse + ClickHouse' },
+        { label: 'Setup', value: 'Admin onboarding' },
       ],
     },
   ];
@@ -639,7 +647,7 @@ export default function DashboardClient({
       href: '/admin/security/infisical',
       rows: [
         { label: 'Public', value: stripScheme(infisicalProbe.publicUrl) },
-        { label: 'DB', value: 'infisical' },
+        { label: 'Setup', value: 'Admin onboarding' },
       ],
     },
     buildStaticCard({
@@ -693,7 +701,9 @@ export default function DashboardClient({
   if (vllmStatus.tone !== 'healthy' && vllmStatus.tone !== 'active') {
     alerts.push({ title: 'vLLM Gateway degraded', detail: vllmStatus.detail, tone: vllmStatus.tone });
   }
-  if (liteLlmStatus.tone === 'info') {
+  if (liteLlmStatus.tone === 'warning' || liteLlmStatus.tone === 'critical') {
+    alerts.push({ title: 'LiteLLM public route mismatch', detail: liteLlmStatus.detail, tone: liteLlmStatus.tone });
+  } else if (liteLlmStatus.tone === 'info') {
     alerts.push({ title: 'LiteLLM not installed', detail: liteLlmStatus.detail, tone: 'info' });
   }
   if (langfuseStatus.tone === 'info') {
@@ -702,17 +712,18 @@ export default function DashboardClient({
   if (qdrantStatus.tone === 'info') {
     alerts.push({ title: 'Qdrant missing', detail: qdrantStatus.detail, tone: 'info' });
   }
-  if (services.clickhouse.publicOriginCode !== null && services.clickhouse.publicOriginCode !== 421) {
+  if ((services.clickhouse.publicOriginCode !== null && services.clickhouse.publicOriginCode >= 200 && services.clickhouse.publicOriginCode < 400)
+    || (services.clickhouse.publicEdgeCode !== null && services.clickhouse.publicEdgeCode >= 200 && services.clickhouse.publicEdgeCode < 400)) {
     alerts.push({ title: 'Review ClickHouse exposure', detail: 'ClickHouse should remain auth-protected or internal-only.', tone: 'warning' });
   }
-  if (services.redis.publicOriginCode !== null) {
+  if (services.redis.publicOriginCode !== null || services.redis.publicEdgeCode !== null) {
     alerts.push({ title: 'Redis exposure detected', detail: 'Redis must remain internal-only.', tone: 'critical' });
   }
 
   const recentActivity = [
     `Canonical route tree now groups ${sections.length} dashboard sections exactly like the sidebar IA.`,
     `n8n runtime source: ${formatRuntimeSource(resolveRuntimeSource(services.n8n.containers[0]))}.`,
-    `LiteLLM status: ${liteLlmStatus.detail}`,
+    `LiteLLM status: ${liteLlmStatus.detail} Edge=${formatRouteCode(services.litellm.publicEdgeCode)}.`,
     `Langfuse status: ${langfuseStatus.detail}`,
     `Redis inventory: ${services.redis.containers.length} internal runtime${services.redis.containers.length === 1 ? '' : 's'} detected.`,
   ];

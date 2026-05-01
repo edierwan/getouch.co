@@ -2,6 +2,8 @@
 
 Updated: 2026-05-01
 
+Langfuse is now installed on `langfuse.getouch.co` with ClickHouse and Redis running as internal dependencies. LiteLLM and Qdrant are also installed, so the metadata contract below now applies to live production runtimes rather than planned placeholders.
+
 ## Required Metadata
 
 Every AI event, trace, prompt execution, workflow step, retrieval call, and messaging-driven AI action should carry the following metadata:
@@ -48,11 +50,13 @@ Every AI event, trace, prompt execution, workflow step, retrieval call, and mess
 
 - Stamp `tenant_id`, `model`, `provider`, and `environment` on every routed request.
 - Keep auth keys and provider secrets out of tracing payloads.
+- Complete provider wiring before routing production inference traffic through the shared gateway.
 
 ### Langfuse
 
 - Use shared project `getouch-production` initially.
 - Standardize trace metadata keys so cross-service joins stay consistent.
+- Finish the initial admin onboarding flow before creating production projects and API keys.
 
 ### n8n
 
@@ -68,43 +72,9 @@ Every AI event, trace, prompt execution, workflow step, retrieval call, and mess
 
 - Store tenant identifiers in collection design or payload filters.
 - Maintain purge and retention logic keyed by tenant.
+- Keep API authentication enabled on protected collection and mutation endpoints.
 
 ### Chatwoot, Baileys, Evolution
 
 - Standardize `channel`, `user_id`, and `conversation_id` across ingress points.
 - Attach tenant context before handing work to AI, routing, or automation services.
-# AI Observability for Multi-Tenant GetTouch
-
-Langfuse is the planned AI observability system for GetTouch.co.
-
-ClickHouse stores high-volume trace, observation, score, latency, token, and cost analytics for Langfuse.
-
-Redis handles queue, cache, and background ingestion workloads that support Langfuse and related AI platform services.
-
-Recommended starting model:
-
-- One Langfuse project: `getouch-production`
-- Partition and filter traces by tenant metadata first
-- Consider one project per large tenant later only if isolation or retention needs justify it
-
-Every AI call should include metadata for multi-tenant readiness:
-
-- `tenant_id`
-- `tenant_slug`
-- `channel`
-- `user_id`
-- `conversation_id`
-- `app_id`
-- `workflow_id`
-- `model`
-- `provider`
-- `environment`
-
-Implementation notes:
-
-- Treat Langfuse as the UI and control plane for observability.
-- Treat ClickHouse as the internal analytics store, not a first-class public app.
-- Treat Redis as an internal dependency only. Do not publish a public Redis route.
-- Prefer adding trace metadata consistently across Dify, LiteLLM, MCP, and n8n before adding deeper dashboards.
-- Do not store secrets in trace metadata.
-- Avoid logging sensitive customer data unless it is explicitly required and compliant.

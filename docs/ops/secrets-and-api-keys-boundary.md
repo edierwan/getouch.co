@@ -20,16 +20,21 @@ Updated: 2026-05-01
 ### Infisical
 
 - Intended for internal service secrets, bootstrap credentials, provider keys, and non-public runtime secrets.
-- Not currently installed in production.
-- Can become the centralized vault later once bootstrap and access policies are in place.
+- Now installed in production on `infisical.getouch.co`.
+- Initial admin onboarding and access policy setup are still pending before it should become the managed source of truth.
 
 ### Coolify Environment Variables
 
 - Remain the current runtime configuration mechanism for deployed applications.
 - Should not be exported into Git-tracked files.
-- Can later be synchronized from a centralized vault when the secrets platform is established.
+- Remain the active source of runtime truth until Infisical onboarding and migration are completed.
 
 ## Practical Rule of Thumb
 
 - If a key is issued to a tenant, partner, app, or client: manage it in the portal API Key Manager.
-- If a secret is used by platform infrastructure or an internal service: keep it in Coolify ENV today, and move it into Infisical when that vault becomes the managed source of truth.
+- If a secret is used by platform infrastructure or an internal service: keep it in Coolify ENV today, and move it into Infisical only after the vault bootstrap, operator access policy, and migration plan are completed.
+
+## Runtime Install Note
+
+- LiteLLM provider credentials, Langfuse bootstrap secrets, and other internal service secrets still belong on the internal side of this boundary.
+- No `.env` files or secrets were committed during the runtime installation work.

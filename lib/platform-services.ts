@@ -121,6 +121,7 @@ def inspect_container(name: str):
         'composeProject': labels.get('com.docker.compose.project'),
         'composeService': labels.get('com.docker.compose.service'),
         'networks': networks,
+      'labels': labels,
         'env': payload.get('Config', {}).get('Env') or [],
     }
 
@@ -136,10 +137,21 @@ def find_containers(patterns):
     names = list_container_names()
     matched = []
     for name in names:
-        if any(re.search(pattern, name, re.IGNORECASE) for pattern in patterns):
-            inspected = inspect_container(name)
-            if inspected:
-                matched.append(inspected)
+    inspected = inspect_container(name)
+    if not inspected:
+      continue
+    labels = inspected.get('labels') or {}
+    haystacks = [
+      inspected.get('name') or '',
+      inspected.get('image') or '',
+      inspected.get('composeProject') or '',
+      inspected.get('composeService') or '',
+      *[str(key) for key in labels.keys()],
+      *[str(value) for value in labels.values()],
+      *[f"{key}={value}" for key, value in labels.items()],
+    ]
+    if any(re.search(pattern, haystack, re.IGNORECASE) for pattern in patterns for haystack in haystacks):
+      matched.append(inspected)
     matched.sort(key=lambda item: item['name'])
     return matched
 
@@ -164,6 +176,16 @@ def host_header_code(host: str, path: str = '/'):
     return int(code)
 
 
+  def public_edge_code(host: str, path: str = '/'):
+    rc, out, _err = run(
+      f"curl -k -s -o /dev/null -w '%{{http_code}}' https://{host}{path} || true"
+    )
+    code = (out or '').strip()
+    if not code.isdigit():
+      return None
+    return int(code)
+
+
 def build_public_url(protocol: str, host: str, port: str):
     protocol = (protocol or 'https').strip() or 'https'
     host = (host or '').strip()
@@ -179,19 +201,22 @@ def strip_env(container):
         return None
     cleaned = dict(container)
     cleaned.pop('env', None)
+    cleaned.pop('labels', None)
     return cleaned
 
 
-  def build_probe(patterns, public_url=None, host=None, path='/', internal_url=None, notes=None, force_found=False):
+def build_probe(patterns, public_url=None, host=None, path='/', internal_url=None, notes=None, force_found=False, edge_path=None):
     containers = find_containers(patterns)
     public_origin = host_header_code(host, path) if host else None
+    public_edge = public_edge_code(host, edge_path or path) if host and public_url else None
     primary = containers[0] if containers else None
-    found = bool(containers) or force_found or (public_origin is not None and public_origin not in (404, 421))
+    found = bool(containers) or force_found or (public_origin is not None and public_origin not in (404, 421)) or (public_edge is not None and public_edge not in (404, 421))
     return {
       'found': found,
       'containers': [strip_env(container) for container in containers],
       'publicUrl': public_url,
       'publicOriginCode': public_origin,
+      'publicEdgeCode': public_edge,
       'internalUrl': internal_url if (containers or force_found) else None,
       'notes': notes or [],
     }
@@ -228,7 +253,7 @@ catalog = {
     [r'qdrant'],
     'https://qdrant.getouch.co',
     'qdrant.getouch.co',
-    '/',
+    '/healthz',
     'http://qdrant:6333',
     ['Vector database for tenant-aware RAG and memory retrieval.', 'Do not expose Qdrant without API auth.'],
   ),
@@ -244,8 +269,8 @@ catalog = {
     [r'infisical'],
     'https://infisical.getouch.co',
     'infisical.getouch.co',
-    '/',
-    'http://infisical:8080',
+    '/api/status',
+    'http://backend:8080',
     ['Internal secrets vault.', 'Database target: infisical.', 'Initial admin setup must be secured before public use.'],
   ),
   'coolify': build_probe(
@@ -347,6 +372,7 @@ payload = {
         'containers': [strip_env(container) for container in n8n_containers],
         'publicUrl': n8n_public,
         'publicOriginCode': host_header_code(n8n_host) if n8n_host else None,
+        'publicEdgeCode': public_edge_code(n8n_host) if n8n_host else None,
         'internalUrl': f"http://{n8n_primary['name']}:5678" if n8n_primary else None,
         'notes': [note for note in [
             'Basic auth enabled' if n8n_env.get('N8N_BASIC_AUTH_ACTIVE', '').lower() == 'true' else None,
@@ -359,23 +385,26 @@ payload = {
         'found': bool(litellm_containers),
         'containers': [strip_env(container) for container in litellm_containers],
       'publicUrl': 'https://litellm.getouch.co/v1',
-      'publicOriginCode': host_header_code('litellm.getouch.co', '/health'),
+      'publicOriginCode': host_header_code('litellm.getouch.co', '/health/liveliness'),
+      'publicEdgeCode': public_edge_code('litellm.getouch.co', '/health/liveliness'),
         'internalUrl': 'http://litellm:4000/v1' if litellm_containers else None,
-      'notes': ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
+      'notes': ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.', 'Provider configuration still needs model credentials after gateway install.'],
     },
     'langfuse': {
         'found': bool(langfuse_containers),
         'containers': [strip_env(container) for container in langfuse_containers],
         'publicUrl': 'https://langfuse.getouch.co',
-        'publicOriginCode': host_header_code('langfuse.getouch.co'),
-        'internalUrl': 'http://langfuse-web:3000' if langfuse_containers else None,
-        'notes': ['Observability UI planned for multi-tenant tracing.'],
+        'publicOriginCode': host_header_code('langfuse.getouch.co', '/api/public/health'),
+        'publicEdgeCode': public_edge_code('langfuse.getouch.co', '/api/public/health'),
+        'internalUrl': 'http://langfuse:3000' if langfuse_containers else None,
+        'notes': ['Observability UI installed for multi-tenant tracing.', 'Admin onboarding is still required before tenant traffic.'],
     },
     'clickhouse': {
         'found': bool(clickhouse_containers),
         'containers': [strip_env(container) for container in clickhouse_containers],
         'publicUrl': 'https://clickhouse.getouch.co',
         'publicOriginCode': host_header_code('clickhouse.getouch.co'),
+        'publicEdgeCode': public_edge_code('clickhouse.getouch.co'),
         'internalUrl': 'http://clickhouse:8123' if clickhouse_containers else None,
         'notes': ['Keep ClickHouse internal-only unless auth is explicitly confirmed.'],
     },
@@ -384,6 +413,7 @@ payload = {
         'primary': strip_env(next((container for container in redis_containers if container['name'] == 'coolify-redis'), redis_containers[0] if redis_containers else None)),
         'containers': [strip_env(container) for container in redis_containers],
         'publicOriginCode': None,
+        'publicEdgeCode': None,
         'notes': [
             'Redis should remain internal-only.',
             'Multiple Redis sidecars detected across the platform.' if len(redis_containers) > 1 else 'Single Redis runtime detected.',
@@ -448,6 +478,7 @@ function normalizeService(service: Partial<PlatformServiceProbe> | null | undefi
     containers: normalizeContainers(service?.containers ?? fallback.containers),
     publicUrl: service?.publicUrl ?? fallback.publicUrl ?? null,
     publicOriginCode: normalizeCode(service?.publicOriginCode ?? fallback.publicOriginCode),
+    publicEdgeCode: normalizeCode(service?.publicEdgeCode ?? fallback.publicEdgeCode),
     internalUrl: service?.internalUrl ?? fallback.internalUrl ?? null,
     notes: normalizeNotes(service?.notes, normalizeNotes(fallback.notes)),
   };
@@ -462,6 +493,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
       containers: [],
       publicUrl: 'https://flow.news.getouch.co',
       publicOriginCode: null,
+      publicEdgeCode: null,
       internalUrl: null,
       notes: [error],
       basicAuthEnabled: false,
@@ -472,6 +504,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
       containers: [],
       publicUrl: 'https://litellm.getouch.co/v1',
       publicOriginCode: null,
+      publicEdgeCode: null,
       internalUrl: null,
       notes: [error],
     },
@@ -480,6 +513,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
       containers: [],
       publicUrl: 'https://langfuse.getouch.co',
       publicOriginCode: null,
+      publicEdgeCode: null,
       internalUrl: null,
       notes: [error],
     },
@@ -488,6 +522,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
       containers: [],
       publicUrl: 'https://clickhouse.getouch.co',
       publicOriginCode: null,
+      publicEdgeCode: null,
       internalUrl: null,
       notes: [error],
     },
@@ -496,6 +531,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
       primary: null,
       containers: [],
       publicOriginCode: null,
+      publicEdgeCode: null,
       notes: [error],
     },
   };
@@ -536,6 +572,7 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
         primary: normalizeContainer(parsed.redis?.primary),
         containers: normalizeContainers(parsed.redis?.containers),
         publicOriginCode: normalizeCode(parsed.redis?.publicOriginCode),
+        publicEdgeCode: normalizeCode(parsed.redis?.publicEdgeCode),
         notes: normalizeNotes(parsed.redis?.notes, ['Redis should remain internal-only.']),
       },
     };

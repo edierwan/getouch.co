@@ -22,6 +22,11 @@ function formatOriginStatus(code: number | null) {
   return String(code);
 }
 
+function formatEdgeStatus(code: number | null) {
+  if (code === null) return 'Not checked';
+  return String(code);
+}
+
 export default async function LangfuseOperationsPage() {
   const snapshot = await getPlatformServicesSnapshot();
   const langfuse = describeLangfuse(snapshot);
@@ -49,9 +54,11 @@ export default async function LangfuseOperationsPage() {
         <div className="portal-info-table">
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{snapshot.langfuse.publicUrl || 'Not configured'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(snapshot.langfuse.publicOriginCode)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(snapshot.langfuse.publicEdgeCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(langfusePrimary))}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Container</span><span className="portal-info-table-value">{langfusePrimary?.name || 'None detected'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Health</span><span className="portal-info-table-value">{langfusePrimary?.health || langfusePrimary?.status || 'No runtime detected'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Status detail</span><span className="portal-info-table-value">{langfuse.detail}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Dependencies</span><span className="portal-info-table-value">PostgreSQL (langfuse), ClickHouse, Redis / queue cache</span></div>
         </div>
 
@@ -72,6 +79,7 @@ export default async function LangfuseOperationsPage() {
         <div className="portal-info-table">
           <div className="portal-info-table-row"><span className="portal-info-table-label">ClickHouse</span><span className="portal-info-table-value">{clickhouse.label} · {clickhousePrimary?.name || snapshot.clickhouse.internalUrl || 'Awaiting deployment'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">ClickHouse route</span><span className="portal-info-table-value">{formatOriginStatus(snapshot.clickhouse.publicOriginCode)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">ClickHouse edge</span><span className="portal-info-table-value">{formatEdgeStatus(snapshot.clickhouse.publicEdgeCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Redis / Queue Cache</span><span className="portal-info-table-value">{redis.label} · {snapshot.redis.primary?.name || 'No Redis runtime detected'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Redis exposure</span><span className="portal-info-table-value">Internal only</span></div>
         </div>
@@ -85,6 +93,7 @@ export default async function LangfuseOperationsPage() {
           </div>
         </div>
         <div className="portal-activity-list">
+          <div className="portal-activity-item">Langfuse is installed and healthy, but the first admin onboarding flow still needs to be completed.</div>
           <div className="portal-activity-item">tenant_id and tenant_slug should be attached to every AI trace.</div>
           <div className="portal-activity-item">Include channel, conversation_id, app_id, and workflow_id on every request chain.</div>
           <div className="portal-activity-item">Do not log secrets or sensitive customer payloads in trace metadata.</div>

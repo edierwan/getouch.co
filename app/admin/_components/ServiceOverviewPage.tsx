@@ -20,6 +20,11 @@ function formatOriginStatus(code: number | null) {
   return String(code);
 }
 
+function formatEdgeStatus(code: number | null) {
+  if (code === null) return 'Not checked';
+  return String(code);
+}
+
 export async function ServiceOverviewPage({ config }: { config: ServiceOverviewConfig }) {
   const snapshot = await getPlatformServicesSnapshot();
   const probe = getCatalogService(snapshot, config.probeKey);
@@ -45,10 +50,12 @@ export async function ServiceOverviewPage({ config }: { config: ServiceOverviewC
           <div className="portal-info-table-row"><span className="portal-info-table-label">Role</span><span className="portal-info-table-value">{config.role}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{probe.publicUrl || 'Not configured'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(probe.publicOriginCode)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(probe.publicEdgeCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Internal URL</span><span className="portal-info-table-value">{probe.internalUrl || 'Not available'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(primary))}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Container / Service</span><span className="portal-info-table-value">{primary?.name || 'None detected'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">{primary?.health || primary?.status || status.detail}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Status detail</span><span className="portal-info-table-value">{status.detail}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Dependencies</span><span className="portal-info-table-value">{config.dependencies.join(' | ')}</span></div>
         </div>
 

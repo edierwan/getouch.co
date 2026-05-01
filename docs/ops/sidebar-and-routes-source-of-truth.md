@@ -6,6 +6,7 @@ Updated: 2026-05-01
 
 - The sidebar IA below is the canonical source of truth.
 - Dashboard sections must match the same category logic exactly.
+- Runtime installation status does not change the canonical IA or route table below.
 - Old `/service-endpoints/*` routes are legacy aliases only and are not canonical.
 - Old `/developer/*`, `/access/*`, `/operations/*`, and `/infrastructure/*` public routes are legacy aliases only where redirects still exist.
 - Root `https://portal.getouch.co/` remains usable and resolves to the dashboard experience.

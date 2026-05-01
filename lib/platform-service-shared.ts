@@ -17,6 +17,7 @@ export type PlatformServiceProbe = {
   containers: PlatformContainerProbe[];
   publicUrl: string | null;
   publicOriginCode: number | null;
+  publicEdgeCode: number | null;
   internalUrl: string | null;
   notes: string[];
 };
@@ -36,6 +37,7 @@ export type PlatformServicesSnapshot = {
     primary: PlatformContainerProbe | null;
     containers: PlatformContainerProbe[];
     publicOriginCode: number | null;
+    publicEdgeCode: number | null;
     notes: string[];
   };
 };
@@ -77,12 +79,21 @@ function summarizeContainer(service: PlatformServiceProbe) {
   return service.containers[0] || null;
 }
 
+function isLiveRoute(code: number | null | undefined) {
+  return typeof code === 'number' && code >= 200 && code < 400;
+}
+
+function resolvePublicRouteCode(service: PlatformServiceProbe) {
+  return service.publicEdgeCode ?? service.publicOriginCode;
+}
+
 export function describeServiceProbe(
   service: PlatformServiceProbe,
   options: DescribeProbeOptions = {},
 ): PlatformDisplayStatus {
   const container = summarizeContainer(service);
-  const publicLive = typeof service.publicOriginCode === 'number' && service.publicOriginCode >= 200 && service.publicOriginCode < 400;
+  const publicLive = isLiveRoute(resolvePublicRouteCode(service));
+  const edgeFailed = service.publicEdgeCode !== null && !isLiveRoute(service.publicEdgeCode);
 
   if (isContainerOnline(container) && (publicLive || !options.requirePublicRoute)) {
     return {
@@ -101,6 +112,14 @@ export function describeServiceProbe(
   }
 
   if (isContainerOnline(container)) {
+    if (options.requirePublicRoute && edgeFailed) {
+      return {
+        label: 'DEGRADED',
+        tone: 'warning',
+        detail: options.degradedDetail || 'Runtime is healthy at the origin, but the public hostname is not serving the expected route yet.',
+      };
+    }
+
     return {
       label: 'INSTALLED',
       tone: 'active',
@@ -129,6 +148,7 @@ export function getCatalogService(snapshot: PlatformServicesSnapshot, key: strin
     containers: [],
     publicUrl: null,
     publicOriginCode: null,
+    publicEdgeCode: null,
     internalUrl: null,
     notes: [],
   };
@@ -136,7 +156,7 @@ export function getCatalogService(snapshot: PlatformServicesSnapshot, key: strin
 
 export function describeN8n(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.n8n);
-  if (isContainerOnline(container) && snapshot.n8n.publicOriginCode === 200) {
+  if (isContainerOnline(container) && isLiveRoute(resolvePublicRouteCode(snapshot.n8n))) {
     return { label: 'ONLINE', tone: 'healthy', detail: 'Workflow automation route is live at origin.' };
   }
   if (isContainerOnline(container)) {
@@ -150,22 +170,25 @@ export function describeN8n(snapshot: PlatformServicesSnapshot): PlatformDisplay
 
 export function describeLiteLlm(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.litellm);
-  if (isContainerOnline(container) && snapshot.litellm.publicOriginCode && snapshot.litellm.publicOriginCode < 400) {
-    return { label: 'ONLINE', tone: 'healthy', detail: 'LiteLLM gateway runtime is healthy.' };
+  if (isContainerOnline(container) && isLiveRoute(resolvePublicRouteCode(snapshot.litellm))) {
+    return { label: 'ONLINE', tone: 'healthy', detail: 'LiteLLM gateway runtime is healthy. Provider configuration still needs model credentials.' };
+  }
+  if (isContainerOnline(container) && snapshot.litellm.publicEdgeCode !== null && !isLiveRoute(snapshot.litellm.publicEdgeCode)) {
+    return { label: 'DEGRADED', tone: 'warning', detail: 'LiteLLM is healthy at the origin, but the public hostname is still not serving the gateway route.' };
   }
   if (isContainerOnline(container)) {
-    return { label: 'INSTALLED', tone: 'active', detail: 'Runtime exists, but public route validation is pending.' };
+    return { label: 'INSTALLED', tone: 'active', detail: 'Runtime exists, but public route validation is still pending.' };
   }
   if (snapshot.litellm.found) {
     return { label: 'DEGRADED', tone: 'warning', detail: 'LiteLLM containers exist but are not healthy.' };
   }
-  return { label: 'PLANNED', tone: 'info', detail: 'Canonical litellm.getouch.co endpoint is reserved, but no live LiteLLM runtime is detected yet.' };
+  return { label: 'NOT INSTALLED', tone: 'info', detail: 'Canonical litellm.getouch.co endpoint is reserved, but no live LiteLLM runtime is detected yet.' };
 }
 
 export function describeLangfuse(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.langfuse);
-  if (isContainerOnline(container) && snapshot.langfuse.publicOriginCode === 200) {
-    return { label: 'ONLINE', tone: 'healthy', detail: 'Observability UI is live.' };
+  if (isContainerOnline(container) && isLiveRoute(resolvePublicRouteCode(snapshot.langfuse))) {
+    return { label: 'ONLINE', tone: 'healthy', detail: 'Observability UI is live. Admin onboarding is still required before tenant traffic.' };
   }
   if (isContainerOnline(container)) {
     return { label: 'INSTALLED', tone: 'active', detail: 'Langfuse runtime exists, but the public route is not confirmed healthy.' };
@@ -173,7 +196,7 @@ export function describeLangfuse(snapshot: PlatformServicesSnapshot): PlatformDi
   if (snapshot.langfuse.found) {
     return { label: 'DEGRADED', tone: 'warning', detail: 'Langfuse containers exist but are not healthy.' };
   }
-  return { label: 'PLANNED', tone: 'info', detail: 'No Langfuse runtime detected. Public route is not yet served by the origin.' };
+  return { label: 'NOT INSTALLED', tone: 'info', detail: 'No Langfuse runtime detected. Public route is not yet served by the origin.' };
 }
 
 export function describeClickHouse(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
@@ -184,7 +207,7 @@ export function describeClickHouse(snapshot: PlatformServicesSnapshot): Platform
   if (snapshot.clickhouse.found) {
     return { label: 'DEGRADED', tone: 'warning', detail: 'ClickHouse container exists but is not healthy.' };
   }
-  return { label: 'PLANNED', tone: 'info', detail: 'No ClickHouse runtime detected yet.' };
+  return { label: 'NOT INSTALLED', tone: 'info', detail: 'No ClickHouse runtime detected yet.' };
 }
 
 export function describeRedis(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {

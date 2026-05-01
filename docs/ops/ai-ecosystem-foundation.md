@@ -18,21 +18,21 @@ Portal deployment remains Coolify-only.
 
 - Dashboard: portal control-plane summary and status surface.
 - Servers & Nodes: host/runtime overview for the primary VPS and ingress/runtime topology.
-- Authentik: planned central SSO and identity provider.
+- Authentik: installed central SSO and identity provider on `sso.getouch.co`.
 
 ### AI Engine & Cognition
 
 - vLLM Gateway: public inference gateway surface.
-- LiteLLM Gateway: planned model routing and OpenAI-compatible proxy layer.
+- LiteLLM Gateway: installed model routing and OpenAI-compatible proxy layer.
 - Dify: AI workflow and application builder.
 - MCP Endpoint: portal-backed Model Context Protocol endpoint.
-- Qdrant: planned vector database for RAG, retrieval, and AI memory.
+- Qdrant: installed vector database for RAG, retrieval, and AI memory.
 
 ### Automation & Data Flow
 
 - n8n Workflows: workflow automation runtime.
 - Webhooks: portal-managed webhook and delivery surface.
-- Airbyte: planned ingestion / ELT sync runtime.
+- Airbyte: still blocked pending a vetted custom stack for this Coolify version.
 
 ### Communication Hubs
 
@@ -54,12 +54,12 @@ Portal deployment remains Coolify-only.
 ### Observability & Tracing
 
 - Grafana: metrics and operational dashboards.
-- Langfuse: planned AI observability and tracing runtime.
+- Langfuse: installed AI observability and tracing runtime.
 
 ### Access & Security
 
 - API Keys: tenant/app/client key issuance and management.
-- Infisical: planned internal secret vault.
+- Infisical: installed internal secret vault.
 - SDK & Docs: operator and integration documentation.
 - Quick Links: operator shortcut surface.
 
@@ -85,19 +85,20 @@ Portal deployment remains Coolify-only.
 - ClickHouse
 - Redis / Queue Cache
 - SeaweedFS object storage components
-- Future service-specific databases: authentik, airbyte, infisical, litellm, langfuse
+- Service-specific databases: authentik, infisical, litellm, langfuse
+- Airbyte database remains pending because the runtime is not deployed.
 
 ## Audit and Installation Status
 
 | Tool | Category | Status | Public URL | Runtime Notes | Dependencies |
 | --- | --- | --- | --- | --- | --- |
-| Authentik | System Orchestration | Install blocked | https://sso.getouch.co | No live runtime detected. `authentik.getouch.co` DNS is not currently published. | PostgreSQL `authentik`, Redis / Valkey |
-| Qdrant | AI Engine & Cognition | Install blocked | https://qdrant.getouch.co | No live runtime detected. Public route not served. | Persistent storage, API auth |
-| Airbyte | Automation & Data Flow | Install blocked | https://airbyte.getouch.co | No live runtime detected. Public route not served. | PostgreSQL `airbyte` |
-| Infisical | Access & Security | Install blocked | https://infisical.getouch.co | No live runtime detected. Public route not served. | PostgreSQL `infisical`, secure bootstrap |
-| LiteLLM | AI Engine & Cognition | Install blocked | https://litellm.getouch.co/v1 | No live runtime detected. Current route responds without a live backend. | PostgreSQL `litellm`, auth/master key |
-| Langfuse | Observability & Tracing | Install blocked | https://langfuse.getouch.co | No live runtime detected. Public route not served by origin. | PostgreSQL `langfuse`, ClickHouse, Redis |
-| ClickHouse | Infra & Persistence | Install blocked | https://clickhouse.getouch.co | No live runtime detected. Public route not served by origin. | Internal-only or authenticated access |
+| Authentik | System Orchestration | Installed | https://sso.getouch.co | Coolify-managed runtime is healthy and the public route returns the expected login redirect. Admin onboarding is still pending. | PostgreSQL `authentik`, Redis / Valkey |
+| Qdrant | AI Engine & Cognition | Installed | https://qdrant.getouch.co | Coolify-managed runtime is healthy. `GET /healthz` returns `200` and protected collection access returns `401` without credentials. | Persistent storage, API auth |
+| Airbyte | Automation & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. Coolify `4.0.0` on this host has no built-in Airbyte template, and no vetted custom stack has been deployed yet. | PostgreSQL `airbyte` |
+| Infisical | Access & Security | Installed | https://infisical.getouch.co | Coolify-managed runtime is healthy and `/api/status` returns `200`. Initial admin onboarding is still pending. | PostgreSQL `infisical`, secure bootstrap |
+| LiteLLM | AI Engine & Cognition | Installed, public edge degraded | https://litellm.getouch.co/v1 | Coolify-managed runtime is healthy at the origin and `/health/liveliness` returns `200` internally, but the public hostname is still serving stale `404` responses and needs edge-level follow-up. Provider configuration is also still pending. | PostgreSQL `litellm`, auth/master key |
+| Langfuse | Observability & Tracing | Installed | https://langfuse.getouch.co | Coolify-managed runtime and dependencies are healthy. `/api/public/health` returns `200`. Initial admin onboarding is still pending. | PostgreSQL `langfuse`, ClickHouse, Redis |
+| ClickHouse | Infra & Persistence | Installed | Internal only | ClickHouse is healthy as the Langfuse analytics store and should remain internal-only unless authenticated access is explicitly designed. | Internal-only or authenticated access |
 | Redis / Queue Cache | Infra & Persistence | Installed | Internal only | `coolify-redis` is healthy. Additional dedicated Redis runtimes also exist for platform apps. | Internal only |
 
 ## Existing Installed Tools Preserved and Remapped
@@ -118,19 +119,23 @@ Portal deployment remains Coolify-only.
 - SDK & Docs
 - Quick Links
 
-## Why Installation Was Blocked
+## Runtime Installation Outcome
 
-The portal and route work was completed, but safe autonomous installation of the missing foundation tools was blocked by production bootstrap requirements that should not be guessed in-place:
+The missing foundation runtimes that were safe to install through built-in Coolify templates were installed directly on production:
 
-- No matching Coolify applications or standalone PostgreSQL resources currently exist for the missing tools.
-- Several target public routes are not yet published or are not yet served by origin.
-- The missing services require secure bootstrap secrets and admin setup values that should not be auto-generated and deployed blindly into production.
-- Exposing Authentik, Infisical, LiteLLM, Qdrant, or Langfuse without a correct auth bootstrap would reduce security posture.
+- Authentik
+- Qdrant
+- Infisical
+- LiteLLM
+- Langfuse
+- ClickHouse and dedicated Redis dependencies for Langfuse
+
+Airbyte remains blocked because the current Coolify release on this host does not ship a production-ready Airbyte template, and a custom stack was not introduced blindly into production.
 
 ## Security Guardrails Verified
 
 - Redis is internal-only. No public Redis route was detected.
-- ClickHouse is not publicly served by origin.
-- Qdrant is not publicly served by origin.
-- LiteLLM is not backed by a live runtime and should not be treated as production-ready.
-- Infisical is not live and should require secure initial admin setup before exposure.
+- ClickHouse should remain internal-only. No authenticated public exposure was intentionally enabled.
+- Qdrant is live and requires API authentication for protected collection access.
+- LiteLLM has a live runtime, but the public hostname still needs edge-level follow-up before it should be treated as production-ready.
+- Infisical is live and still requires secure initial admin onboarding before operator use.

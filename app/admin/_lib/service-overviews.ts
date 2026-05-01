@@ -26,8 +26,9 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     role: 'Identity boundary between operators, internal tools, and tenant-aware admin surfaces.',
     dependencies: ['PostgreSQL database: authentik', 'Redis / Valkey', 'Secure bootstrap credentials'],
     readinessNotes: [
-      'Primary subdomain target is sso.getouch.co while authentik.getouch.co is not yet published in DNS.',
-      'Keep the admin bootstrap flow behind secure credentials before exposing it to operators.',
+      'Primary subdomain target is sso.getouch.co while authentik.getouch.co is not published in DNS.',
+      'Runtime is installed through Coolify and currently redirects correctly on sso.getouch.co.',
+      'Keep the admin bootstrap flow behind secure credentials before onboarding operators.',
     ],
     multiTenantNotes: [
       'Use Authentik as the future control-plane identity provider for tenant-aware admin tooling.',
@@ -36,7 +37,34 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     externalOpenUrl: 'https://sso.getouch.co',
     statusOptions: {
       requirePublicRoute: true,
-      missingDetail: 'No Authentik runtime or healthy origin route is live yet.',
+      missingDetail: 'No Authentik runtime or healthy public route is live yet.',
+      onlineDetail: 'Authentik is installed and redirects correctly on sso.getouch.co. Admin onboarding is still required.',
+    },
+  },
+  litellm: {
+    category: 'AI Engine & Cognition',
+    title: 'LiteLLM Gateway',
+    subtitle: 'OpenAI-compatible model router and policy layer for provider failover, access control, and tenant-aware AI routing.',
+    probeKey: 'litellm',
+    purpose: 'Expose a controlled AI gateway for upstream providers and internal model runtimes.',
+    role: 'Shared routing and policy layer between platform applications and provider credentials.',
+    dependencies: ['PostgreSQL database: litellm', 'Gateway auth / master key', 'Provider credentials'],
+    readinessNotes: [
+      'LiteLLM is installed through Coolify and healthy at the origin.',
+      'Provider configuration is still pending before it can route production model traffic.',
+      'Public edge verification currently differs from origin health and must be rechecked before cutover.',
+    ],
+    multiTenantNotes: [
+      'Attach tenant metadata to every routed request before provider dispatch.',
+      'Keep provider keys in internal secrets storage, not tenant-facing key management.',
+    ],
+    externalOpenUrl: 'https://litellm.getouch.co',
+    statusOptions: {
+      requirePublicRoute: true,
+      missingDetail: 'No LiteLLM runtime or healthy public route is live yet.',
+      installedDetail: 'LiteLLM is installed, but public route verification is still pending.',
+      degradedDetail: 'LiteLLM is healthy at the origin, but the public hostname is still not serving the gateway route.',
+      onlineDetail: 'LiteLLM is online. Provider configuration is still required before production model traffic.',
     },
   },
   qdrant: {
@@ -48,6 +76,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     role: 'Shared vector substrate for RAG, memory, and semantic document search.',
     dependencies: ['Persistent volume / storage', 'API key or auth guard', 'Embedding producer pipeline'],
     readinessNotes: [
+      'Qdrant is installed through Coolify and responds on the protected health endpoint.',
       'Qdrant must not be exposed anonymously.',
       'Collections should be isolated by tenant or namespace before customer traffic is onboarded.',
     ],
@@ -59,6 +88,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Qdrant runtime is detected and the public route is not yet served.',
+      onlineDetail: 'Qdrant is installed and the protected public route responds as expected.',
     },
   },
   airbyte: {
@@ -70,7 +100,8 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     role: 'Data synchronization layer feeding analytics, AI context, and workflow inputs.',
     dependencies: ['PostgreSQL database: airbyte', 'Destination connectors', 'Worker runtime'],
     readinessNotes: [
-      'Airbyte is not detected on the host and the origin route is still missing.',
+      'Airbyte is still not deployed on the host.',
+      'This Coolify version does not include a built-in production Airbyte template, so installation remains blocked pending a vetted custom stack.',
       'Connector credentials should stay in a secrets manager, not in Git or client-side code.',
     ],
     multiTenantNotes: [
@@ -80,7 +111,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     externalOpenUrl: 'https://airbyte.getouch.co',
     statusOptions: {
       requirePublicRoute: true,
-      missingDetail: 'No Airbyte runtime or healthy public route is live yet.',
+      missingDetail: 'Airbyte is still blocked. This Coolify version has no built-in production template and no vetted custom stack is deployed.',
     },
   },
   infisical: {
@@ -93,6 +124,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     dependencies: ['PostgreSQL database: infisical', 'Secure bootstrap credentials', 'Operator access policy'],
     readinessNotes: [
       'Infisical is distinct from the portal API Key Manager.',
+      'Infisical is installed through Coolify and serves its public status endpoint.',
       'Initial admin setup must be secured before exposing any public login or vault URL.',
     ],
     multiTenantNotes: [
@@ -103,6 +135,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Infisical runtime or healthy public route is live yet.',
+      onlineDetail: 'Infisical is installed and serving the public status endpoint. Admin onboarding is still required.',
     },
   },
   coolify: {

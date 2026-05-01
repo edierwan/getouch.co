@@ -107,6 +107,11 @@ function formatOriginStatus(code: number | null) {
   return String(code);
 }
 
+function formatEdgeStatus(code: number | null) {
+  if (code === null) return 'Not public (expected)';
+  return String(code);
+}
+
 function buildSummaryCards(
   backupCount: number,
   retentionDays: number,
@@ -213,7 +218,7 @@ export function DatabasesClient({
               <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">PostgreSQL</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Database</span><span className="portal-info-table-value">langfuse</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Users, projects, settings, and API key metadata for Langfuse</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Verification</span><span className="portal-info-table-value">Operator-prepared, runtime config not detected yet</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Verification</span><span className="portal-info-table-value">Installed with the live Langfuse runtime</span></div>
             </div>
           </section>
 
@@ -226,7 +231,8 @@ export function DatabasesClient({
               <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Analytics DB / OLAP</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Trace, observation, score, token, cost, and latency analytics</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime</span><span className="portal-info-table-value">{clickhousePrimary?.name || platform.clickhouse.internalUrl || 'Awaiting deployment'}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Public route</span><span className="portal-info-table-value">{formatOriginStatus(platform.clickhouse.publicOriginCode)}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(platform.clickhouse.publicOriginCode)}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(platform.clickhouse.publicEdgeCode)}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Security</span><span className="portal-info-table-value">Keep internal-only unless authenticated and intentional</span></div>
             </div>
           </section>
