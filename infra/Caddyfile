@@ -48,35 +48,7 @@ http://getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
-  }
-}
-
-http://dev.getouch.co {
-  import common_headers
-
-  @static path /_next/static/*
-  header @static Cache-Control "public, max-age=31536000, immutable"
-
-  @html path /
-  header @html Cache-Control "public, max-age=0, must-revalidate"
-
-  handle {
-    reverse_proxy getouch-web-dev:3000
-  }
-}
-
-http://stg.getouch.co {
-  import common_headers
-
-  @static path /_next/static/*
-  header @static Cache-Control "public, max-age=31536000, immutable"
-
-  @html path /
-  header @html Cache-Control "public, max-age=0, must-revalidate"
-
-  handle {
-    reverse_proxy getouch-web-stg:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 }
 
@@ -97,7 +69,7 @@ http://vllm.getouch.co {
 
   @gateway path /v1/* /health /ready
   handle @gateway {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 
   handle {
@@ -184,17 +156,17 @@ http://mcp.getouch.co {
   @mcp_endpoint path /mcp /mcp/
   handle @mcp_endpoint {
     rewrite * /api/mcp
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 
   @mcp_health path /healthz
   handle @mcp_health {
     rewrite * /api/mcp/healthz
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 }
 
@@ -207,11 +179,11 @@ http://openclaw.getouch.co {
   }
 
   handle /connect {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 
   handle /reset {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 
   @chat_guard {
@@ -221,7 +193,7 @@ http://openclaw.getouch.co {
     not header Cookie *openclaw_boot=1*
   }
   handle @chat_guard {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 
   # Bare root GET (not a WebSocket upgrade): send users to the canonical chat entry.
@@ -380,7 +352,7 @@ http://auth.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 }
 
@@ -434,7 +406,7 @@ http://portal.getouch.co {
   header @html Cache-Control "public, max-age=0, must-revalidate"
 
   handle {
-    reverse_proxy getouch-web-prod:3000
+    reverse_proxy getouch-coolify-app:3000
   }
 }
 

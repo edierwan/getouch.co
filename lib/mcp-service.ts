@@ -485,7 +485,7 @@ export async function getMcpDashboardStatus(): Promise<McpDashboardStatus> {
       endpointUrl: MCP_ENDPOINT_URL,
       transport: 'Streamable HTTP',
       authMode: 'Bearer token via central API keys',
-      runtimeTarget: runtimeServer?.runtimeTarget || 'getouch-web-prod:/api/mcp',
+      runtimeTarget: runtimeServer?.runtimeTarget || 'getouch-coolify-app:/api/mcp',
       servers: portalData.counts.servers,
       enabledTools: portalData.counts.enabledTools,
       activeKeys: portalData.counts.activeKeys,

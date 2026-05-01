@@ -166,7 +166,7 @@ VALUES
     'enabled',
     'healthy',
     'Integrated Getouch MCP runtime served by the web application.',
-    'getouch-web-prod:/api/mcp',
+    'getouch-coolify-app:/api/mcp',
     'bearer',
     'shared',
     '{"category":"core","safe":true}'::jsonb,

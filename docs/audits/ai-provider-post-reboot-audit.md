@@ -9,7 +9,7 @@ Observed boot time:
 - `2026-04-29 23:02`
 
 Observed service recovery:
-- `getouch-web`, `ollama`, `open-webui`, `open-webui-pipelines`, `baileys-gateway`, `caddy`, `getouch-postgres`, `getouch-pgadmin`, and `searxng` were all running after reboot.
+- The legacy compose-hosted portal runtime, `ollama`, `open-webui`, `open-webui-pipelines`, `baileys-gateway`, `caddy`, `getouch-postgres`, `getouch-pgadmin`, and `searxng` were all running after reboot.
 - All of the above had `restart=unless-stopped`.
 - All of the above exposed a Docker healthcheck.
 

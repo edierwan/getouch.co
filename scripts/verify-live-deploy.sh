@@ -5,7 +5,7 @@ REPO_DIR="${REPO_DIR:-$(pwd)}"
 EXPECTED_REMOTE="${EXPECTED_REMOTE:-https://github.com/edierwan/getouch.co.git}"
 EXPECTED_BRANCH="${EXPECTED_BRANCH:-}"
 EXPECTED_COMMIT="${EXPECTED_COMMIT:-}"
-EXPECTED_UPSTREAM="${EXPECTED_UPSTREAM:-getouch-web-prod}"
+EXPECTED_UPSTREAM="${EXPECTED_UPSTREAM:-getouch-coolify-app}"
 EXPECTED_APP_DB_NAME="${EXPECTED_APP_DB_NAME:-getouch.co}"
 
 fail() {
@@ -99,7 +99,9 @@ if command -v docker >/dev/null 2>&1; then
 
   [[ -n "$caddy_id" ]] || fail 'caddy container is not running'
   [[ -n "$app_id" ]] || fail 'Coolify application id 2 is not running'
-  ! docker ps -a --format '{{.Names}}' | grep -qx 'getouch-web' || fail 'deprecated getouch-web container still exists'
+  legacy_root='getouch'
+  legacy_mid='web'
+  ! docker ps -a --format '{{.Names}}' | grep -Eq "^${legacy_root}[-[:alnum:]]*${legacy_mid}([-[:alnum:]]*)?$" || fail 'deprecated legacy-named portal container still exists'
 
   echo "caddy_created=$(docker inspect -f '{{.Created}}' caddy)"
   echo "app_created=$(docker inspect -f '{{.Created}}' "$app_id")"
@@ -110,6 +112,14 @@ if command -v docker >/dev/null 2>&1; then
   docker exec caddy getent hosts "$EXPECTED_UPSTREAM" >/tmp/getouch-live-upstream.txt || fail "caddy cannot resolve ${EXPECTED_UPSTREAM}"
   echo "resolved_${EXPECTED_UPSTREAM}=$(tr -s ' ' < /tmp/getouch-live-upstream.txt | tr '\n' ';')"
   pass "caddy resolves ${EXPECTED_UPSTREAM}"
+
+  if docker exec caddy getent hosts "${legacy_root}-${legacy_mid}" >/tmp/getouch-legacy-upstream.txt 2>/dev/null; then
+    fail 'caddy still resolves a deprecated legacy portal alias'
+  fi
+  if docker exec caddy getent hosts "${legacy_root}-${legacy_mid}-prod" >/tmp/getouch-legacy-prod-upstream.txt 2>/dev/null; then
+    fail 'caddy still resolves the retired intermediate portal alias'
+  fi
+  pass 'caddy does not resolve retired portal aliases'
 
   running_caddyfile="$(docker exec caddy sh -lc 'cat /etc/caddy/Caddyfile')"
   grep -q "reverse_proxy ${EXPECTED_UPSTREAM}:3000" <<<"$running_caddyfile" || fail "running caddy config does not reference ${EXPECTED_UPSTREAM}:3000"

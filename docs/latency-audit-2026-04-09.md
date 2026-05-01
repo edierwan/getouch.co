@@ -26,7 +26,7 @@ Additionally, the macOS SSH client's default KEXINIT (full algorithm list includ
 ## What Was NOT Changed
 
 - **Coolify zombie accumulation**: Coolify has 7,060 zombie processes inflating scheduling overhead. Fixing requires restarting Coolify which disrupts all deployments. Document for operator action.
-- **getouch-web container healthcheck**: Container marked unhealthy because the healthcheck binary (`curl`) doesn't exist in the image. Serving continues normally via the Caddy alias set by `coolify-alias.service`. No traffic impact.
+- **Legacy portal container healthcheck**: A retired compose-hosted portal container was marked unhealthy because the healthcheck binary (`curl`) was missing in the image. That issue is historical and no longer applies to the Coolify-only runtime.
 
 ## 1) Root Cause Analysis
 
@@ -156,7 +156,7 @@ ps aux | awk '{print $8}' | sort | uniq -c | sort -rn | head -5
 ```
 **Risk:** Coolify restart clears its job queue memory. Any in-progress deployments will stall. All existing running containers continue unaffected.
 
-### getouch-web Healthcheck
+### Legacy Portal Healthcheck
 
 Container reports `unhealthy` because `curl` is not installed in the production image. Serving is unaffected. Fix: add `curl` to the production Dockerfile.
 

@@ -23,7 +23,7 @@ npm run build
 
 ## Portal Routing Guard
 
-`portal.getouch.co`, `auth.getouch.co`, and `getouch.co` must all reverse proxy to the same live Next.js upstream: `getouch-web-prod:3000` (Coolify application id 2).
+`portal.getouch.co`, `auth.getouch.co`, and `getouch.co` must all reverse proxy to the same live Next.js upstream: `getouch-coolify-app:3000` (Coolify application id 2).
 
 If `portal.getouch.co` drifts to a stale container target or mismatched Caddy config, the live portal can serve stale sidebar/auth code even when the repo and current Coolify app container are correct.
 

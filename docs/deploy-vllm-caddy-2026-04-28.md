@@ -35,13 +35,13 @@ http://vllm.getouch.co {
     import common_headers
 
     handle /health {
-        reverse_proxy getouch-web-prod:3000
+        reverse_proxy getouch-coolify-app:3000
     }
     handle /ready {
-        reverse_proxy getouch-web-prod:3000
+        reverse_proxy getouch-coolify-app:3000
     }
     handle /v1/* {
-        reverse_proxy getouch-web-prod:3000
+        reverse_proxy getouch-coolify-app:3000
     }
 
     respond 404
@@ -50,7 +50,7 @@ http://vllm.getouch.co {
 
 Notes:
 
-- `getouch-web-prod` is the Coolify network alias for app uuid `mqmo5bwkxysedbg7vvh6tk1f`.
+- `getouch-coolify-app` is the stable Coolify upstream name for app uuid `mqmo5bwkxysedbg7vvh6tk1f`.
 - TLS is terminated by Cloudflare; Caddy listens on plain HTTP and uses the existing edge proxy chain — same pattern as `portal.getouch.co`.
 - `import common_headers` reuses the project's HSTS/CSP/Permissions-Policy snippet.
 
@@ -101,5 +101,5 @@ curl -i https://vllm.getouch.co/v1/models \
 
 - `llm.getouch.co` is **not** added to Caddy. It remains reserved for future LiteLLM.
 - Raw vLLM (`vllm-qwen3-14b-fp8:8000`) is not exposed through Caddy.
-- The existing `portal.getouch.co` route to `getouch-web-prod:3000` is unchanged.
+- The existing `portal.getouch.co` route uses `getouch-coolify-app:3000`.
 - No Ollama or Open WebUI configuration is touched by this step.

@@ -189,7 +189,7 @@ Rollback does not require exposing or deploying vLLM directly.
 The following steps are deployment-time only and are not in the application repo:
 
 1. **Cloudflare DNS:** Confirm `vllm.getouch.co` resolves to the platform edge (currently a wildcard A → Cloudflare proxy already covers this; verify the proxy/grey-cloud setting matches `portal.getouch.co`).
-2. **Caddy:** Add a `http://vllm.getouch.co` block on the VPS that reverse-proxies to the portal app (Coolify alias `getouch-web-prod:3000`). The Caddyfile lives at `/home/deploy/apps/getouch.co/infra/Caddyfile`. Then `docker exec caddy kill -USR1 1` (or `docker restart caddy`) to reload.
+2. **Caddy:** Add a `http://vllm.getouch.co` block on the VPS that reverse-proxies to the portal app (`getouch-coolify-app:3000`). The Caddyfile lives at `/home/deploy/apps/getouch.co/infra/Caddyfile`. Then `docker exec caddy kill -USR1 1` (or `docker restart caddy`) to reload.
 3. **Coolify env:** Set the `GETOUCH_VLLM_*` variables on application uuid `mqmo5bwkxysedbg7vvh6tk1f` and redeploy.
 4. **Validation:** `curl https://vllm.getouch.co/health` (200), `curl https://vllm.getouch.co/v1/models` (401 without key), `curl -H 'Authorization: Bearer <key>' https://vllm.getouch.co/v1/models` (200 with alias list).
 

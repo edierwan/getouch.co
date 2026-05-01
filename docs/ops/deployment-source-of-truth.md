@@ -5,10 +5,9 @@
 - **Coolify application id 2** is the **sole runtime** for the Next.js portal.
   - Repo: `edierwan/getouch.co` branch `main`.
   - Image: `mqmo5bwkxysedbg7vvh6tk1f` (Coolify-built; managed UUID).
-  - Network alias on `coolify` network: **`getouch-web-prod`** (port 3000).
-  - Also attached to `getouch-edge` so Caddy can reach it.
+  - Stable upstream on the `coolify` network: **`getouch-coolify-app`** (port 3000).
 - **Caddy** (compose service, mounted from `infra/Caddyfile`) is the only edge.
-  All four production hostnames `reverse_proxy getouch-web-prod:3000`:
+  All portal hostnames `reverse_proxy getouch-coolify-app:3000`:
   - `getouch.co`
   - `portal.getouch.co`
   - `auth.getouch.co`
@@ -31,6 +30,7 @@
   keys (admin/pgadmin/cloudflared/searxng) are not authoritative for the web
   app but were copied so the Coolify app sees identical env to the legacy
   container; harmless if unused.
+- Retired portal names must not be reintroduced in routes, docs, or verifiers.
 
 ## Deploy workflow
 
@@ -74,5 +74,5 @@ foreach ($a->environment_variables as $ev) echo $ev->key . PHP_EOL;
 '
 
 # Caddy upstream check (no public traffic)
-docker exec caddy sh -lc 'wget -qO- --header="Host: portal.getouch.co" http://getouch-web-prod:3000/api/build-info'
+docker exec caddy sh -lc 'wget -qO- --header="Host: portal.getouch.co" http://getouch-coolify-app:3000/api/build-info'
 ```
