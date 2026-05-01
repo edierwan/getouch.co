@@ -78,7 +78,7 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '104, 187, 255',
     items: [
       { label: 'Servers & Nodes', href: '/admin/servers', icon: '▣' },
-      { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
+      { label: 'Databases', href: '/admin/databases', icon: '▤' },
       { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
       { label: 'Backups', href: '/admin/databases#backups', icon: '⟲' },
     ],
@@ -89,6 +89,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'Coolify', href: 'https://coolify.getouch.co', icon: '◈', external: true },
       { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◔', external: true },
+      { label: 'Langfuse', href: '/admin/operations/langfuse', icon: '◎' },
     ],
   },
   {
@@ -96,9 +97,17 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '78, 206, 199',
     items: [
       { label: 'vLLM Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
+      { label: 'LiteLLM Gateway', href: '/admin/service-endpoints/litellm', icon: '◎' },
       { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
       { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
       { label: 'MCP Endpoint', href: '/admin/service-endpoints/mcp', icon: '⌬' },
+    ],
+  },
+  {
+    label: 'AUTOMATION',
+    accentRgb: '243, 179, 73',
+    items: [
+      { label: 'n8n Workflows', href: '/admin/automation/n8n', icon: '⇄' },
     ],
   },
   {

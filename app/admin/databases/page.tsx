@@ -1,5 +1,8 @@
 import { DatabasesClient } from './DatabasesClient';
 import { getPreprodBackupOverview } from '@/lib/preprod-backups';
+import { getPlatformServicesSnapshot } from '@/lib/platform-services';
+
+export const dynamic = 'force-dynamic';
 
 export default async function DatabasesPage({
   searchParams,
@@ -10,6 +13,7 @@ export default async function DatabasesPage({
 
   let overview = null;
   let overviewError = '';
+  const platform = await getPlatformServicesSnapshot();
 
   try {
     overview = await getPreprodBackupOverview();
@@ -17,5 +21,12 @@ export default async function DatabasesPage({
     overviewError = error instanceof Error ? error.message : 'Failed to read preprod backup state.';
   }
 
-  return <DatabasesClient initialOverview={overview} initialNotice={resolvedSearchParams.notice} initialError={resolvedSearchParams.error || overviewError} />;
+  return (
+    <DatabasesClient
+      initialOverview={overview}
+      initialNotice={resolvedSearchParams.notice}
+      initialError={resolvedSearchParams.error || overviewError}
+      platform={platform}
+    />
+  );
 }

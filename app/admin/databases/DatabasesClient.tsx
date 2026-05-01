@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { PreprodBackupEntry, PreprodBackupOverview } from '@/lib/preprod-backups';
-import { PageIntro, SummaryGrid } from '../ui';
+import {
+  describeClickHouse,
+  describeLangfuse,
+  describeRedis,
+  formatRuntimeSource,
+  resolveRuntimeSource,
+  type PlatformServicesSnapshot,
+  type PlatformTone,
+} from '@/lib/platform-service-shared';
+import { Breadcrumb, PageIntro, SummaryGrid } from '../ui';
 import { BackupNowForm, RestoreBackupDialog } from './DatabaseActions';
 
 const FALLBACK_TIME_ZONE = 'Asia/Kuala_Lumpur';
@@ -16,14 +25,10 @@ function getBrowserTimeZone() {
 }
 
 function formatLocalBackupDateTime(isoTimestamp: string | null | undefined, timeZone: string) {
-  if (!isoTimestamp) {
-    return null;
-  }
+  if (!isoTimestamp) return null;
 
   const date = new Date(isoTimestamp);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
+  if (Number.isNaN(date.getTime())) return null;
 
   const formatter = new Intl.DateTimeFormat('en-MY', {
     timeZone,
@@ -63,26 +68,18 @@ function getBackupTechnicalLabel(entry: PreprodBackupEntry, timeZone: string) {
 
 function getLatestBackupLabel(entry: PreprodBackupEntry, timeZone: string) {
   const formatted = formatLocalBackupDateTime(entry.createdAtIso, timeZone);
-  if (!formatted) {
-    return `Backup ID ${entry.name}`;
-  }
-
+  if (!formatted) return `Backup ID ${entry.name}`;
   return `${formatted} · Backup ID ${entry.name}`;
 }
 
 function getRestoreBackupLabel(entry: PreprodBackupEntry, timeZone: string) {
   const formatted = formatLocalBackupDateTime(entry.createdAtIso, timeZone);
-  if (!formatted) {
-    return 'the selected backup';
-  }
-
+  if (!formatted) return 'the selected backup';
   return `the backup created at ${formatted}`;
 }
 
 function buildBackupSuccessNotice(entry: PreprodBackupEntry | undefined, timeZone: string) {
-  if (!entry) {
-    return 'Preprod backup created successfully.';
-  }
+  if (!entry) return 'Preprod backup created successfully.';
 
   const formatted = formatLocalBackupDateTime(entry.createdAtIso, timeZone);
   if (!formatted) {
@@ -92,12 +89,38 @@ function buildBackupSuccessNotice(entry: PreprodBackupEntry | undefined, timeZon
   return `Preprod backup created: ${formatted}. Backup ID ${entry.name}.`;
 }
 
-function buildSummaryCards(backupCount: number, retentionDays: number) {
+function mapTone(tone: PlatformTone): 'healthy' | 'active' | 'warning' {
+  if (tone === 'healthy') return 'healthy';
+  if (tone === 'warning' || tone === 'critical') return 'warning';
+  return 'active';
+}
+
+function statusClassName(tone: PlatformTone) {
+  if (tone === 'warning' || tone === 'critical') return 'portal-status portal-status-warning';
+  if (tone === 'healthy') return 'portal-status portal-status-good';
+  return 'portal-status portal-status-active';
+}
+
+function formatOriginStatus(code: number | null) {
+  if (code === null) return 'Unknown';
+  if (code === 421) return 'Not served by origin';
+  return String(code);
+}
+
+function buildSummaryCards(
+  backupCount: number,
+  retentionDays: number,
+  clickhouseTone: PlatformTone,
+  clickhouseLabel: string,
+  redisTone: PlatformTone,
+  redisLabel: string,
+) {
   return [
-    { label: 'STACK', value: 'Preprod Only', tone: 'active' as const, icon: '◫' },
-    { label: 'SCHEDULE', value: 'Daily 02:15', icon: '◷' },
-    { label: 'RETENTION', value: `${retentionDays} days`, icon: '⟲' },
-    { label: 'BACKUPS', value: String(backupCount), icon: '▤' },
+    { label: 'DATABASES', value: '5', tone: 'active' as const, icon: '▤' },
+    { label: 'CLICKHOUSE', value: clickhouseLabel, tone: mapTone(clickhouseTone), icon: '▥' },
+    { label: 'REDIS', value: redisLabel, tone: mapTone(redisTone), icon: '◫' },
+    { label: 'BACKUPS', value: String(backupCount), icon: '⟲' },
+    { label: 'RETENTION', value: `${retentionDays} days`, icon: '◷' },
   ];
 }
 
@@ -105,10 +128,12 @@ export function DatabasesClient({
   initialOverview,
   initialNotice,
   initialError,
+  platform,
 }: {
   initialOverview: PreprodBackupOverview | null;
   initialNotice?: string;
   initialError?: string;
+  platform: PlatformServicesSnapshot;
 }) {
   const [overview, setOverview] = useState(initialOverview);
   const [notice, setNotice] = useState(initialNotice || '');
@@ -120,19 +145,32 @@ export function DatabasesClient({
     setBrowserTimeZone(getBrowserTimeZone());
   }, []);
 
+  const langfuseStatus = describeLangfuse(platform);
+  const clickhouseStatus = describeClickHouse(platform);
+  const redisStatus = describeRedis(platform);
+  const clickhousePrimary = platform.clickhouse.containers[0] || null;
+
   const summaryCards = useMemo(
-    () => (overview ? buildSummaryCards(overview.entries.length, overview.retentionDays) : []),
-    [overview]
+    () => buildSummaryCards(
+      overview?.entries.length || 0,
+      overview?.retentionDays || 0,
+      clickhouseStatus.tone,
+      clickhouseStatus.label,
+      redisStatus.tone,
+      redisStatus.label,
+    ),
+    [clickhouseStatus.label, clickhouseStatus.tone, overview, redisStatus.label, redisStatus.tone]
   );
 
   return (
     <div className="portal-body">
+      <Breadcrumb category="Infrastructure" page="Databases" />
       <PageIntro
-        title="Database Backups"
-        subtitle="Self-hosted backup and restore controls for Serapod Preprod only. Production is intentionally excluded."
+        title="Databases & Backups"
+        subtitle="Core platform databases, AI observability data stores, and preprod backup controls."
       />
 
-      {overview ? <SummaryGrid cards={summaryCards} /> : null}
+      <SummaryGrid cards={summaryCards} />
 
       {notice ? <div className="portal-banner portal-banner-success">{notice}</div> : null}
       {error ? <div className="portal-banner portal-banner-error">{error}</div> : null}
@@ -142,7 +180,82 @@ export function DatabasesClient({
         </div>
       ) : null}
 
-      <section className="portal-panel">
+      <section id="databases" className="portal-panel">
+        <div className="portal-panel-head">
+          <div>
+            <h3 className="portal-panel-title">AI Observability Data Stores</h3>
+            <p className="portal-page-sub">ClickHouse and Redis are represented here as internal platform dependencies, while Langfuse stays under Operations.</p>
+          </div>
+        </div>
+
+        <div className="portal-detail-grid">
+          <section className="portal-panel">
+            <div className="portal-detail-head">
+              <h3 className="portal-detail-title">PostgreSQL 16</h3>
+              <span className="portal-status portal-status-good">HEALTHY</span>
+            </div>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Primary relational database</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Portal auth, user, and platform state</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Admin tools</span><span className="portal-info-table-value">pgAdmin available on db.getouch.co</span></div>
+            </div>
+          </section>
+
+          <section className="portal-panel">
+            <div className="portal-detail-head">
+              <h3 className="portal-detail-title">Langfuse PostgreSQL</h3>
+              <span className={statusClassName(langfuseStatus.tone)}>{langfuseStatus.label}</span>
+            </div>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">PostgreSQL</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Database</span><span className="portal-info-table-value">langfuse</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Users, projects, settings, and API key metadata for Langfuse</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Verification</span><span className="portal-info-table-value">Operator-prepared, runtime config not detected yet</span></div>
+            </div>
+          </section>
+
+          <section className="portal-panel">
+            <div className="portal-detail-head">
+              <h3 className="portal-detail-title">ClickHouse</h3>
+              <span className={statusClassName(clickhouseStatus.tone)}>{clickhouseStatus.label}</span>
+            </div>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Analytics DB / OLAP</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Trace, observation, score, token, cost, and latency analytics</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime</span><span className="portal-info-table-value">{clickhousePrimary?.name || platform.clickhouse.internalUrl || 'Awaiting deployment'}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Public route</span><span className="portal-info-table-value">{formatOriginStatus(platform.clickhouse.publicOriginCode)}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Security</span><span className="portal-info-table-value">Keep internal-only unless authenticated and intentional</span></div>
+            </div>
+          </section>
+
+          <section className="portal-panel">
+            <div className="portal-detail-head">
+              <h3 className="portal-detail-title">Redis / Queue Cache</h3>
+              <span className={statusClassName(redisStatus.tone)}>{redisStatus.label}</span>
+            </div>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Cache + queue</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Langfuse ingestion queue, cache, and shared platform background jobs</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Primary runtime</span><span className="portal-info-table-value">{platform.redis.primary?.name || 'Not detected'}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(platform.redis.primary))}</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Exposure</span><span className="portal-info-table-value">Internal only</span></div>
+            </div>
+          </section>
+
+          <section className="portal-panel">
+            <div className="portal-detail-head">
+              <h3 className="portal-detail-title">pgAdmin</h3>
+              <span className="portal-status portal-status-good">ONLINE</span>
+            </div>
+            <div className="portal-info-table">
+              <div className="portal-info-table-row"><span className="portal-info-table-label">UI</span><span className="portal-info-table-value">db.getouch.co</span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Admin tooling for PostgreSQL inspection and maintenance</span></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="backups" className="portal-panel">
         <div className="portal-panel-head portal-panel-head-inline">
           <div>
             <h3 className="portal-panel-title">Preprod Backup Control</h3>
@@ -230,16 +343,15 @@ export function DatabasesClient({
         <div className="portal-panel-head">
           <div>
             <h3 className="portal-panel-title">Operator Notes</h3>
-            <p className="portal-page-sub">This page is wired only to preprod host scripts. No production restore path is exposed here.</p>
+            <p className="portal-page-sub">Production observability stores are tracked here, but restore controls remain preprod-only.</p>
           </div>
         </div>
         <div className="portal-activity-list">
-          <div className="portal-activity-item">Restore matches the Cloud workflow conceptually, but is powered by host-side scripts and cron.</div>
-          <div className="portal-activity-item">A restore is destructive and should be treated as a preprod-only operation.</div>
+          <div className="portal-activity-item">Langfuse remains under Operations because it is an observability UI, not a database surface.</div>
+          <div className="portal-activity-item">ClickHouse and Redis are monitored here as internal dependencies, not public apps.</div>
+          <div className="portal-activity-item">A preprod restore is destructive and should be treated as a preprod-only operation.</div>
           {(overview?.backupLogTail || []).map((line) => (
-            <div key={line} className="portal-activity-item portal-log-line">
-              {line}
-            </div>
+            <div key={line} className="portal-activity-item portal-log-line">{line}</div>
           ))}
         </div>
       </section>

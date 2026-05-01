@@ -11,7 +11,7 @@ import type {
   SummaryCard,
 } from './data';
 
-function statusClassName(tone: StatusTone) {
+export function statusClassName(tone: StatusTone) {
   if (tone === 'warning') return 'portal-status portal-status-warning';
   if (tone === 'active') return 'portal-status portal-status-active';
   return 'portal-status portal-status-good';
