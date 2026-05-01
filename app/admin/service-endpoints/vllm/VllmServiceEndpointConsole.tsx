@@ -798,9 +798,9 @@ export function VllmServiceEndpointConsole() {
     <>
       <div className="portal-ai-runtime-shell portal-vllm-shell">
         <div className="portal-vllm-breadcrumb">
-          <span className="portal-vllm-breadcrumb-muted">Service Endpoints</span>
+            <span className="portal-vllm-breadcrumb-muted">AI Services</span>
           <span className="portal-vllm-breadcrumb-sep">/</span>
-          <span className="portal-vllm-breadcrumb-active">vLLM AI Gateway</span>
+            <span className="portal-vllm-breadcrumb-active">vLLM Gateway</span>
         </div>
 
         {error ? <div className="portal-ai-error">{error}</div> : null}
@@ -819,7 +819,7 @@ export function VllmServiceEndpointConsole() {
         <section className="portal-panel portal-panel-fill">
           <div className="portal-panel-head portal-panel-head-inline">
             <div>
-              <h3 className="portal-panel-title">vLLM AI Gateway</h3>
+              <h3 className="portal-panel-title">vLLM Gateway</h3>
               <p className="portal-page-sub">Admin and control UI for the protected public endpoint at {data.serviceInfo.publicEndpoint}. Raw vLLM stays private.</p>
             </div>
             <div className="portal-action-row">

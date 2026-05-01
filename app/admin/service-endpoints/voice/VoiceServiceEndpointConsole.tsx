@@ -116,9 +116,9 @@ export function VoiceServiceEndpointConsole() {
     <div className="evo-shell">
       <header className="evo-page-head">
         <div className="evo-breadcrumb">
-          <span className="evo-crumb-muted">Service Endpoints</span>
+          <span className="evo-crumb-muted">Communications</span>
           <span className="evo-crumb-sep">/</span>
-          <span className="evo-crumb-active">FusionPBX</span>
+          <span className="evo-crumb-active">FusionPBX / Voice</span>
         </div>
         <div className="evo-page-head-row">
           <div>

@@ -77,57 +77,47 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'INFRASTRUCTURE',
     accentRgb: '104, 187, 255',
     items: [
-      { label: 'Infrastructure', href: '/admin/infrastructure', icon: '▥' },
       { label: 'Servers & Nodes', href: '/admin/infrastructure#servers', icon: '▣' },
       { label: 'Databases', href: '/admin/infrastructure#databases', icon: '▤' },
       { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
-      { label: 'Preprod Backups', href: '/admin/databases', icon: '⟲' },
+      { label: 'Backups', href: '/admin/databases', icon: '⟲' },
     ],
   },
   {
-    label: 'PLATFORM',
+    label: 'OPERATIONS',
     accentRgb: '155, 167, 255',
     items: [
       { label: 'Coolify', href: 'https://coolify.getouch.co', icon: '◈', external: true },
+      { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◔', external: true },
     ],
   },
   {
-    label: 'SERVICE ENDPOINTS',
+    label: 'AI SERVICES',
     accentRgb: '78, 206, 199',
     items: [
+      { label: 'vLLM Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
+      { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
+      { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
       { label: 'MCP Endpoint', href: '/admin/service-endpoints/mcp', icon: '⌬' },
-      { label: 'vLLM AI Gateway', href: '/admin/service-endpoints/vllm', icon: '◉' },
+    ],
+  },
+  {
+    label: 'COMMUNICATIONS',
+    accentRgb: '92, 210, 184',
+    items: [
       { label: 'Evolution Gateway', href: '/admin/service-endpoints/evolution', icon: '◈' },
       { label: 'Baileys Gateway', href: '/admin/service-endpoints/baileys', icon: '◌' },
-      { label: 'Dify', href: '/admin/service-endpoints/dify', icon: '◍' },
       { label: 'Chatwoot', href: '/admin/service-endpoints/chatwoot', icon: '◌' },
-      { label: 'Object Storage', href: '/admin/service-endpoints/object-storage', icon: '▦' },
       { label: 'FusionPBX / Voice', href: '/admin/service-endpoints/voice', icon: '◍' },
     ],
   },
   {
-    label: 'AI & AUTOMATION',
-    accentRgb: '92, 210, 184',
-    items: [
-      { label: 'AI Services', href: '/admin/ai-services', icon: '◎' },
-      { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
-      { label: 'MCP', href: 'https://mcp.getouch.co', icon: '⌬', external: true },
-    ],
-  },
-  {
-    label: 'DEVELOPER PLATFORM',
+    label: 'DEVELOPER',
     accentRgb: '184, 156, 255',
     items: [
       { label: 'API Keys', href: '/admin/api-keys', icon: '⚿' },
       { label: 'Webhooks', href: '/admin/api-keys#webhooks', icon: '↺' },
       { label: 'SDK & Docs', href: '/admin/api-keys#docs', icon: '⌥' },
-    ],
-  },
-  {
-    label: 'MONITORING',
-    accentRgb: '246, 199, 108',
-    items: [
-      { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◔', external: true },
     ],
   },
   {

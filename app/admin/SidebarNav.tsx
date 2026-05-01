@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ADMIN_NAV } from './data';
 
 const SIDEBAR_SCROLL_STORAGE_KEY = 'getouch.admin.sidebar.scrollTop';
-const SIDEBAR_EXPANDED_SECTIONS_KEY = 'getouch.admin.sidebar.expandedSections.v2';
+const SIDEBAR_EXPANDED_SECTIONS_KEY = 'getouch.admin.sidebar.expandedSections.v3';
 
 /* Convert an internal /admin/* path to a public portal path. */
 function toPublicPath(href: string): string {
@@ -82,13 +82,19 @@ export default function SidebarNav({ isPortal }: { isPortal: boolean }) {
       return false;
     }
 
+    const itemPath = splitPath(href);
     const itemHash = splitHash(href);
     const onSamePage = pathMatches(href);
     const isInfraRoot =
-      (splitPath(href) === '/admin/infrastructure' || splitPath(href) === '/infrastructure') &&
+      (itemPath === '/admin/infrastructure' || itemPath === '/infrastructure') &&
       itemHash === '';
+    const isDefaultInfrastructureItem = itemPath === '/admin/infrastructure' && itemHash === 'servers';
 
-    return onSamePage && (itemHash ? activeHash === itemHash : isInfraRoot ? activeHash === '' : true);
+    return onSamePage && (itemHash
+      ? activeHash === itemHash || (isDefaultInfrastructureItem && activeHash === '')
+      : isInfraRoot
+        ? activeHash === ''
+        : true);
   };
 
   const activeSectionLabel =

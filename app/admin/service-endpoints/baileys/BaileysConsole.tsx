@@ -403,7 +403,7 @@ function BaileysHeader({ data, loading, onCreate }: { data: OverviewData | null;
   return (
     <header className="evo-page-head">
       <div className="evo-breadcrumb">
-        <span className="evo-crumb-muted">Service Endpoints</span>
+        <span className="evo-crumb-muted">Communications</span>
         <span className="evo-crumb-sep">/</span>
         <span className="evo-crumb-active">Baileys Gateway</span>
       </div>
