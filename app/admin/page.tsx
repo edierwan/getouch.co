@@ -1,18 +1,14 @@
-import DashboardClient from './dashboard/DashboardClient';
-import { getInfrastructureStorageSnapshot } from '@/lib/infrastructure';
-import { getPlatformServicesSnapshot } from '@/lib/platform-services';
+import { Suspense } from 'react';
+import { DashboardContent, DashboardLoading } from './dashboard/DashboardContent';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminPage() {
-  const [storage, services] = await Promise.all([
-    getInfrastructureStorageSnapshot(),
-    getPlatformServicesSnapshot(),
-  ]);
-
+export default function AdminPage() {
   return (
     <div className="portal-body">
-      <DashboardClient storage={storage} services={services} />
+      <Suspense fallback={<DashboardLoading />}>
+        <DashboardContent />
+      </Suspense>
     </div>
   );
 }

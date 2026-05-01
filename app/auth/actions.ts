@@ -18,6 +18,25 @@ import crypto from 'crypto';
 const getPortalAdminUrl = () =>
   process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
 
+const SUPABASE_LOGIN_TIMEOUT_MS = 1500;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 export async function login(_prev: unknown, formData: FormData) {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
@@ -33,7 +52,11 @@ export async function login(_prev: unknown, formData: FormData) {
     const supabase = getSupabase();
     if (!supabase) throw new Error('SSO not configured');
     const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({ email, password });
+      await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        SUPABASE_LOGIN_TIMEOUT_MS,
+        'Supabase login timed out'
+      );
 
     if (!authError && authData.user) {
       // SSO auth succeeded — find or create local user record

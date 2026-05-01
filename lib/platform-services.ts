@@ -16,6 +16,8 @@ const PLATFORM_SSH_KEY_PATH = process.env.PLATFORM_SERVICES_SSH_KEY_PATH
 const PLATFORM_SSH_KNOWN_HOSTS_PATH = process.env.PLATFORM_SERVICES_SSH_KNOWN_HOSTS_PATH
   || process.env.INFRA_METRICS_SSH_KNOWN_HOSTS_PATH
   || `${DEFAULT_SSH_DIR}/known_hosts`;
+const PLATFORM_SSH_TIMEOUT_MS = Math.max(1000, Number(process.env.PLATFORM_SERVICES_SSH_TIMEOUT_MS || 5000));
+const PLATFORM_CACHE_TTL_MS = Math.max(0, Number(process.env.PLATFORM_SERVICES_CACHE_TTL_MS || 60000));
 
 type RemotePlatformServicesSnapshot = {
   checkedAt?: string;
@@ -26,6 +28,10 @@ type RemotePlatformServicesSnapshot = {
   clickhouse?: Partial<PlatformServiceProbe>;
   redis?: Partial<PlatformServicesSnapshot['redis']>;
 };
+
+let cachedSnapshot: PlatformServicesSnapshot | null = null;
+let cachedSnapshotAt = 0;
+let inFlightSnapshot: Promise<PlatformServicesSnapshot> | null = null;
 
 function runRemoteScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -43,13 +49,49 @@ function runRemoteScript(script: string): Promise<string> {
         '-s',
       ],
       {
+        detached: process.platform !== 'win32',
         stdio: ['pipe', 'pipe', 'pipe'],
         env: process.env,
       }
     );
 
+    let settled = false;
+
     let stdout = '';
     let stderr = '';
+
+    const abortChild = () => {
+      child.stdin.destroy();
+      child.stdout.destroy();
+      child.stderr.destroy();
+
+      if (process.platform !== 'win32' && child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          child.kill('SIGKILL');
+        }
+      } else {
+        child.kill('SIGKILL');
+      }
+
+      child.unref();
+    };
+
+    const timeoutHandle = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+
+      abortChild();
+      reject(new Error(`Platform service probe timed out after ${PLATFORM_SSH_TIMEOUT_MS}ms.`));
+    }, PLATFORM_SSH_TIMEOUT_MS);
+
+    const finish = <T,>(handler: (value: T) => void, value: T) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      handler(value);
+    };
 
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -59,14 +101,16 @@ function runRemoteScript(script: string): Promise<string> {
       stderr += chunk.toString();
     });
 
-    child.on('error', reject);
+    child.on('error', (error) => {
+      finish(reject, error);
+    });
     child.on('close', (code) => {
       if (code === 0) {
-        resolve(stdout);
+        finish(resolve, stdout);
         return;
       }
 
-      reject(new Error(stderr.trim() || stdout.trim() || `ssh exited with code ${code}`));
+      finish(reject, new Error(stderr.trim() || stdout.trim() || `ssh exited with code ${code}`));
     });
 
     child.stdin.end(script);
@@ -168,7 +212,7 @@ def env_map(container):
 
 def host_header_code(host: str, path: str = '/'):
   rc, out, _err = run(
-    f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: {host}' http://127.0.0.1{path} || true"
+    f"curl --connect-timeout 1 --max-time 1 -s -o /dev/null -w '%{{http_code}}' -H 'Host: {host}' http://127.0.0.1{path} || true"
   )
   code = (out or '').strip()
   if not code.isdigit() or code == '000':
@@ -178,7 +222,7 @@ def host_header_code(host: str, path: str = '/'):
 
 def public_edge_code(host: str, path: str = '/'):
   rc, out, _err = run(
-    f"curl -k -s -o /dev/null -w '%{{http_code}}' https://{host}{path} || true"
+    f"curl --connect-timeout 1 --max-time 1 -k -s -o /dev/null -w '%{{http_code}}' https://{host}{path} || true"
   )
   code = (out or '').strip()
   if not code.isdigit() or code == '000':
@@ -539,45 +583,64 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
 }
 
 export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSnapshot> {
-  try {
-    const raw = await runRemoteScript(buildRemoteScript());
-    const parsed = JSON.parse(raw) as RemotePlatformServicesSnapshot;
-
-    const n8n = normalizeService(parsed.n8n, {
-      publicUrl: 'https://flow.news.getouch.co',
-      notes: ['Workflow metrics awaiting API integration.'],
-    });
-
-    return {
-      checkedAt: typeof parsed.checkedAt === 'string' ? parsed.checkedAt : new Date().toISOString(),
-      catalog: normalizeCatalog(parsed.catalog),
-      n8n: {
-        ...n8n,
-        basicAuthEnabled: Boolean(parsed.n8n?.basicAuthEnabled),
-        webhookUrl: typeof parsed.n8n?.webhookUrl === 'string' ? parsed.n8n.webhookUrl : null,
-      },
-      litellm: normalizeService(parsed.litellm, {
-        publicUrl: 'https://litellm.getouch.co',
-        notes: ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
-      }),
-      langfuse: normalizeService(parsed.langfuse, {
-        publicUrl: 'https://langfuse.getouch.co',
-        notes: ['Observability UI planned for multi-tenant tracing.'],
-      }),
-      clickhouse: normalizeService(parsed.clickhouse, {
-        publicUrl: 'https://clickhouse.getouch.co',
-        notes: ['Keep ClickHouse internal-only unless auth is explicitly confirmed.'],
-      }),
-      redis: {
-        found: Boolean(parsed.redis?.found),
-        primary: normalizeContainer(parsed.redis?.primary),
-        containers: normalizeContainers(parsed.redis?.containers),
-        publicOriginCode: normalizeCode(parsed.redis?.publicOriginCode),
-        publicEdgeCode: normalizeCode(parsed.redis?.publicEdgeCode),
-        notes: normalizeNotes(parsed.redis?.notes, ['Redis should remain internal-only.']),
-      },
-    };
-  } catch (error) {
-    return emptySnapshot(error instanceof Error ? error.message : 'Platform service probe failed.');
+  if (cachedSnapshot && PLATFORM_CACHE_TTL_MS > 0 && Date.now() - cachedSnapshotAt < PLATFORM_CACHE_TTL_MS) {
+    return cachedSnapshot;
   }
+
+  if (!inFlightSnapshot) {
+    inFlightSnapshot = (async () => {
+      try {
+        const raw = await runRemoteScript(buildRemoteScript());
+        const parsed = JSON.parse(raw) as RemotePlatformServicesSnapshot;
+
+        const n8n = normalizeService(parsed.n8n, {
+          publicUrl: 'https://flow.news.getouch.co',
+          notes: ['Workflow metrics awaiting API integration.'],
+        });
+
+        const snapshot = {
+          checkedAt: typeof parsed.checkedAt === 'string' ? parsed.checkedAt : new Date().toISOString(),
+          catalog: normalizeCatalog(parsed.catalog),
+          n8n: {
+            ...n8n,
+            basicAuthEnabled: Boolean(parsed.n8n?.basicAuthEnabled),
+            webhookUrl: typeof parsed.n8n?.webhookUrl === 'string' ? parsed.n8n.webhookUrl : null,
+          },
+          litellm: normalizeService(parsed.litellm, {
+            publicUrl: 'https://litellm.getouch.co',
+            notes: ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
+          }),
+          langfuse: normalizeService(parsed.langfuse, {
+            publicUrl: 'https://langfuse.getouch.co',
+            notes: ['Observability UI planned for multi-tenant tracing.'],
+          }),
+          clickhouse: normalizeService(parsed.clickhouse, {
+            publicUrl: 'https://clickhouse.getouch.co',
+            notes: ['Keep ClickHouse internal-only unless auth is explicitly confirmed.'],
+          }),
+          redis: {
+            found: Boolean(parsed.redis?.found),
+            primary: normalizeContainer(parsed.redis?.primary),
+            containers: normalizeContainers(parsed.redis?.containers),
+            publicOriginCode: normalizeCode(parsed.redis?.publicOriginCode),
+            publicEdgeCode: normalizeCode(parsed.redis?.publicEdgeCode),
+            notes: normalizeNotes(parsed.redis?.notes, ['Redis should remain internal-only.']),
+          },
+        } satisfies PlatformServicesSnapshot;
+
+        cachedSnapshot = snapshot;
+        cachedSnapshotAt = Date.now();
+        return snapshot;
+      } catch (error) {
+        if (cachedSnapshot) {
+          return cachedSnapshot;
+        }
+        return emptySnapshot(error instanceof Error ? error.message : 'Platform service probe failed.');
+      } finally {
+        inFlightSnapshot = null;
+      }
+    })();
+  }
+
+  return inFlightSnapshot;
 }
