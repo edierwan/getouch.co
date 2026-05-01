@@ -38,7 +38,7 @@ const MCP_PUBLIC_BASE_URL = process.env.MCP_PUBLIC_BASE_URL || 'https://mcp.geto
 const MCP_ENDPOINT_PATH = '/mcp';
 const MCP_ENDPOINT_URL = `${MCP_PUBLIC_BASE_URL}${MCP_ENDPOINT_PATH}`;
 const PORTAL_ADMIN_URL = process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
-const MCP_ADMIN_URL = `${PORTAL_ADMIN_URL}/ai-services/mcp`;
+const MCP_ADMIN_URL = `${PORTAL_ADMIN_URL}/ai/mcp`;
 
 const DEFAULT_MCP_SCOPES = [
   'mcp:connect',
@@ -359,7 +359,7 @@ function getServiceDirectory(): ServiceDirectoryEntry[] {
       category: 'ai',
       status: gatewayMap.get('vllm')?.status || 'ready',
       publicUrl: 'https://vllm.getouch.co',
-      adminUrl: `${PORTAL_ADMIN_URL}/ai-services/vllm`,
+      adminUrl: `${PORTAL_ADMIN_URL}/ai/vllm`,
       description: 'OpenAI-compatible vLLM inference gateway.',
     },
     {
@@ -368,7 +368,7 @@ function getServiceDirectory(): ServiceDirectoryEntry[] {
       category: 'ai',
       status: 'managed',
       publicUrl: 'https://dify.getouch.co',
-      adminUrl: `${PORTAL_ADMIN_URL}/ai-services/dify`,
+      adminUrl: `${PORTAL_ADMIN_URL}/ai/dify`,
       description: 'Managed Dify orchestration workspace and app runtime.',
     },
     {
@@ -395,7 +395,7 @@ function getServiceDirectory(): ServiceDirectoryEntry[] {
       category: 'operations',
       status: 'managed',
       publicUrl: 'https://s3.getouch.co',
-      adminUrl: `${PORTAL_ADMIN_URL}/infrastructure/object-storage`,
+      adminUrl: `${PORTAL_ADMIN_URL}/infra/object-storage`,
       description: 'S3-compatible SeaweedFS object storage gateway.',
     },
     {

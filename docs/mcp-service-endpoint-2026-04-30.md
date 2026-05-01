@@ -5,7 +5,7 @@
 - Public page: `https://mcp.getouch.co`
 - MCP endpoint: `https://mcp.getouch.co/mcp`
 - Health probe: `https://mcp.getouch.co/healthz`
-- Portal console: `https://portal.getouch.co/service-endpoints/mcp`
+- Portal console: `https://portal.getouch.co/ai/mcp`
 
 ## Runtime shape
 

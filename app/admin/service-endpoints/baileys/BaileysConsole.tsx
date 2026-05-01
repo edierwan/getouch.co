@@ -6,7 +6,7 @@ import { EvolutionStyles } from '../../whatsapp-services/evolution/EvolutionCons
 /* ─────────────────────────────────────────────────────────────────────
  * Baileys WhatsApp Gateway — Portal control console
  *
- * Mounted at: /admin/service-endpoints/baileys
+ * Mounted at: /admin/communications/baileys
  * Backend:    /api/admin/service-endpoints/baileys (proxies to wa runtime)
  *
  * The runtime is the `baileys-gateway` container exposed publicly at
@@ -429,7 +429,7 @@ function BaileysHeader({ data, loading, onCreate }: { data: OverviewData | null;
             <span className="evo-btn-ico">⌨</span> API Docs
           </a>
           <a
-            href="/admin/developer/api-keys?service=whatsapp"
+            href="/admin/security/api-keys?service=whatsapp"
             className="evo-btn evo-btn-ghost"
           >
             <span className="evo-btn-ico">▤</span> View Logs
@@ -521,7 +521,7 @@ function OverviewTab({
           <section className="evo-panel">
             <div className="evo-panel-head">
               <h3 className="evo-panel-title">API Access</h3>
-              <a href="/admin/developer/api-keys" className="evo-btn evo-btn-ghost evo-btn-xs">⚿ Manage API Keys</a>
+              <a href="/admin/security/api-keys" className="evo-btn evo-btn-ghost evo-btn-xs">⚿ Manage API Keys</a>
             </div>
             <div className="evo-stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
               <MiniStat label="Total Keys" value={apiKeyStats.total} />
@@ -621,7 +621,7 @@ function OverviewTab({
                 <span className={`evo-pill evo-pill-xs ${data.overviewEventSource === 'baileys_db' ? 'evo-pill-good' : data.overviewEventSource === 'baileys_runtime' ? 'evo-pill-info' : 'evo-pill-muted'}`}>
                   {data.overviewEventSource === 'baileys_db' ? 'Baileys DB' : data.overviewEventSource === 'baileys_runtime' ? 'Runtime Stream' : 'No Events'}
                 </span>
-                <a href="/admin/developer/api-keys?service=whatsapp" className="evo-btn evo-btn-ghost evo-btn-xs">View Full Log</a>
+                <a href="/admin/security/api-keys?service=whatsapp" className="evo-btn evo-btn-ghost evo-btn-xs">View Full Log</a>
               </div>
             </div>
             {events.length === 0 ? (

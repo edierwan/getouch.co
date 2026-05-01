@@ -3,7 +3,7 @@
 ## Summary
 
 - Native Chatwoot UI: https://chatwoot.getouch.co
-- Portal control/status route: https://portal.getouch.co/service-endpoints/chatwoot
+- Portal control/status route: https://portal.getouch.co/communications/chatwoot
 - Chatwoot runtime database: `chatwoot`
 - Portal metadata table: `chatwoot_tenant_mappings` in the portal DB
 - Deployment mode: standalone Docker Compose on the VPS, behind Caddy
@@ -162,7 +162,7 @@ Container env derived from those values:
 Portal implementation added in this repo:
 
 - Sidebar entry for Chatwoot under Service Endpoints
-- Route: `/service-endpoints/chatwoot`
+- Route: `/communications/chatwoot`
 - Title: `Chatwoot Support Inbox`
 - Subtitle: `Customer support inbox and human handover service endpoint powered by Chatwoot.`
 
@@ -266,5 +266,5 @@ Validated directly on the VPS:
 
 Pending after repo push/deploy:
 
-- `https://portal.getouch.co/service-endpoints/chatwoot` live route validation
+- `https://portal.getouch.co/communications/chatwoot` live route validation
 - cross-check existing portal service-endpoint pages after the new portal deployment rolls out

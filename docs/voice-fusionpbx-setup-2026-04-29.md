@@ -17,7 +17,7 @@ This avoids a host-native FusionPBX install, keeps the change reversible, and st
 
 - `pbx.getouch.co`: native FusionPBX admin UI
 - `voice.getouch.co`: future Getouch Voice API placeholder endpoint
-- `portal.getouch.co/service-endpoints/voice`: Getouch control and status UI
+- `portal.getouch.co/communications/voice`: Getouch control and status UI
 
 Both `pbx.getouch.co` and `voice.getouch.co` are protected by the existing Caddy `admin_auth` gate.
 

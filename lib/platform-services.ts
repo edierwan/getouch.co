@@ -19,6 +19,7 @@ const PLATFORM_SSH_KNOWN_HOSTS_PATH = process.env.PLATFORM_SERVICES_SSH_KNOWN_HO
 
 type RemotePlatformServicesSnapshot = {
   checkedAt?: string;
+  catalog?: Record<string, Partial<PlatformServiceProbe>>;
   n8n?: Partial<PlatformServicesSnapshot['n8n']>;
   litellm?: Partial<PlatformServiceProbe>;
   langfuse?: Partial<PlatformServiceProbe>;
@@ -181,6 +182,21 @@ def strip_env(container):
     return cleaned
 
 
+  def build_probe(patterns, public_url=None, host=None, path='/', internal_url=None, notes=None, force_found=False):
+    containers = find_containers(patterns)
+    public_origin = host_header_code(host, path) if host else None
+    primary = containers[0] if containers else None
+    found = bool(containers) or force_found or (public_origin is not None and public_origin not in (404, 421))
+    return {
+      'found': found,
+      'containers': [strip_env(container) for container in containers],
+      'publicUrl': public_url,
+      'publicOriginCode': public_origin,
+      'internalUrl': internal_url if (containers or force_found) else None,
+      'notes': notes or [],
+    }
+
+
 n8n_containers = find_containers([r'n8n', r'^news-flow$'])
 n8n_primary = n8n_containers[0] if n8n_containers else None
 n8n_env = env_map(n8n_primary) if n8n_primary else {}
@@ -199,8 +215,133 @@ langfuse_containers = find_containers([r'langfuse'])
 clickhouse_containers = find_containers([r'clickhouse'])
 redis_containers = find_containers([r'(^|[-_])redis($|[-_])', r'(^|[-_])valkey($|[-_])'])
 
+catalog = {
+  'authentik': build_probe(
+    [r'authentik'],
+    'https://sso.getouch.co',
+    'sso.getouch.co',
+    '/',
+    'http://authentik-server:9000',
+    ['SSO / identity provider.', 'Database target: authentik.', 'Requires PostgreSQL and Redis / Valkey.'],
+  ),
+  'qdrant': build_probe(
+    [r'qdrant'],
+    'https://qdrant.getouch.co',
+    'qdrant.getouch.co',
+    '/',
+    'http://qdrant:6333',
+    ['Vector database for tenant-aware RAG and memory retrieval.', 'Do not expose Qdrant without API auth.'],
+  ),
+  'airbyte': build_probe(
+    [r'airbyte'],
+    'https://airbyte.getouch.co',
+    'airbyte.getouch.co',
+    '/',
+    'http://airbyte-server:8000',
+    ['Data ingestion / ELT runtime.', 'Database target: airbyte.'],
+  ),
+  'infisical': build_probe(
+    [r'infisical'],
+    'https://infisical.getouch.co',
+    'infisical.getouch.co',
+    '/',
+    'http://infisical:8080',
+    ['Internal secrets vault.', 'Database target: infisical.', 'Initial admin setup must be secured before public use.'],
+  ),
+  'coolify': build_probe(
+    [r'^coolify$'],
+    'https://coolify.getouch.co',
+    'coolify.getouch.co',
+    '/',
+    'http://coolify:8000',
+    ['Deployment control plane protected by Cloudflare Access.'],
+  ),
+  'grafana': build_probe(
+    [r'^grafana$'],
+    'https://grafana.getouch.co',
+    'grafana.getouch.co',
+    '/',
+    'http://grafana:3000',
+    ['Observability dashboards. Login redirect is expected.'],
+  ),
+  'open-webui': build_probe(
+    [r'open-webui'],
+    'https://ai.getouch.co',
+    'ai.getouch.co',
+    '/',
+    'http://open-webui:8080',
+    ['Operator and end-user AI workspace.'],
+  ),
+  'dify': build_probe(
+    [r'^docker-web-1$', r'^docker-api-1$', r'dify-web', r'dify-api'],
+    'https://dify.getouch.co/apps',
+    'dify.getouch.co',
+    '/',
+    'http://docker-web-1:3000',
+    ['AI workflow and application builder runtime.'],
+  ),
+  'mcp': build_probe(
+    [],
+    'https://mcp.getouch.co',
+    'mcp.getouch.co',
+    '/',
+    'http://getouch-coolify-app:3000/api/mcp',
+    ['Portal-backed MCP endpoint served by the Coolify portal application.'],
+    True,
+  ),
+  'vllm': build_probe(
+    [r'vllm'],
+    'https://vllm.getouch.co/v1',
+    'vllm.getouch.co',
+    '/ready',
+    'http://vllm:8000/v1',
+    ['Inference gateway route currently returns 503 at origin.'],
+  ),
+  'evolution': build_probe(
+    [r'evolution-api'],
+    'https://evo.getouch.co',
+    'evo.getouch.co',
+    '/',
+    'http://evolution-api:8080',
+    ['Evolution API WhatsApp gateway.'],
+  ),
+  'baileys': build_probe(
+    [r'baileys-gateway'],
+    'https://wa.getouch.co',
+    'wa.getouch.co',
+    '/',
+    'http://baileys-gateway:3001',
+    ['Baileys multi-device gateway.', 'Root path may return 404 while API endpoints remain healthy.'],
+  ),
+  'chatwoot': build_probe(
+    [r'chatwoot-web', r'chatwoot-sidekiq'],
+    'https://chatwoot.getouch.co',
+    'chatwoot.getouch.co',
+    '/',
+    'http://chatwoot-web:3000',
+    ['Customer communication workspace.'],
+  ),
+  'voice': build_probe(
+    [r'voice-fusionpbx', r'fusionpbx'],
+    None,
+    None,
+    '/',
+    'http://voice-fusionpbx:8080',
+    ['FusionPBX / voice runtime.'],
+  ),
+  'object-storage': build_probe(
+    [r'seaweed-master', r'seaweed-volume', r'seaweed-filer', r'seaweed-s3'],
+    None,
+    None,
+    '/',
+    'http://seaweed-s3:8333',
+    ['S3-compatible object storage runtime backed by SeaweedFS.'],
+  ),
+}
+
 payload = {
     'checkedAt': datetime.now(timezone.utc).isoformat(),
+  'catalog': catalog,
     'n8n': {
         'found': bool(n8n_primary),
         'containers': [strip_env(container) for container in n8n_containers],
@@ -288,6 +429,19 @@ function normalizeNotes(notes: unknown, fallback: string[] = []) {
   return values.length ? values : fallback;
 }
 
+function normalizeCatalog(catalog: unknown): Record<string, PlatformServiceProbe> {
+  if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(catalog).map(([key, value]) => [
+      key,
+      normalizeService(value as Partial<PlatformServiceProbe>, {}),
+    ]),
+  );
+}
+
 function normalizeService(service: Partial<PlatformServiceProbe> | null | undefined, fallback: Partial<PlatformServiceProbe> = {}): PlatformServiceProbe {
   return {
     found: Boolean(service?.found ?? fallback.found),
@@ -302,6 +456,7 @@ function normalizeService(service: Partial<PlatformServiceProbe> | null | undefi
 function emptySnapshot(error: string): PlatformServicesSnapshot {
   return {
     checkedAt: new Date().toISOString(),
+    catalog: {},
     n8n: {
       found: false,
       containers: [],
@@ -358,6 +513,7 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
 
     return {
       checkedAt: typeof parsed.checkedAt === 'string' ? parsed.checkedAt : new Date().toISOString(),
+      catalog: normalizeCatalog(parsed.catalog),
       n8n: {
         ...n8n,
         basicAuthEnabled: Boolean(parsed.n8n?.basicAuthEnabled),

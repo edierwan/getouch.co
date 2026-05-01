@@ -1889,7 +1889,7 @@ function SettingsTab() {
       <section className="evo-panel">
         <h3 className="evo-panel-title">Central API Key Manager</h3>
         <p className="evo-cell-muted evo-mb-2">
-          WhatsApp Gateway integrates with the portal&apos;s <a href="/admin/developer/api-keys" className="evo-link">central API Key Manager</a>.
+          WhatsApp Gateway integrates with the portal&apos;s <a href="/admin/security/api-keys" className="evo-link">central API Key Manager</a>.
           Create a key with one or more of the scopes below, then use it as <code>apikey</code> header on calls.
         </p>
         <ul className="evo-scope-list">

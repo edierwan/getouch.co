@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ADMIN_NAV } from '@/app/admin/data';
+import { ADMIN_NAV, CANONICAL_ROUTE_ROWS } from '@/app/admin/data';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,10 +28,12 @@ export async function GET() {
     nodeEnv: process.env.NODE_ENV || null,
     runtime: 'next-standalone-node',
     sidebarConfigSource: 'app/admin/data.ts (ADMIN_NAV)',
+    canonicalRouteSource: 'app/admin/data.ts (CANONICAL_ROUTE_ROWS)',
     sidebarHasObjectStorage: ADMIN_NAV.some((s) =>
       s.items.some((i) => i.label === 'Object Storage'),
     ),
     nav: navLabels,
+    routeTable: CANONICAL_ROUTE_ROWS,
     serverTime: new Date().toISOString(),
   };
 

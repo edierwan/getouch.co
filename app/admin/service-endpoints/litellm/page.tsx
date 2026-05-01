@@ -27,7 +27,7 @@ export default async function LiteLlmServiceEndpointPage() {
 
   return (
     <div className="portal-body">
-      <Breadcrumb category="AI Services" page="LiteLLM Gateway" />
+      <Breadcrumb category="AI Engine & Cognition" page="LiteLLM Gateway" />
       <PageIntro
         title="LiteLLM Gateway"
         subtitle="OpenAI-compatible model proxy and routing layer for multiple model providers."

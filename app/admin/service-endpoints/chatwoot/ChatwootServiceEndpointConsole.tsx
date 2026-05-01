@@ -108,7 +108,7 @@ export function ChatwootServiceEndpointConsole() {
 
   return (
     <div>
-      <Breadcrumb category="Communications" page="Chatwoot" />
+      <Breadcrumb category="Communication Hubs" page="Chatwoot" />
       <PageIntro
         title="Chatwoot"
         subtitle="Omnichannel customer support and human handover. The Chatwoot agent UI at https://chatwoot.getouch.co is the operator workspace; this page is the portal control and status view."

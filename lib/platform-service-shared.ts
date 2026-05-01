@@ -23,6 +23,7 @@ export type PlatformServiceProbe = {
 
 export type PlatformServicesSnapshot = {
   checkedAt: string;
+  catalog: Record<string, PlatformServiceProbe>;
   n8n: PlatformServiceProbe & {
     basicAuthEnabled: boolean;
     webhookUrl: string | null;
@@ -45,6 +46,16 @@ export type PlatformDisplayStatus = {
   detail: string;
 };
 
+export type DescribeProbeOptions = {
+  requirePublicRoute?: boolean;
+  missingLabel?: string;
+  missingDetail?: string;
+  installedDetail?: string;
+  onlineDetail?: string;
+  publicOnlyDetail?: string;
+  degradedDetail?: string;
+};
+
 export function isContainerOnline(container: PlatformContainerProbe | null | undefined) {
   if (!container) return false;
   return container.status === 'running' && (!container.health || container.health === 'healthy');
@@ -64,6 +75,63 @@ export function formatRuntimeSource(source: PlatformRuntimeSource) {
 
 function summarizeContainer(service: PlatformServiceProbe) {
   return service.containers[0] || null;
+}
+
+export function describeServiceProbe(
+  service: PlatformServiceProbe,
+  options: DescribeProbeOptions = {},
+): PlatformDisplayStatus {
+  const container = summarizeContainer(service);
+  const publicLive = typeof service.publicOriginCode === 'number' && service.publicOriginCode >= 200 && service.publicOriginCode < 400;
+
+  if (isContainerOnline(container) && (publicLive || !options.requirePublicRoute)) {
+    return {
+      label: 'ONLINE',
+      tone: 'healthy',
+      detail: options.onlineDetail || 'Runtime and public route are healthy.',
+    };
+  }
+
+  if (!container && publicLive) {
+    return {
+      label: 'ONLINE',
+      tone: 'active',
+      detail: options.publicOnlyDetail || 'Public route is live through a shared runtime.',
+    };
+  }
+
+  if (isContainerOnline(container)) {
+    return {
+      label: 'INSTALLED',
+      tone: 'active',
+      detail: options.installedDetail || 'Runtime exists, but the public route validation is still pending.',
+    };
+  }
+
+  if (service.found) {
+    return {
+      label: 'DEGRADED',
+      tone: 'warning',
+      detail: options.degradedDetail || 'Runtime or origin routing exists, but health checks are not passing.',
+    };
+  }
+
+  return {
+    label: options.missingLabel || 'NOT INSTALLED',
+    tone: 'info',
+    detail: options.missingDetail || 'No runtime detected.',
+  };
+}
+
+export function getCatalogService(snapshot: PlatformServicesSnapshot, key: string): PlatformServiceProbe {
+  return snapshot.catalog[key] || {
+    found: false,
+    containers: [],
+    publicUrl: null,
+    publicOriginCode: null,
+    internalUrl: null,
+    notes: [],
+  };
 }
 
 export function describeN8n(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {

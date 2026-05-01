@@ -153,7 +153,7 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
 
   return (
     <div className="servers-shell">
-      <Breadcrumb category="Infrastructure" page="Servers & Nodes" />
+      <Breadcrumb category="System Orchestration" page="Servers & Nodes" />
 
       <header className="servers-page-head">
         <div>
@@ -399,7 +399,7 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
                 <div className="servers-action-sub">Monitoring &amp; metrics</div>
               </div>
             </a>
-            <a href="/admin/developer/api-keys" className="servers-action">
+            <a href="/admin/security/api-keys" className="servers-action">
               <span className="servers-action-icon">⚿</span>
               <div>
                 <div className="servers-action-name">API Keys</div>

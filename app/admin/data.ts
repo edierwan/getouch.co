@@ -67,74 +67,92 @@ export interface InfrastructureModule {
   href?: string;
 }
 
+export interface CanonicalRouteRow {
+  category: string;
+  label: string;
+  publicPath: string;
+  adminPath: string;
+}
+
 export const ADMIN_NAV: NavSection[] = [
   {
-    label: 'OVERVIEW',
+    label: 'SYSTEM ORCHESTRATION',
     accentRgb: '126, 154, 255',
-    items: [{ label: 'Dashboard', href: '/admin', icon: '⌘' }],
-  },
-  {
-    label: 'INFRASTRUCTURE',
-    accentRgb: '104, 187, 255',
     items: [
-      { label: 'Servers & Nodes', href: '/admin/infrastructure/servers', icon: '▣' },
-      { label: 'Databases', href: '/admin/infrastructure/databases', icon: '▤' },
-      { label: 'Object Storage', href: '/admin/infrastructure/object-storage', icon: '▦' },
-      { label: 'Backups', href: '/admin/infrastructure/backups', icon: '⟲' },
+      { label: 'Dashboard', href: '/admin/system/dashboard', icon: '⌘' },
+      { label: 'Servers & Nodes', href: '/admin/system/servers', icon: '▣' },
+      { label: 'Authentik', href: '/admin/system/authentik', icon: '⚲' },
     ],
   },
   {
-    label: 'OPERATIONS',
-    accentRgb: '155, 167, 255',
-    items: [
-      { label: 'Coolify', href: 'https://coolify.getouch.co', icon: '◈', external: true },
-      { label: 'Grafana', href: 'https://grafana.getouch.co', icon: '◔', external: true },
-      { label: 'Langfuse', href: '/admin/operations/langfuse', icon: '◎' },
-    ],
-  },
-  {
-    label: 'AI SERVICES',
+    label: 'AI ENGINE & COGNITION',
     accentRgb: '78, 206, 199',
     items: [
-      { label: 'vLLM Gateway', href: '/admin/ai-services/vllm', icon: '◉' },
-      { label: 'LiteLLM Gateway', href: '/admin/ai-services/litellm', icon: '◎' },
-      { label: 'Open WebUI', href: 'https://ai.getouch.co', icon: '◌', external: true },
-      { label: 'Dify', href: '/admin/ai-services/dify', icon: '◍' },
-      { label: 'MCP Endpoint', href: '/admin/ai-services/mcp', icon: '⌬' },
+      { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
+      { label: 'LiteLLM Gateway', href: '/admin/ai/litellm', icon: '◎' },
+      { label: 'Dify', href: '/admin/ai/dify', icon: '◍' },
+      { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
+      { label: 'Qdrant', href: '/admin/ai/qdrant', icon: '◌' },
     ],
   },
   {
-    label: 'AUTOMATION',
+    label: 'AUTOMATION & DATA FLOW',
     accentRgb: '243, 179, 73',
     items: [
       { label: 'n8n Workflows', href: '/admin/automation/n8n', icon: '⇄' },
+      { label: 'Webhooks', href: '/admin/automation/webhooks', icon: '↺' },
+      { label: 'Airbyte', href: '/admin/automation/airbyte', icon: '⟷' },
     ],
   },
   {
-    label: 'COMMUNICATIONS',
+    label: 'COMMUNICATION HUBS',
     accentRgb: '92, 210, 184',
     items: [
       { label: 'Evolution Gateway', href: '/admin/communications/evolution', icon: '◈' },
       { label: 'Baileys Gateway', href: '/admin/communications/baileys', icon: '◌' },
-      { label: 'Chatwoot', href: '/admin/communications/chatwoot', icon: '◌' },
+      { label: 'Open WebUI', href: '/admin/communications/open-webui', icon: '◎' },
+      { label: 'Chatwoot', href: '/admin/communications/chatwoot', icon: '◐' },
       { label: 'FusionPBX / Voice', href: '/admin/communications/voice', icon: '◍' },
     ],
   },
   {
-    label: 'DEVELOPER',
-    accentRgb: '184, 156, 255',
+    label: 'INFRA & PERSISTENCE',
+    accentRgb: '104, 187, 255',
     items: [
-      { label: 'API Keys', href: '/admin/developer/api-keys', icon: '⚿' },
-      { label: 'Webhooks', href: '/admin/developer/webhooks', icon: '↺' },
-      { label: 'SDK & Docs', href: '/admin/developer/docs', icon: '⌥' },
+      { label: 'Coolify', href: '/admin/infra/coolify', icon: '◈' },
+      { label: 'Databases', href: '/admin/infra/databases', icon: '▤' },
+      { label: 'Object Storage', href: '/admin/infra/object-storage', icon: '▦' },
+      { label: 'Backups', href: '/admin/infra/backups', icon: '⟲' },
     ],
   },
   {
-    label: 'ACCESS',
+    label: 'OBSERVABILITY & TRACING',
+    accentRgb: '155, 167, 255',
+    items: [
+      { label: 'Grafana', href: '/admin/observability/grafana', icon: '◔' },
+      { label: 'Langfuse', href: '/admin/observability/langfuse', icon: '◎' },
+    ],
+  },
+  {
+    label: 'ACCESS & SECURITY',
     accentRgb: '196, 161, 255',
-    items: [{ label: 'Quick Links', href: '/admin/access/quick-links', icon: '⊞' }],
+    items: [
+      { label: 'API Keys', href: '/admin/security/api-keys', icon: '⚿' },
+      { label: 'Infisical', href: '/admin/security/infisical', icon: '◫' },
+      { label: 'SDK & Docs', href: '/admin/security/docs', icon: '⌥' },
+      { label: 'Quick Links', href: '/admin/security/quick-links', icon: '⊞' },
+    ],
   },
 ];
+
+export const CANONICAL_ROUTE_ROWS: CanonicalRouteRow[] = ADMIN_NAV.flatMap((section) =>
+  section.items.map((item) => ({
+    category: section.label,
+    label: item.label,
+    publicPath: item.href.replace('/admin', ''),
+    adminPath: item.href,
+  })),
+);
 
 export const DASHBOARD_SUMMARY: SummaryCard[] = [
   { label: 'TOTAL SERVICES', value: '13', icon: '▤' },
@@ -150,11 +168,13 @@ export const QUICK_ACTIONS = [
   { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
   { label: 'News CMS', href: '/news-cms' },
   { label: 'Portal Users', href: '/admin/users' },
-  { label: 'Open Coolify', href: 'https://coolify.getouch.co', external: true },
-  { label: 'Open Webmail', href: 'https://mail.getouch.co', external: true },
-  { label: 'Mail Admin', href: 'https://mail.getouch.co', external: true },
-  { label: 'Open pgAdmin', href: 'https://db.getouch.co', external: true },
-  { label: 'Open Grafana', href: 'https://grafana.getouch.co', external: true },
+  { label: 'System Dashboard', href: '/admin/system/dashboard' },
+  { label: 'API Keys', href: '/admin/security/api-keys' },
+  { label: 'Webhooks', href: '/admin/automation/webhooks' },
+  { label: 'Open WebUI', href: '/admin/communications/open-webui' },
+  { label: 'Quick Links', href: '/admin/security/quick-links' },
+  { label: 'Coolify Overview', href: '/admin/infra/coolify' },
+  { label: 'Grafana Overview', href: '/admin/observability/grafana' },
 ];
 
 export const DASHBOARD_SERVICES: ResourceRow[] = [

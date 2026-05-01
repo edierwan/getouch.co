@@ -27,7 +27,7 @@ export default async function N8nAutomationPage() {
 
   return (
     <div className="portal-body">
-      <Breadcrumb category="Automation" page="n8n Workflows" />
+      <Breadcrumb category="Automation & Data Flow" page="n8n Workflows" />
       <PageIntro
         title="n8n Workflows"
         subtitle="Workflow automation and integration runner for webhooks, schedules, and AI-triggered actions."

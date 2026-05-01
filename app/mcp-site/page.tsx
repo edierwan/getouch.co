@@ -28,7 +28,7 @@ export default async function McpPublicPage() {
             <a href="#clients">Clients</a>
             <a href="#status">Status</a>
             <a href="#support">Support</a>
-            <a href="https://portal.getouch.co/ai-services/mcp" className="mcp-site-console-link">Portal Console</a>
+            <a href="https://portal.getouch.co/ai/mcp" className="mcp-site-console-link">Portal Console</a>
           </div>
         </div>
       </nav>
@@ -44,7 +44,7 @@ export default async function McpPublicPage() {
             </p>
             <div className="mcp-site-hero-actions">
               <a href="#connect" className="mcp-site-primary-action">Connect to /mcp</a>
-              <a href="https://portal.getouch.co/ai-services/mcp" className="mcp-site-secondary-action">Open operator console</a>
+              <a href="https://portal.getouch.co/ai/mcp" className="mcp-site-secondary-action">Open operator console</a>
             </div>
           </div>
 
@@ -179,8 +179,8 @@ export default async function McpPublicPage() {
             </p>
           </div>
           <div className="mcp-site-support-actions">
-            <a href="https://portal.getouch.co/ai-services/mcp" className="mcp-site-primary-action">Open MCP console</a>
-            <a href="https://portal.getouch.co/developer/api-keys" className="mcp-site-secondary-action">Open API keys</a>
+            <a href="https://portal.getouch.co/ai/mcp" className="mcp-site-primary-action">Open MCP console</a>
+            <a href="https://portal.getouch.co/security/api-keys" className="mcp-site-secondary-action">Open API keys</a>
           </div>
         </section>
       </main>

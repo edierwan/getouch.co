@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getPreprodBackupOverview, runPreprodBackupNow } from '@/lib/preprod-backups';
 
-const PAGE_PATH = '/admin/infrastructure/databases';
+const PAGE_PATH = '/admin/infra/databases';
 
 export async function POST() {
   const session = await getSession();

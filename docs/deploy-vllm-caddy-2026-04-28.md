@@ -99,7 +99,7 @@ curl -i https://vllm.getouch.co/v1/models \
 
 ## Constraints honored
 
-- `llm.getouch.co` is **not** added to Caddy. It remains reserved for future LiteLLM.
+- `litellm.getouch.co` is the canonical LiteLLM hostname, but it is **not** added to Caddy in this milestone because no live LiteLLM runtime exists yet.
 - Raw vLLM (`vllm-qwen3-14b-fp8:8000`) is not exposed through Caddy.
 - The existing `portal.getouch.co` route uses `getouch-coolify-app:3000`.
 - No Ollama or Open WebUI configuration is touched by this step.

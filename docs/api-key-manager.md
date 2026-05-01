@@ -10,13 +10,13 @@ A single place inside `portal.getouch.co` to issue, scope, rotate, revoke, audit
 - Webhooks
 - Internal portal APIs
 - External integrations
-- Reserved future LiteLLM (`llm.getouch.co`)
+- Future LiteLLM hostname (`litellm.getouch.co`)
 
 ## Routes
 
 - UI: `/admin/api-keys` (admin only)
-- Sidebar: **Developer Platform → API Keys / Webhooks / SDK & Docs**
-- Service endpoint consumer: `/service-endpoints/vllm` offers a vLLM-focused view of AI keys, env-managed gateway keys, and suggested vLLM scopes.
+- Sidebar: **Access & Security → API Keys / SDK & Docs** plus **Automation & Data Flow → Webhooks**
+- Service endpoint consumer: `/ai/vllm` offers a vLLM-focused view of AI keys, env-managed gateway keys, and suggested vLLM scopes.
 - API:
   - `GET /api/admin/api-keys` — list, stats, gateways, secret inventory, scope catalog
   - `POST /api/admin/api-keys` — create new key (returns plaintext **once**)
@@ -97,7 +97,7 @@ Recommended scopes for the current vLLM public gateway page:
 - `ai:models`
 - `model:getouch-qwen3-14b`
 
-These are prefilled by the `/service-endpoints/vllm` create-key flow.
+These are prefilled by the `/ai/vllm` create-key flow.
 
 ## Validation library
 
@@ -223,5 +223,5 @@ Rollback never touches WAPI, vLLM gateway, or any existing key.
 - Added Coolify env-secret inventory (read-only catalog; values never displayed).
 - WhatsApp keys remain on WAPI legacy validation; migration plan documented.
 - vLLM and Voice gateways still self-validate; central library is ready to plug in.
-- LiteLLM domain `llm.getouch.co` confirmed reserved (not in use).
+- LiteLLM domain `litellm.getouch.co` is the canonical hostname and is not yet backed by a live runtime.
 - Existing services intentionally untouched until explicit migration phases.

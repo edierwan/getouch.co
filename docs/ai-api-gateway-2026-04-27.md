@@ -3,13 +3,13 @@
 ## Scope
 
 - Public vLLM API domain: `https://vllm.getouch.co/v1`
-- Portal admin UI route: `https://portal.getouch.co/service-endpoints/vllm`
-- `https://llm.getouch.co/v1` is **reserved for future LiteLLM** and is not used by this gateway.
+- Portal admin UI route: `https://portal.getouch.co/ai/vllm`
+- `https://litellm.getouch.co/v1` is the canonical future LiteLLM endpoint and is not used by this gateway.
 - Public access goes through the portal application gateway, not directly to a model server.
 - All `/v1/*` routes require an API key.
 - Public health endpoints stay available at `/health` and `/ready`.
 - Raw vLLM is never exposed publicly without API key protection.
-- vLLM itself has no native UI. `portal.getouch.co/service-endpoints/vllm` is the admin/control surface; `ai.getouch.co` (Open WebUI) is the chat/test UI.
+- vLLM itself has no native UI. `portal.getouch.co/ai/vllm` is the admin/control surface; `ai.getouch.co` (Open WebUI) is the chat/test UI.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ This keeps one stable public API surface while allowing backend changes behind t
 
 - `Authorization: Bearer <GETOUCH_VLLM_API_KEY>` is required on every `/v1/*` request.
 - Gateway keys are currently managed through server env or secrets.
-- The portal now includes a dedicated vLLM gateway dashboard at `/service-endpoints/vllm` showing status, key inventory, quick tests, sanitized logs, Open WebUI provider status, and usage when central logging exists.
+- The portal now includes a dedicated vLLM gateway dashboard at `/ai/vllm` showing status, key inventory, quick tests, sanitized logs, Open WebUI provider status, and usage when central logging exists.
 - Keys may be provided as plain values or `sha256:` hashes.
 - The admin UI does not reveal full key values.
 - Per-key rate limit (default: 30 requests / 60s window).
@@ -109,7 +109,7 @@ Open WebUI currently shows only the local Ollama models. vLLM is **not** auto-co
 
 The dedicated admin page is:
 
-- `portal.getouch.co/service-endpoints/vllm`
+- `portal.getouch.co/ai/vllm`
 
 It is responsible for:
 
@@ -167,7 +167,7 @@ Page: `/admin/ai-services`
 The admin UI shows:
 
 - public base URL = `https://vllm.getouch.co/v1`
-- a banner noting `llm.getouch.co` is reserved for future LiteLLM
+- a banner noting `litellm.getouch.co` is the canonical future LiteLLM hostname
 - gateway readiness, backend type, backend privacy posture
 - **Model Runtime Plan** table with alias / backend model / type / status / notes
 - request safety limits
@@ -199,8 +199,8 @@ The following steps are deployment-time only and are not in the application repo
 
 ### 2026-04-28 — Plan Update
 
-- Switched the public vLLM API domain from `llm.getouch.co` (original plan) to `https://vllm.getouch.co/v1`.
-- Reserved `https://llm.getouch.co/v1` for future LiteLLM. Not used by this gateway.
+- Switched the public vLLM API domain from the original shared LiteLLM planning hostname to `https://vllm.getouch.co/v1`.
+- `https://litellm.getouch.co/v1` is now the canonical future LiteLLM endpoint. Not used by this gateway.
 - Renamed canonical env var prefix from `GETOUCH_AI_*` to `GETOUCH_VLLM_*`. Legacy `GETOUCH_AI_*` names remain honored as fallbacks.
 - Added `POST /v1/embeddings` foundation (auth + alias-type check; backend wiring pending HF id verification).
 - Added future model aliases:

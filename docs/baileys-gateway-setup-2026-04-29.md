@@ -15,14 +15,14 @@
 - Current runtime: `baileys-gateway`
 - Current runtime database: `baileys`
 - Portal direct-read database: `baileys`
-- Portal route: `https://portal.getouch.co/service-endpoints/baileys`
+- Portal route: `https://portal.getouch.co/communications/baileys`
 - Backup/rollback bundle kept at `/home/deploy/backups/baileys-cutover-20260429-035147`
 
 ## Validation
 
 - `https://wa.getouch.co/healthz` now returns `service=baileys-gateway`, `runtimeMode=baileys`, and `database=baileys`.
 - A live admin session smoke test wrote a temporary row to `baileys.sessions` and removed it cleanly.
-- The portal host resolves `portal.getouch.co/service-endpoints/baileys` and the live portal container now points at `baileys`.
+- The portal host resolves `portal.getouch.co/communications/baileys` and the live portal container now points at `baileys`.
 
 ## Provider boundary
 

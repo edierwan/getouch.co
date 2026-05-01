@@ -14,8 +14,8 @@ service endpoint.
 
 ## Canonical surfaces
 
-- Portal route: `https://portal.getouch.co/service-endpoints/object-storage`
-- Admin route: `https://portal.getouch.co/admin/service-endpoints/object-storage`
+- Portal route: `https://portal.getouch.co/infra/object-storage`
+- Admin route: `https://portal.getouch.co/admin/infra/object-storage`
 - Legacy redirect: `https://portal.getouch.co/admin/object-storage`
 - Browser console: `https://s3.getouch.co`
 - S3-compatible API: `https://s3api.getouch.co`

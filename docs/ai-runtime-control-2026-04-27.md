@@ -55,7 +55,7 @@ The page now includes:
 
 Additional page:
 
-- `/admin/service-endpoints/vllm` → public portal path `/service-endpoints/vllm`
+- `/admin/ai/vllm` → public portal path `/ai/vllm`
 
 This dedicated page focuses on the protected gateway surface rather than runtime maintenance. It shows:
 
@@ -136,7 +136,7 @@ Current operational notes for the dedicated gateway/runtime pair:
 - No separate vLLM database is required at this stage.
 - Portal metadata, key inventory, and usage continue to use the main `getouch.co` PostgreSQL database.
 - The backend model cache is expected under `/srv/apps/ai/huggingface` on the host.
-- LiteLLM, if introduced later on `llm.getouch.co`, may have its own database and control surface.
+- LiteLLM, if introduced later on `litellm.getouch.co`, may have its own database and control surface.
 
 If approved in a future maintenance window, the intended internal vLLM service is:
 
@@ -201,10 +201,10 @@ What rollback does not do:
 
 ## Changelog — 2026-04-28 Plan Update
 
-This document was originally written when the public AI API domain was planned as `llm.getouch.co`. That decision changed:
+This document was originally written before the LiteLLM hostname was standardized. That decision changed:
 
 - **Public vLLM API domain is now `https://vllm.getouch.co/v1`.**
-- **`https://llm.getouch.co/v1` is reserved for future LiteLLM** (higher-level model routing) and is not used by the vLLM gateway.
+- **`https://litellm.getouch.co/v1` is the canonical future LiteLLM endpoint** (higher-level model routing) and is not used by the vLLM gateway today.
 - The protected vLLM API foundation is implemented in the portal app at `/v1/models`, `/v1/chat/completions`, `/v1/embeddings`, `/health`, `/ready` (see `docs/ai-api-gateway-2026-04-27.md`).
 - Raw vLLM is never exposed publicly without API key protection.
 
@@ -234,7 +234,7 @@ Open WebUI currently shows only local Ollama models because no OpenAI-compatible
 
 ## Changelog 2026-04-27/28
 
-- Confirmed `https://vllm.getouch.co/v1` is the only public vLLM API surface; `https://llm.getouch.co` is **reserved** for future LiteLLM and intentionally has no Caddy vhost in this milestone.
+- Confirmed `https://vllm.getouch.co/v1` is the only public vLLM API surface; `https://litellm.getouch.co` is the canonical future LiteLLM hostname and intentionally has no Caddy vhost in this milestone.
 - Added Caddy vhost for `vllm.getouch.co` routing only `/v1/*`, `/health`, `/ready` to the portal app; everything else returns 404 at the edge.
 - Reaffirmed: vLLM container is **not** deployed in this milestone (the prior `vllm-qwen3-14b-fp8-probe` exited on engine init — separate 16GB-GPU validation task).
 - Reaffirmed: vLLM is **not** added to Open WebUI's External provider list automatically; operator must add it manually after the backend is validated.

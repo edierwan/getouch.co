@@ -3,7 +3,7 @@
 ## Summary
 
 The FusionPBX voice service endpoint page in the portal
-(`/admin/service-endpoints/voice`) was upgraded from a single-screen
+(`/admin/communications/voice`) was upgraded from a single-screen
 status dashboard to a full eight-tab management console modeled on the
 attached UI design. The page now reads live data from the FusionPBX
 `voice` Postgres database and FreeSWITCH where possible, and renders

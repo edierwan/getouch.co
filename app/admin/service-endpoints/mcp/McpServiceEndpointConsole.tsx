@@ -367,7 +367,7 @@ export function McpServiceEndpointConsole() {
 
   return (
     <>
-      <Breadcrumb category="AI Services" page="MCP Endpoint" />
+      <Breadcrumb category="AI Engine & Cognition" page="MCP Endpoint" />
       <PageIntro
         title="MCP Endpoint"
         subtitle="Public developer page, bearer-authenticated Streamable HTTP endpoint, central API-key integration, and operator controls for the Getouch MCP runtime."

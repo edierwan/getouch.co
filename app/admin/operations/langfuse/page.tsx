@@ -32,7 +32,7 @@ export default async function LangfuseOperationsPage() {
 
   return (
     <div className="portal-body">
-      <Breadcrumb category="Operations" page="Langfuse" />
+      <Breadcrumb category="Observability & Tracing" page="Langfuse" />
       <PageIntro
         title="Langfuse"
         subtitle="AI observability surface for tracing, prompt debugging, latency, and tenant-scoped evaluation metadata."
@@ -52,7 +52,7 @@ export default async function LangfuseOperationsPage() {
           <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(langfusePrimary))}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Container</span><span className="portal-info-table-value">{langfusePrimary?.name || 'None detected'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Health</span><span className="portal-info-table-value">{langfusePrimary?.health || langfusePrimary?.status || 'No runtime detected'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Dependencies</span><span className="portal-info-table-value">PostgreSQL (`langfuse`), ClickHouse, Redis / queue cache</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Dependencies</span><span className="portal-info-table-value">PostgreSQL (langfuse), ClickHouse, Redis / queue cache</span></div>
         </div>
 
         {snapshot.langfuse.publicUrl ? (
@@ -85,8 +85,8 @@ export default async function LangfuseOperationsPage() {
           </div>
         </div>
         <div className="portal-activity-list">
-          <div className="portal-activity-item">`tenant_id` and `tenant_slug` should be attached to every AI trace.</div>
-          <div className="portal-activity-item">Include `channel`, `conversation_id`, `app_id`, and `workflow_id` on every request chain.</div>
+          <div className="portal-activity-item">tenant_id and tenant_slug should be attached to every AI trace.</div>
+          <div className="portal-activity-item">Include channel, conversation_id, app_id, and workflow_id on every request chain.</div>
           <div className="portal-activity-item">Do not log secrets or sensitive customer payloads in trace metadata.</div>
         </div>
       </section>
