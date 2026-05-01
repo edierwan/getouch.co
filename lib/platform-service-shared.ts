@@ -51,6 +51,7 @@ export type PlatformDisplayStatus = {
 export type DescribeProbeOptions = {
   requirePublicRoute?: boolean;
   missingLabel?: string;
+  missingTone?: PlatformTone;
   missingDetail?: string;
   installedDetail?: string;
   onlineDetail?: string;
@@ -79,12 +80,16 @@ function summarizeContainer(service: PlatformServiceProbe) {
   return service.containers[0] || null;
 }
 
-function isLiveRoute(code: number | null | undefined) {
-  return typeof code === 'number' && code >= 200 && code < 400;
+function hasRouteCode(code: number | null | undefined): code is number {
+  return typeof code === 'number' && Number.isFinite(code) && code > 0;
+}
+
+function isReachableRoute(code: number | null | undefined) {
+  return hasRouteCode(code) && ((code >= 200 && code < 400) || code === 401 || code === 403 || code === 405);
 }
 
 function resolvePublicRouteCode(service: PlatformServiceProbe) {
-  return service.publicEdgeCode ?? service.publicOriginCode;
+  return hasRouteCode(service.publicEdgeCode) ? service.publicEdgeCode : service.publicOriginCode;
 }
 
 export function describeServiceProbe(
@@ -92,8 +97,8 @@ export function describeServiceProbe(
   options: DescribeProbeOptions = {},
 ): PlatformDisplayStatus {
   const container = summarizeContainer(service);
-  const publicLive = isLiveRoute(resolvePublicRouteCode(service));
-  const edgeFailed = service.publicEdgeCode !== null && !isLiveRoute(service.publicEdgeCode);
+  const publicLive = isReachableRoute(resolvePublicRouteCode(service));
+  const edgeFailed = hasRouteCode(service.publicEdgeCode) && !isReachableRoute(service.publicEdgeCode);
 
   if (isContainerOnline(container) && (publicLive || !options.requirePublicRoute)) {
     return {
@@ -137,7 +142,7 @@ export function describeServiceProbe(
 
   return {
     label: options.missingLabel || 'NOT INSTALLED',
-    tone: 'info',
+    tone: options.missingTone || 'info',
     detail: options.missingDetail || 'No runtime detected.',
   };
 }
@@ -154,10 +159,19 @@ export function getCatalogService(snapshot: PlatformServicesSnapshot, key: strin
   };
 }
 
+export function getServiceProbe(snapshot: PlatformServicesSnapshot, key: string): PlatformServiceProbe {
+  if (key === 'n8n') return snapshot.n8n;
+  if (key === 'litellm') return snapshot.litellm;
+  if (key === 'langfuse') return snapshot.langfuse;
+  if (key === 'clickhouse') return snapshot.clickhouse;
+  return getCatalogService(snapshot, key);
+}
+
 export function describeN8n(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.n8n);
-  if (isContainerOnline(container) && isLiveRoute(resolvePublicRouteCode(snapshot.n8n))) {
-    return { label: 'ONLINE', tone: 'healthy', detail: 'Workflow automation route is live at origin.' };
+  const publicLive = isReachableRoute(resolvePublicRouteCode(snapshot.n8n));
+  if (publicLive) {
+    return { label: 'ONLINE', tone: isContainerOnline(container) ? 'healthy' : 'active', detail: 'Workflow automation runtime is online. Metrics are still awaiting API integration.' };
   }
   if (isContainerOnline(container)) {
     return { label: 'INSTALLED', tone: 'active', detail: 'Container is healthy. Public route verification is still pending.' };
@@ -170,10 +184,11 @@ export function describeN8n(snapshot: PlatformServicesSnapshot): PlatformDisplay
 
 export function describeLiteLlm(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.litellm);
-  if (isContainerOnline(container) && isLiveRoute(resolvePublicRouteCode(snapshot.litellm))) {
+  const publicLive = isReachableRoute(resolvePublicRouteCode(snapshot.litellm));
+  if (publicLive) {
     return { label: 'ONLINE', tone: 'healthy', detail: 'LiteLLM gateway runtime is healthy. Provider configuration still needs model credentials.' };
   }
-  if (isContainerOnline(container) && snapshot.litellm.publicEdgeCode !== null && !isLiveRoute(snapshot.litellm.publicEdgeCode)) {
+  if (isContainerOnline(container) && hasRouteCode(snapshot.litellm.publicEdgeCode) && !isReachableRoute(snapshot.litellm.publicEdgeCode)) {
     return { label: 'DEGRADED', tone: 'warning', detail: 'LiteLLM is healthy at the origin, but the public hostname is still not serving the gateway route.' };
   }
   if (isContainerOnline(container)) {
@@ -187,7 +202,8 @@ export function describeLiteLlm(snapshot: PlatformServicesSnapshot): PlatformDis
 
 export function describeLangfuse(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.langfuse);
-  if (isContainerOnline(container) && isLiveRoute(resolvePublicRouteCode(snapshot.langfuse))) {
+  const publicLive = isReachableRoute(resolvePublicRouteCode(snapshot.langfuse));
+  if (publicLive) {
     return { label: 'ONLINE', tone: 'healthy', detail: 'Observability UI is live. Admin onboarding is still required before tenant traffic.' };
   }
   if (isContainerOnline(container)) {
@@ -202,7 +218,7 @@ export function describeLangfuse(snapshot: PlatformServicesSnapshot): PlatformDi
 export function describeClickHouse(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   const container = summarizeContainer(snapshot.clickhouse);
   if (isContainerOnline(container)) {
-    return { label: 'ONLINE', tone: 'healthy', detail: 'ClickHouse analytics store is online.' };
+    return { label: 'HEALTHY', tone: 'healthy', detail: 'ClickHouse analytics store is healthy and remains internal-only.' };
   }
   if (snapshot.clickhouse.found) {
     return { label: 'DEGRADED', tone: 'warning', detail: 'ClickHouse container exists but is not healthy.' };
@@ -212,7 +228,7 @@ export function describeClickHouse(snapshot: PlatformServicesSnapshot): Platform
 
 export function describeRedis(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {
   if (isContainerOnline(snapshot.redis.primary)) {
-    return { label: 'ONLINE', tone: 'healthy', detail: 'Internal Redis runtime is healthy.' };
+    return { label: 'HEALTHY', tone: 'healthy', detail: 'Internal Redis runtime is healthy.' };
   }
   if (snapshot.redis.found) {
     return { label: 'INSTALLED', tone: 'active', detail: 'Redis exists, but health telemetry is limited.' };

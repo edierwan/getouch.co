@@ -4,7 +4,7 @@ import { getPlatformServicesSnapshot } from '@/lib/platform-services';
 import {
   describeServiceProbe,
   formatRuntimeSource,
-  getCatalogService,
+  getServiceProbe,
   resolveRuntimeSource,
 } from '@/lib/platform-service-shared';
 
@@ -17,19 +17,42 @@ function statusClassName(tone: 'healthy' | 'active' | 'warning' | 'critical' | '
 function formatOriginStatus(code: number | null) {
   if (code === null) return 'Unknown';
   if (code === 421) return 'Not served by origin';
+  if (code === 401) return '401 Protected';
+  if (code === 403) return '403 Forbidden';
+  if (code === 405) return '405 Method restricted';
   return String(code);
 }
 
 function formatEdgeStatus(code: number | null) {
   if (code === null) return 'Not checked';
+  if (code === 401) return '401 Protected';
+  if (code === 403) return '403 Forbidden';
+  if (code === 405) return '405 Method restricted';
   return String(code);
+}
+
+function formatRuntimeValue(config: ServiceOverviewConfig, found: boolean, runtimeSource: string, primaryName: string | null) {
+  if (primaryName) return `${runtimeSource} · ${primaryName}`;
+  if (config.runtimeSourceHint) return config.runtimeSourceHint;
+  if (found) return 'Shared or external runtime';
+  return runtimeSource;
+}
+
+function formatHealthValue(config: ServiceOverviewConfig, probe: { publicOriginCode: number | null; publicEdgeCode: number | null }, fallback: string) {
+  if (config.healthCheck) return config.healthCheck;
+  if (probe.publicOriginCode !== null || probe.publicEdgeCode !== null) {
+    return `Origin ${formatOriginStatus(probe.publicOriginCode)} · Edge ${formatEdgeStatus(probe.publicEdgeCode)}`;
+  }
+  return fallback;
 }
 
 export async function ServiceOverviewPage({ config }: { config: ServiceOverviewConfig }) {
   const snapshot = await getPlatformServicesSnapshot();
-  const probe = getCatalogService(snapshot, config.probeKey);
+  const probe = getServiceProbe(snapshot, config.probeKey);
   const status = describeServiceProbe(probe, config.statusOptions);
   const primary = probe.containers[0] || null;
+  const publicUrl = probe.publicUrl || config.externalOpenUrl || null;
+  const runtimeSource = formatRuntimeSource(resolveRuntimeSource(primary));
 
   return (
     <div className="portal-body">
@@ -48,13 +71,14 @@ export async function ServiceOverviewPage({ config }: { config: ServiceOverviewC
         <div className="portal-info-table">
           <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">{config.purpose}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Role</span><span className="portal-info-table-value">{config.role}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{probe.publicUrl || 'Not configured'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{publicUrl || 'Not configured'}</span></div>
+          {config.apiBaseUrl ? <div className="portal-info-table-row"><span className="portal-info-table-label">API Base</span><span className="portal-info-table-value">{config.apiBaseUrl}</span></div> : null}
           <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(probe.publicOriginCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(probe.publicEdgeCode)}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Internal URL</span><span className="portal-info-table-value">{probe.internalUrl || 'Not available'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(primary))}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Container / Service</span><span className="portal-info-table-value">{primary?.name || 'None detected'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">{primary?.health || primary?.status || status.detail}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeValue(config, probe.found, runtimeSource, primary?.name || null)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">{formatHealthValue(config, probe, primary?.health || primary?.status || status.detail)}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Auth / Security</span><span className="portal-info-table-value">{config.securityStatus || 'No special auth requirement recorded.'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Setup / Onboarding</span><span className="portal-info-table-value">{config.setupStatus || 'Operational'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Status detail</span><span className="portal-info-table-value">{status.detail}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Dependencies</span><span className="portal-info-table-value">{config.dependencies.join(' | ')}</span></div>
         </div>

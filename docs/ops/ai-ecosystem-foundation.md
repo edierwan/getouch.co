@@ -96,7 +96,7 @@ Portal deployment remains Coolify-only.
 | Qdrant | AI Engine & Cognition | Installed | https://qdrant.getouch.co | Coolify-managed runtime is healthy. `GET /healthz` returns `200` and protected collection access returns `401` without credentials. | Persistent storage, API auth |
 | Airbyte | Automation & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. Coolify `4.0.0` on this host has no built-in Airbyte template, and no vetted custom stack has been deployed yet. | PostgreSQL `airbyte` |
 | Infisical | Access & Security | Installed | https://infisical.getouch.co | Coolify-managed runtime is healthy and `/api/status` returns `200`. Initial admin onboarding is still pending. | PostgreSQL `infisical`, secure bootstrap |
-| LiteLLM | AI Engine & Cognition | Installed, public edge degraded | https://litellm.getouch.co/v1 | Coolify-managed runtime is healthy at the origin and `/health/liveliness` returns `200` internally, but the public hostname is still serving stale `404` responses and needs edge-level follow-up. Provider configuration is also still pending. | PostgreSQL `litellm`, auth/master key |
+| LiteLLM | AI Engine & Cognition | Installed | https://litellm.getouch.co | Coolify-managed runtime is healthy and the public gateway responds on `/health/liveliness`. Anonymous `GET /v1/models` requests are correctly rejected with `401` until provider credentials and client auth are configured. | PostgreSQL `litellm`, auth/master key |
 | Langfuse | Observability & Tracing | Installed | https://langfuse.getouch.co | Coolify-managed runtime and dependencies are healthy. `/api/public/health` returns `200`. Initial admin onboarding is still pending. | PostgreSQL `langfuse`, ClickHouse, Redis |
 | ClickHouse | Infra & Persistence | Installed | Internal only | ClickHouse is healthy as the Langfuse analytics store and should remain internal-only unless authenticated access is explicitly designed. | Internal-only or authenticated access |
 | Redis / Queue Cache | Infra & Persistence | Installed | Internal only | `coolify-redis` is healthy. Additional dedicated Redis runtimes also exist for platform apps. | Internal only |
@@ -144,5 +144,5 @@ Airbyte remains blocked because the current Coolify release on this host does no
 - Redis is internal-only. No public Redis route was detected.
 - ClickHouse should remain internal-only. No authenticated public exposure was intentionally enabled.
 - Qdrant is live and requires API authentication for protected collection access.
-- LiteLLM has a live runtime, but the public hostname still needs edge-level follow-up before it should be treated as production-ready.
+- LiteLLM has a live public gateway. Provider credentials are still pending before it should carry production traffic.
 - Infisical is live and still requires secure initial admin onboarding before operator use.

@@ -19,6 +19,9 @@ function statusClassName(tone: 'healthy' | 'active' | 'warning' | 'critical' | '
 function formatOriginStatus(code: number | null) {
   if (code === null) return 'Unknown';
   if (code === 421) return 'Not served by origin';
+  if (code === 401) return '401 Protected';
+  if (code === 403) return '403 Forbidden';
+  if (code === 405) return '405 Method restricted';
   return String(code);
 }
 
@@ -55,9 +58,10 @@ export default async function LangfuseOperationsPage() {
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{snapshot.langfuse.publicUrl || 'Not configured'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(snapshot.langfuse.publicOriginCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(snapshot.langfuse.publicEdgeCode)}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(langfusePrimary))}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Container</span><span className="portal-info-table-value">{langfusePrimary?.name || 'None detected'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Health</span><span className="portal-info-table-value">{langfusePrimary?.health || langfusePrimary?.status || 'No runtime detected'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{langfusePrimary ? `${formatRuntimeSource(resolveRuntimeSource(langfusePrimary))} · ${langfusePrimary.name}` : 'Coolify-managed observability stack'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">/api/public/health returns 200 and the public UI is reachable.</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Auth / Security</span><span className="portal-info-table-value">Langfuse remains authenticated and tenant traces should avoid sensitive payloads.</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Setup / Onboarding</span><span className="portal-info-table-value">Project creation and API key onboarding are still pending.</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Status detail</span><span className="portal-info-table-value">{langfuse.detail}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Dependencies</span><span className="portal-info-table-value">PostgreSQL (langfuse), ClickHouse, Redis / queue cache</span></div>
         </div>

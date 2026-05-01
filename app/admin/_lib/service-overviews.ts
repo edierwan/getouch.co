@@ -5,6 +5,7 @@ export type ServiceOverviewConfig = {
   title: string;
   subtitle: string;
   probeKey: string;
+  apiBaseUrl?: string;
   purpose: string;
   role: string;
   dependencies: string[];
@@ -13,6 +14,10 @@ export type ServiceOverviewConfig = {
   externalOpenUrl?: string | null;
   publicUrlLabel?: string;
   internalUrlLabel?: string;
+  runtimeSourceHint?: string;
+  healthCheck?: string;
+  securityStatus?: string;
+  setupStatus?: string;
   statusOptions?: DescribeProbeOptions;
 };
 
@@ -35,6 +40,9 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Map tenants to groups, roles, and application claims rather than sharing global operator sessions.',
     ],
     externalOpenUrl: 'https://sso.getouch.co',
+    healthCheck: 'Public login redirect on sso.getouch.co returns 302/200.',
+    securityStatus: 'Authentication is enforced by the Authentik login flow and policy engine.',
+    setupStatus: 'Admin bootstrap and SSO integration onboarding are still pending.',
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Authentik runtime or healthy public route is live yet.',
@@ -59,6 +67,10 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Keep provider keys in internal secrets storage, not tenant-facing key management.',
     ],
     externalOpenUrl: 'https://litellm.getouch.co',
+    apiBaseUrl: 'https://litellm.getouch.co/v1',
+    healthCheck: 'GET /health/liveliness returns 200 and GET /v1/models returns 401 without credentials.',
+    securityStatus: 'Gateway auth is enabled; anonymous model access is rejected.',
+    setupStatus: 'Provider configuration is still pending.',
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No LiteLLM runtime or healthy public route is live yet.',
@@ -85,6 +97,9 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Store tenant metadata with points to support retention and purge workflows.',
     ],
     externalOpenUrl: 'https://qdrant.getouch.co',
+    healthCheck: 'GET /healthz returns 200 on the public route.',
+    securityStatus: 'GET /collections returns 401 without credentials; API auth remains enforced.',
+    setupStatus: 'Tenant collection and namespace policy are still pending.',
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Qdrant runtime is detected and the public route is not yet served.',
@@ -109,8 +124,13 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Tag jobs and destination tables with tenant metadata to support lineage and revocation.',
     ],
     externalOpenUrl: 'https://airbyte.getouch.co',
+    healthCheck: 'No live runtime is deployed yet.',
+    securityStatus: 'Not applicable until a vetted Airbyte stack exists.',
+    setupStatus: 'Blocked pending a vetted custom Coolify-compatible stack review.',
     statusOptions: {
       requirePublicRoute: true,
+      missingLabel: 'BLOCKED',
+      missingTone: 'warning',
       missingDetail: 'Airbyte is still blocked. This Coolify version has no built-in production template and no vetted custom stack is deployed.',
     },
   },
@@ -132,6 +152,9 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Use Infisical for infrastructure and application secrets only.',
     ],
     externalOpenUrl: 'https://infisical.getouch.co',
+    healthCheck: 'GET /api/status returns 200 on the public route.',
+    securityStatus: 'Admin access and operator vault policies must remain restricted.',
+    setupStatus: 'Admin onboarding and access policy configuration are still pending.',
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Infisical runtime or healthy public route is live yet.',
@@ -200,6 +223,10 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Separate shared workspaces from tenant-specific chats and documents.',
     ],
     externalOpenUrl: 'https://ai.getouch.co',
+    runtimeSourceHint: 'Existing public app on the primary VPS.',
+    healthCheck: 'Public route responds 200/302.',
+    securityStatus: 'Authentication and workspace controls are handled inside Open WebUI.',
+    setupStatus: 'Model and pipeline integration configuration remain outside the portal.',
     statusOptions: {
       requirePublicRoute: true,
       onlineDetail: 'Open WebUI is online and reachable through the public route.',

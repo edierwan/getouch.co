@@ -121,7 +121,7 @@ def inspect_container(name: str):
         'composeProject': labels.get('com.docker.compose.project'),
         'composeService': labels.get('com.docker.compose.service'),
         'networks': networks,
-      'labels': labels,
+        'labels': labels,
         'env': payload.get('Config', {}).get('Env') or [],
     }
 
@@ -137,21 +137,21 @@ def find_containers(patterns):
     names = list_container_names()
     matched = []
     for name in names:
-    inspected = inspect_container(name)
-    if not inspected:
-      continue
-    labels = inspected.get('labels') or {}
-    haystacks = [
-      inspected.get('name') or '',
-      inspected.get('image') or '',
-      inspected.get('composeProject') or '',
-      inspected.get('composeService') or '',
-      *[str(key) for key in labels.keys()],
-      *[str(value) for value in labels.values()],
-      *[f"{key}={value}" for key, value in labels.items()],
-    ]
-    if any(re.search(pattern, haystack, re.IGNORECASE) for pattern in patterns for haystack in haystacks):
-      matched.append(inspected)
+        inspected = inspect_container(name)
+        if not inspected:
+            continue
+        labels = inspected.get('labels') or {}
+        haystacks = [
+            inspected.get('name') or '',
+            inspected.get('image') or '',
+            inspected.get('composeProject') or '',
+            inspected.get('composeService') or '',
+            str(labels.get('coolify.name') or ''),
+            str(labels.get('coolify.service.name') or ''),
+            str(labels.get('coolify.resourceName') or ''),
+        ]
+        if any(re.search(pattern, haystack, re.IGNORECASE) for pattern in patterns for haystack in haystacks):
+            matched.append(inspected)
     matched.sort(key=lambda item: item['name'])
     return matched
 
@@ -167,23 +167,23 @@ def env_map(container):
 
 
 def host_header_code(host: str, path: str = '/'):
-    rc, out, _err = run(
-        f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: {host}' http://127.0.0.1{path} || true"
-    )
-    code = (out or '').strip()
-    if not code.isdigit():
-        return None
-    return int(code)
+  rc, out, _err = run(
+    f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: {host}' http://127.0.0.1{path} || true"
+  )
+  code = (out or '').strip()
+  if not code.isdigit() or code == '000':
+    return None
+  return int(code)
 
 
-  def public_edge_code(host: str, path: str = '/'):
-    rc, out, _err = run(
-      f"curl -k -s -o /dev/null -w '%{{http_code}}' https://{host}{path} || true"
-    )
-    code = (out or '').strip()
-    if not code.isdigit():
-      return None
-    return int(code)
+def public_edge_code(host: str, path: str = '/'):
+  rc, out, _err = run(
+    f"curl -k -s -o /dev/null -w '%{{http_code}}' https://{host}{path} || true"
+  )
+  code = (out or '').strip()
+  if not code.isdigit() or code == '000':
+    return None
+  return int(code)
 
 
 def build_public_url(protocol: str, host: str, port: str):
@@ -229,6 +229,7 @@ n8n_public = (
     n8n_env.get('N8N_EDITOR_BASE_URL')
     or n8n_env.get('WEBHOOK_URL')
     or build_public_url(n8n_env.get('N8N_PROTOCOL', 'https'), n8n_env.get('N8N_HOST', ''), n8n_env.get('N8N_PORT', ''))
+  or 'https://flow.news.getouch.co/'
 )
 n8n_host = None
 if n8n_public:
@@ -384,7 +385,7 @@ payload = {
     'litellm': {
         'found': bool(litellm_containers),
         'containers': [strip_env(container) for container in litellm_containers],
-      'publicUrl': 'https://litellm.getouch.co/v1',
+      'publicUrl': 'https://litellm.getouch.co',
       'publicOriginCode': host_header_code('litellm.getouch.co', '/health/liveliness'),
       'publicEdgeCode': public_edge_code('litellm.getouch.co', '/health/liveliness'),
         'internalUrl': 'http://litellm:4000/v1' if litellm_containers else None,
@@ -502,7 +503,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
     litellm: {
       found: false,
       containers: [],
-      publicUrl: 'https://litellm.getouch.co/v1',
+      publicUrl: 'https://litellm.getouch.co',
       publicOriginCode: null,
       publicEdgeCode: null,
       internalUrl: null,
@@ -556,7 +557,7 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
         webhookUrl: typeof parsed.n8n?.webhookUrl === 'string' ? parsed.n8n.webhookUrl : null,
       },
       litellm: normalizeService(parsed.litellm, {
-        publicUrl: 'https://litellm.getouch.co/v1',
+        publicUrl: 'https://litellm.getouch.co',
         notes: ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
       }),
       langfuse: normalizeService(parsed.langfuse, {

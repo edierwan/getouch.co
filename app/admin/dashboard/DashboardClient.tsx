@@ -359,7 +359,7 @@ export default function DashboardClient({
       href: '/admin/ai/litellm',
       rows: [
         { label: 'Public', value: stripScheme(services.litellm.publicUrl) },
-        { label: 'Edge', value: formatRouteCode(services.litellm.publicEdgeCode) },
+        { label: 'Provider', value: 'Configuration pending' },
       ],
     },
     {
@@ -414,7 +414,7 @@ export default function DashboardClient({
       href: '/admin/automation/n8n',
       rows: [
         { label: 'Public', value: stripScheme(services.n8n.publicUrl) },
-        { label: 'Runtime', value: services.n8n.containers[0]?.name || 'Not detected' },
+        { label: 'Metrics', value: 'API integration pending' },
       ],
     },
     buildStaticCard({
@@ -618,7 +618,7 @@ export default function DashboardClient({
       href: '/admin/observability/langfuse',
       rows: [
         { label: 'Public', value: stripScheme(services.langfuse.publicUrl) },
-        { label: 'Setup', value: 'Admin onboarding' },
+        { label: 'Setup', value: 'Project / API keys pending' },
       ],
     },
   ];
@@ -647,7 +647,7 @@ export default function DashboardClient({
       href: '/admin/security/infisical',
       rows: [
         { label: 'Public', value: stripScheme(infisicalProbe.publicUrl) },
-        { label: 'Setup', value: 'Admin onboarding' },
+        { label: 'Setup', value: 'Admin / access policy pending' },
       ],
     },
     buildStaticCard({
