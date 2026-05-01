@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
-const EXPECTED_UPSTREAM = 'getouch-web:3000';
+const EXPECTED_UPSTREAM = 'getouch-web-prod:3000';
 const EXPECTED_APP_DB_NAME = 'getouch.co';
 
 function fail(message) {

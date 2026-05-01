@@ -4,7 +4,6 @@ services:
     container_name: caddy
     restart: unless-stopped
     depends_on:
-      - web
       - baileys-gateway
       - pgadmin
       - open-webui
@@ -31,6 +30,12 @@ services:
       coolify:
 
   web:
+    # Retired 2026-05-01: Coolify application id 2 (alias getouch-web-prod) is
+    # the sole runtime for the Next.js portal. This service is kept for rollback
+    # under the `legacy-disabled` profile and is NOT started in normal `up`.
+    # See docs/ops/deployment-source-of-truth.md.
+    profiles:
+      - legacy-disabled
     build:
       context: .
       dockerfile: Dockerfile
