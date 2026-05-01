@@ -190,6 +190,13 @@ function buildStaticCard(card: ServiceCardModel): ServiceCardModel {
   return card;
 }
 
+function formatAlertTitle(name: string, label: string) {
+  if (label === 'STATUS PENDING') return `${name} status pending`;
+  if (label === 'NOT INSTALLED') return `${name} not installed`;
+  if (label === 'DEGRADED') return `${name} degraded`;
+  return `${name} requires attention`;
+}
+
 export default function DashboardClient({
   storage,
   services,
@@ -699,18 +706,18 @@ export default function DashboardClient({
     alerts.push({ title: 'Disk usage high', detail: `Root filesystem is at ${diskPct}%.`, tone: 'warning' });
   }
   if (vllmStatus.tone !== 'healthy' && vllmStatus.tone !== 'active') {
-    alerts.push({ title: 'vLLM Gateway degraded', detail: vllmStatus.detail, tone: vllmStatus.tone });
+    alerts.push({ title: formatAlertTitle('vLLM Gateway', vllmStatus.label), detail: vllmStatus.detail, tone: vllmStatus.tone });
   }
   if (liteLlmStatus.tone === 'warning' || liteLlmStatus.tone === 'critical') {
     alerts.push({ title: 'LiteLLM public route mismatch', detail: liteLlmStatus.detail, tone: liteLlmStatus.tone });
   } else if (liteLlmStatus.tone === 'info') {
-    alerts.push({ title: 'LiteLLM not installed', detail: liteLlmStatus.detail, tone: 'info' });
+    alerts.push({ title: formatAlertTitle('LiteLLM', liteLlmStatus.label), detail: liteLlmStatus.detail, tone: 'info' });
   }
   if (langfuseStatus.tone === 'info') {
-    alerts.push({ title: 'Langfuse not installed', detail: langfuseStatus.detail, tone: 'info' });
+    alerts.push({ title: formatAlertTitle('Langfuse', langfuseStatus.label), detail: langfuseStatus.detail, tone: 'info' });
   }
   if (qdrantStatus.tone === 'info') {
-    alerts.push({ title: 'Qdrant missing', detail: qdrantStatus.detail, tone: 'info' });
+    alerts.push({ title: formatAlertTitle('Qdrant', qdrantStatus.label), detail: qdrantStatus.detail, tone: 'info' });
   }
   if ((services.clickhouse.publicOriginCode !== null && services.clickhouse.publicOriginCode >= 200 && services.clickhouse.publicOriginCode < 400)
     || (services.clickhouse.publicEdgeCode !== null && services.clickhouse.publicEdgeCode >= 200 && services.clickhouse.publicEdgeCode < 400)) {
