@@ -33,6 +33,24 @@ let cachedSnapshot: PlatformServicesSnapshot | null = null;
 let cachedSnapshotAt = 0;
 let inFlightSnapshot: Promise<PlatformServicesSnapshot> | null = null;
 
+const FALLBACK_CATALOG_URLS: Record<string, string> = {
+  authentik: 'https://sso.getouch.co',
+  qdrant: 'https://qdrant.getouch.co',
+  airbyte: 'https://airbyte.getouch.co',
+  infisical: 'https://infisical.getouch.co',
+  coolify: 'https://coolify.getouch.co',
+  grafana: 'https://grafana.getouch.co',
+  'open-webui': 'https://ai.getouch.co',
+  dify: 'https://dify.getouch.co/apps',
+  mcp: 'https://mcp.getouch.co',
+  vllm: 'https://vllm.getouch.co/v1',
+  evolution: 'https://evo.getouch.co',
+  baileys: 'https://wa.getouch.co',
+  chatwoot: 'https://chatwoot.getouch.co',
+  voice: 'https://voice.getouch.co',
+  'object-storage': 'https://s3.getouch.co',
+};
+
 function runRemoteScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -529,10 +547,27 @@ function normalizeService(service: Partial<PlatformServiceProbe> | null | undefi
   };
 }
 
+function buildFallbackCatalog(error: string): Record<string, PlatformServiceProbe> {
+  return Object.fromEntries(
+    Object.entries(FALLBACK_CATALOG_URLS).map(([key, publicUrl]) => [
+      key,
+      {
+        found: false,
+        containers: [],
+        publicUrl,
+        publicOriginCode: null,
+        publicEdgeCode: null,
+        internalUrl: null,
+        notes: [error],
+      } satisfies PlatformServiceProbe,
+    ]),
+  );
+}
+
 function emptySnapshot(error: string): PlatformServicesSnapshot {
   return {
     checkedAt: new Date().toISOString(),
-    catalog: {},
+    catalog: buildFallbackCatalog(error),
     n8n: {
       found: false,
       containers: [],
