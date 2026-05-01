@@ -16,9 +16,8 @@
   - `openclaw.getouch.co` (with `/connect`, `/reset`, `/chat` paths)
 - **Coolify proxy is disabled** (`proxy_type=none`); Caddy continues to terminate
   via Cloudflare → `127.0.0.1:80` only.
-- **Legacy compose `web` service** is profile-disabled
-  (`profiles: [legacy-disabled]`) in `compose.yaml`. The service definition is
-  preserved for emergency rollback only and is **not** started by `docker compose up`.
+- The old compose-hosted portal runtime has been removed from `compose.yaml`.
+  There is no compose fallback path for the Next.js portal.
 
 ## Env source of truth
 
@@ -55,23 +54,14 @@ queue_application_deployment(application: $a, deployment_uuid: $u, force_rebuild
 
 ## Rollback (emergency)
 
-If Coolify is unavailable, restore the legacy compose path:
+There is no supported rollback to a compose-hosted portal runtime.
 
-```bash
-ssh deploy@100.84.14.93
-cd /home/deploy/apps/getouch.co
-# 1. Re-enable legacy web by removing the `profiles: [legacy-disabled]` line
-sed -i.bak '/^  web:/,/^    env_file:/{/profiles:/d;/- legacy-disabled/d;/Retired 2026-05-01/d;/Coolify application id 2/d;/the sole runtime/d;/under the .legacy-disabled. profile/d;/See docs.ops.deployment-source-of-truth/d}' compose.yaml
-# 2. Restore caddy to legacy upstream
-docker exec caddy cp /etc/caddy/Caddyfile.backup-before-coolify-migration-* /etc/caddy/Caddyfile
-docker kill -s SIGUSR1 caddy
-# 3. Bring legacy back
-docker compose build web && docker compose up -d web
-```
+If a portal rollback is required, do one of these instead:
 
-The Caddyfile backup created during cutover lives at
-`/etc/caddy/Caddyfile.backup-before-coolify-migration-<TS>` inside the caddy
-container.
+1. Redeploy the previous Git commit through Coolify application id 2.
+2. Restore the previous Caddy config only if the active config is wrong, then
+  reload Caddy safely with `docker kill -s SIGUSR1 caddy`.
+3. Reconcile env values in Coolify and redeploy the same application.
 
 ## Verification commands
 

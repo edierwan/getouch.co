@@ -29,41 +29,6 @@ services:
       edge:
       coolify:
 
-  web:
-    # Retired 2026-05-01: Coolify application id 2 (alias getouch-web-prod) is
-    # the sole runtime for the Next.js portal. This service is kept for rollback
-    # under the `legacy-disabled` profile and is NOT started in normal `up`.
-    # See docs/ops/deployment-source-of-truth.md.
-    profiles:
-      - legacy-disabled
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: getouch-web
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file: .env
-    environment:
-      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret-not-for-production}
-      PORTAL_ADMIN_URL: https://portal.getouch.co
-      DATABASE_URL: postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME:-getouch.co}
-      WA_URL: ${WA_URL:-http://baileys-gateway:3001}
-      WA_PUBLIC_URL: ${WA_PUBLIC_URL:-https://wa.getouch.co}
-      BAILEYS_DB_NAME: ${BAILEYS_DB_NAME:-baileys}
-      BAILEYS_DATABASE_URL: ${BAILEYS_DATABASE_URL:-postgresql://${APP_DB_USER:-getouch}:${APP_DB_PASSWORD}@postgres:5432/${BAILEYS_DB_NAME:-baileys}}
-    volumes:
-      - /home/deploy/.ssh/id_ed25519:/tmp/ssh-keys/id_ed25519:ro
-      - /home/deploy/.ssh/known_hosts:/tmp/ssh-keys/known_hosts:ro
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-    networks:
-      - edge
-
   wa:
     build:
       context: ./services/wa

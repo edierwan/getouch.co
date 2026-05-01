@@ -44,10 +44,10 @@ for (const host of ['getouch.co', 'auth.getouch.co', 'portal.getouch.co']) {
 }
 
 const composeYaml = read('compose.yaml');
-if (!composeYaml.includes('container_name: getouch-web')) {
-  fail('compose.yaml must define container_name: getouch-web for the live web service');
+if (composeYaml.includes('\n  web:\n') || /container_name:\s*getouch\S*web/.test(composeYaml)) {
+  fail('compose.yaml must not define the deprecated compose-hosted portal service');
 } else {
-  pass('compose.yaml defines container_name: getouch-web');
+  pass('compose.yaml does not define the deprecated compose-hosted portal service');
 }
 
 if (!composeYaml.includes(`APP_DB_NAME:-${EXPECTED_APP_DB_NAME}`)) {

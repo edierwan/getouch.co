@@ -25,7 +25,7 @@ npm run build
 
 `portal.getouch.co`, `auth.getouch.co`, and `getouch.co` must all reverse proxy to the same live Next.js upstream: `getouch-web-prod:3000` (Coolify application id 2).
 
-If `portal.getouch.co` drifts to an old alias such as `getouch-web-prod`, the live portal can serve stale sidebar/auth code even when the repo and current app container are correct.
+If `portal.getouch.co` drifts to a stale container target or mismatched Caddy config, the live portal can serve stale sidebar/auth code even when the repo and current Coolify app container are correct.
 
 Run `npm run verify:portal-preprod-backups` after portal navigation or proxy changes.
 

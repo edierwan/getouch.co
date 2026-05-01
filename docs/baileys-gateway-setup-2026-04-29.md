@@ -45,12 +45,12 @@
   port 3001 was refused. The new runtime is reachable internally as
   `http://baileys-gateway:3001` on the `getouch-edge` network.
 - Additional production finding: `portal.getouch.co` is served by the
-  compose-managed `getouch-web` service behind the repo Caddy instance,
+  Coolify-managed portal app behind the repo Caddy instance,
   not the separate Coolify `getouch.co` app container. Updating the Coolify
   app alone does not change the admin portal page.
 - Compose fix applied in repo: the Caddy service no longer claims the
   `wa` / `baileys-gateway` aliases on the shared `edge` network, and the real
-  `getouch-web` service now receives explicit `WA_URL`, `WA_PUBLIC_URL`,
+  portal runtime now receives explicit `WA_URL`, `WA_PUBLIC_URL`,
   `BAILEYS_DB_NAME`, and `BAILEYS_DATABASE_URL` values.
 - Fix:
   - Default for `WA_URL` switched to `http://baileys-gateway:3001` in

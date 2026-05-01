@@ -411,7 +411,7 @@ async function getSafeRemoteVllmIntrospection(): Promise<RemoteVllmIntrospection
     return await getRemoteVllmIntrospection();
   } catch {
     return {
-      gatewayContainer: 'getouch-web',
+      gatewayContainer: 'coolify-app-2',
       gatewayStartedAt: null,
       backendContainer: 'vllm-qwen3-14b-fp8',
       backendStartedAt: null,
@@ -951,7 +951,7 @@ async function getRemoteVllmIntrospection(): Promise<RemoteVllmIntrospection> {
     const output = await runRemoteScript(String.raw`
 set -euo pipefail
 
-APP_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^(mqmo5bwkxysedbg7vvh6tk1f-|getouch-web-prod$|getouch-web$)' | head -n1 || true)
+APP_CONTAINER=$(docker ps --filter label=coolify.applicationId=2 --format '{{.Names}}' | head -n1 || true)
 BACKEND_CONTAINER='vllm-qwen3-14b-fp8'
 
 gateway_started=''
@@ -1054,7 +1054,7 @@ export async function getVllmLogs(source: 'gateway' | 'backend'): Promise<VllmLo
     const output = await runRemoteScript(source === 'gateway'
       ? String.raw`
 set -euo pipefail
-CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^(mqmo5bwkxysedbg7vvh6tk1f-|getouch-web-prod$|getouch-web$)' | head -n1 || true)
+CONTAINER=$(docker ps --filter label=coolify.applicationId=2 --format '{{.Names}}' | head -n1 || true)
 if [ -z "$CONTAINER" ]; then
   python3 - <<'PY'
 import json

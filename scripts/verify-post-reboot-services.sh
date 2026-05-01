@@ -16,7 +16,13 @@ curl -fsS -H "Host: ${HOST_HEADER}" http://127.0.0.1/api/build-info || true
 
 echo
 echo "== core containers =="
-for container in getouch-web ollama open-webui open-webui-pipelines baileys-gateway caddy getouch-postgres getouch-pgadmin searxng; do
+portal_container="$(docker ps --filter label=coolify.applicationId=2 --format '{{.Names}}' | head -n1 || true)"
+if [[ -n "$portal_container" ]]; then
+	docker inspect --format "{{.Name}}|restart={{.HostConfig.RestartPolicy.Name}}|health={{if .Config.Healthcheck}}yes{{else}}no{{end}}|status={{.State.Status}}|started={{.State.StartedAt}}" "$portal_container" 2>/dev/null || echo "$portal_container|missing"
+else
+	echo "coolify-app-2|missing"
+fi
+for container in ollama open-webui open-webui-pipelines baileys-gateway caddy getouch-postgres getouch-pgadmin searxng; do
 	docker inspect --format "{{.Name}}|restart={{.HostConfig.RestartPolicy.Name}}|health={{if .Config.Healthcheck}}yes{{else}}no{{end}}|status={{.State.Status}}|started={{.State.StartedAt}}" "$container" 2>/dev/null || echo "$container|missing"
 done
 

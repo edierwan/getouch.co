@@ -47,7 +47,7 @@ These remain registered as scaffolds only and are not exposed as active tools.
 
 1. Back up the legacy MCP workspace path before removing the old container.
 2. Apply `scripts/mcp-bootstrap.sql` to the `mcp` database.
-3. Redeploy `getouch-web` and Caddy.
+3. Redeploy Coolify application id 2 and reload Caddy only if the route config changed.
 4. Remove the old orphaned `mcp-gateway` container with `docker compose up -d --remove-orphans`.
 
 ## Rollback
