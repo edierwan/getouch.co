@@ -42,6 +42,9 @@ const getPortalPublicPath = (pathname: string) => {
 
   return pathname;
 };
+const isAuthentikLegacyPath = (pathname: string) => {
+  return pathname === '/system/authentik' || pathname === '/admin/system/authentik';
+};
 const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/dashboard': '/system/servers',
   '/system/dashboard': '/system/servers',
@@ -111,6 +114,10 @@ export async function proxy(request: NextRequest) {
     portalHost && pathname.startsWith('/api/') && !isPublicPortalApi;
 
   if (portalHost) {
+    if (isAuthentikLegacyPath(pathname)) {
+      return NextResponse.redirect('https://sso.getouch.co');
+    }
+
     // Public diagnostic — let it through without any auth/redirect logic.
     if (isPublicPortalApi) {
       return NextResponse.next();
@@ -209,6 +216,10 @@ export async function proxy(request: NextRequest) {
 
   // Admin pages — require valid session with admin role
   if (pathname.startsWith('/admin')) {
+    if (isAuthentikLegacyPath(pathname)) {
+      return NextResponse.redirect('https://sso.getouch.co');
+    }
+
     const token = request.cookies.get('session')?.value;
     if (!token) {
       const url = new URL('/auth/login', request.url);
