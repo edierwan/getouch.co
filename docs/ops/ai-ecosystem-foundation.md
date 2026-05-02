@@ -48,7 +48,7 @@ Portal deployment remains Coolify-only.
 
 ### Observability & Tracing
 
-- Grafana: metrics and operational dashboards.
+- Grafana: direct external infrastructure and GPU monitoring UI on `grafana.getouch.co`.
 - Langfuse: installed AI observability and tracing runtime.
 
 ### Access & Security
@@ -93,6 +93,7 @@ Portal deployment remains Coolify-only.
 | Airbyte | Automation & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. The official `abctl` install path was attempted, but kind failed to boot its control-plane container on this VPS with `Failed to create control group inotify object: Too many open files` while `fs.inotify.max_user_instances` remained at `128`. | PostgreSQL `airbyte` |
 | Infisical | Access & Security | Installed | https://infisical.getouch.co | Coolify-managed runtime is healthy, `/api/status` returns `200`, and the portal now links directly to the external vault UI instead of an intermediate status page. Initial admin onboarding is still pending. | PostgreSQL `infisical`, secure bootstrap |
 | LiteLLM | AI Engine & Cognition | Installed | https://litellm.getouch.co | Coolify-managed runtime is healthy and the public gateway responds on `/health/liveliness`. Anonymous `GET /v1/models` requests are correctly rejected with `401` until provider credentials and client auth are configured. | PostgreSQL `litellm`, auth/master key |
+| Grafana | Observability & Tracing | Installed | https://grafana.getouch.co | Grafana remains the external source of truth for infrastructure and GPU monitoring. The portal sidebar now links directly to the real Grafana UI instead of an intermediate status page. | Prometheus, Grafana auth |
 | Langfuse | Observability & Tracing | Installed | https://langfuse.getouch.co | Coolify-managed runtime and dependencies are healthy. `/api/public/health` returns `200`. Operator login is working and the initial shared project is `getouch-production`. | PostgreSQL `langfuse`, ClickHouse, Redis |
 | ClickHouse | Infra & Persistence | Installed | Internal only | ClickHouse is healthy as the Langfuse analytics store and should remain internal-only unless authenticated access is explicitly designed. | Internal-only or authenticated access |
 | Redis / Queue Cache | Infra & Persistence | Installed | Internal only | `coolify-redis` is healthy. Additional dedicated Redis runtimes also exist for platform apps. | Internal only |

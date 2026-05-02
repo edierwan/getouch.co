@@ -1,7 +1,7 @@
-import { ServiceOverviewPageByKey } from '../../_components/ServiceOverviewPage';
+import { permanentRedirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default function ObservabilityGrafanaPage() {
-  return <ServiceOverviewPageByKey configKey="grafana" />;
+  permanentRedirect('https://grafana.getouch.co');
 }

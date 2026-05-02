@@ -24,6 +24,7 @@ const isPortalHost = (request: NextRequest) => {
   return getRequestHost(request) === getPortalAdminHost().toLowerCase();
 };
 const isMcpHost = (request: NextRequest) => getRequestHost(request) === getMcpPublicHost().toLowerCase();
+const GRAFANA_URL = 'https://grafana.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const getPortalInternalPath = (pathname: string) => {
@@ -52,6 +53,10 @@ const isLangfuseLegacyPath = (pathname: string) => {
     || pathname === '/admin/observability/langfuse'
     || pathname === '/operations/langfuse'
     || pathname === '/admin/operations/langfuse';
+};
+const isGrafanaLegacyPath = (pathname: string) => {
+  return pathname === '/observability/grafana'
+    || pathname === '/admin/observability/grafana';
 };
 const isLiteLlmLegacyPath = (pathname: string) => {
   return pathname === '/ai/litellm'
@@ -143,6 +148,10 @@ export async function proxy(request: NextRequest) {
 
     if (isLangfuseLegacyPath(pathname)) {
       return NextResponse.redirect(LANGFUSE_URL);
+    }
+
+    if (isGrafanaLegacyPath(pathname)) {
+      return NextResponse.redirect(GRAFANA_URL);
     }
 
     if (isLiteLlmLegacyPath(pathname)) {
@@ -254,6 +263,10 @@ export async function proxy(request: NextRequest) {
 
     if (isAuthentikLegacyPath(pathname)) {
       return NextResponse.redirect('https://sso.getouch.co');
+    }
+
+    if (isGrafanaLegacyPath(pathname)) {
+      return NextResponse.redirect(GRAFANA_URL);
     }
 
     if (isLangfuseLegacyPath(pathname)) {

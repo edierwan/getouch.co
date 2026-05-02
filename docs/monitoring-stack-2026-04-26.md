@@ -271,6 +271,10 @@ Common causes:
 Public URL:
 - `https://grafana.getouch.co`
 
+Portal navigation:
+- The portal sidebar and quick actions open `https://grafana.getouch.co` directly.
+- `/observability/grafana` is a legacy portal alias and should only redirect to the external Grafana UI.
+
 Current root URL setting:
 - `GF_SERVER_ROOT_URL=https://grafana.getouch.co`
 

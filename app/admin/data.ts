@@ -75,6 +75,7 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
@@ -127,7 +128,7 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'OBSERVABILITY & TRACING',
     accentRgb: '155, 167, 255',
     items: [
-      { label: 'Grafana', href: '/admin/observability/grafana', icon: '◔' },
+      { label: 'Grafana', href: GRAFANA_URL, icon: '◔', external: true },
       { label: 'Langfuse', href: LANGFUSE_URL, icon: '◎', external: true },
     ],
   },
@@ -175,7 +176,7 @@ export const QUICK_ACTIONS = [
   { label: 'Open WebUI', href: '/admin/communications/open-webui' },
   { label: 'Quick Links', href: '/admin/security/quick-links' },
   { label: 'Coolify Overview', href: '/admin/infra/coolify' },
-  { label: 'Grafana Overview', href: '/admin/observability/grafana' },
+  { label: 'Grafana Overview', href: GRAFANA_URL, external: true },
 ];
 
 export const DASHBOARD_SERVICES: ResourceRow[] = [
