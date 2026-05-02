@@ -17,7 +17,7 @@ import crypto from 'crypto';
 
 const getPortalAdminUrl = () => {
   const baseUrl = process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
-  return new URL('/system/servers', baseUrl).toString();
+  return new URL('/infra/servers', baseUrl).toString();
 };
 
 const SUPABASE_LOGIN_TIMEOUT_MS = 1500;

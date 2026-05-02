@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose';
 
 const getPortalAdminUrl = () => {
   const baseUrl = process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
-  return new URL('/system/servers', baseUrl).toString();
+  return new URL('/infra/servers', baseUrl).toString();
 };
 const getMcpPublicBaseUrl = () => process.env.MCP_PUBLIC_BASE_URL || 'https://mcp.getouch.co';
 const getRequestHost = (request: NextRequest) => {
@@ -19,12 +19,13 @@ const getMcpPublicHost = () => {
   const mcpUrl = new URL(getMcpPublicBaseUrl());
   return mcpUrl.host;
 };
-const getPortalRootUrl = (request: NextRequest) => new URL('/system/servers', `https://${getPortalAdminHost()}`);
+const getPortalRootUrl = (request: NextRequest) => new URL('/infra/servers', `https://${getPortalAdminHost()}`);
 const isPortalHost = (request: NextRequest) => {
   return getRequestHost(request) === getPortalAdminHost().toLowerCase();
 };
 const isMcpHost = (request: NextRequest) => getRequestHost(request) === getMcpPublicHost().toLowerCase();
 const LITELLM_URL = 'https://litellm.getouch.co';
+const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const getPortalInternalPath = (pathname: string) => {
   if (pathname === '/' || pathname === '') {
     return '/admin';
@@ -46,6 +47,12 @@ const getPortalPublicPath = (pathname: string) => {
 const isAuthentikLegacyPath = (pathname: string) => {
   return pathname === '/system/authentik' || pathname === '/admin/system/authentik';
 };
+const isLangfuseLegacyPath = (pathname: string) => {
+  return pathname === '/observability/langfuse'
+    || pathname === '/admin/observability/langfuse'
+    || pathname === '/operations/langfuse'
+    || pathname === '/admin/operations/langfuse';
+};
 const isLiteLlmLegacyPath = (pathname: string) => {
   return pathname === '/ai/litellm'
     || pathname === '/admin/ai/litellm'
@@ -55,8 +62,9 @@ const isLiteLlmLegacyPath = (pathname: string) => {
     || pathname === '/admin/service-endpoints/litellm';
 };
 const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
-  '/dashboard': '/system/servers',
-  '/system/dashboard': '/system/servers',
+  '/dashboard': '/infra/servers',
+  '/system/dashboard': '/infra/servers',
+  '/system/servers': '/infra/servers',
   '/service-endpoints/vllm': '/ai/vllm',
   '/service-endpoints/litellm': '/ai/litellm',
   '/service-endpoints/dify': '/ai/dify',
@@ -67,7 +75,7 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/service-endpoints/open-webui': '/communications/open-webui',
   '/service-endpoints/chatwoot': '/communications/chatwoot',
   '/service-endpoints/voice': '/communications/voice',
-  '/servers': '/system/servers',
+  '/servers': '/infra/servers',
   '/databases': '/infra/databases',
   '/api-keys': '/security/api-keys',
   '/quick-links': '/security/quick-links',
@@ -85,15 +93,21 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/developer/docs': '/security/docs',
   '/access': '/security/quick-links',
   '/access/quick-links': '/security/quick-links',
-  '/infrastructure': '/system/servers',
-  '/infrastructure/servers': '/system/servers',
+  '/infrastructure': '/infra/servers',
+  '/infrastructure/servers': '/infra/servers',
   '/infrastructure/databases': '/infra/databases',
   '/infrastructure/object-storage': '/infra/object-storage',
   '/infrastructure/backups': '/infra/backups',
-  '/operations/langfuse': '/observability/langfuse',
 };
 const getCanonicalPortalPublicPath = (pathname: string) => {
   return LEGACY_PORTAL_PUBLIC_PATHS[pathname] || pathname;
+};
+const getCanonicalAdminPath = (pathname: string) => {
+  if (pathname === '/admin/system/servers' || pathname === '/admin/system/dashboard') {
+    return '/admin/infra/servers';
+  }
+
+  return pathname;
 };
 const getMainPortalUrl = (request: NextRequest) => new URL('/portal', request.url);
 
@@ -125,6 +139,10 @@ export async function proxy(request: NextRequest) {
   if (portalHost) {
     if (isAuthentikLegacyPath(pathname)) {
       return NextResponse.redirect('https://sso.getouch.co');
+    }
+
+    if (isLangfuseLegacyPath(pathname)) {
+      return NextResponse.redirect(LANGFUSE_URL);
     }
 
     if (isLiteLlmLegacyPath(pathname)) {
@@ -229,8 +247,17 @@ export async function proxy(request: NextRequest) {
 
   // Admin pages — require valid session with admin role
   if (pathname.startsWith('/admin')) {
+    const canonicalAdminPath = getCanonicalAdminPath(pathname);
+    if (canonicalAdminPath !== pathname) {
+      return NextResponse.redirect(new URL(canonicalAdminPath, request.url));
+    }
+
     if (isAuthentikLegacyPath(pathname)) {
       return NextResponse.redirect('https://sso.getouch.co');
+    }
+
+    if (isLangfuseLegacyPath(pathname)) {
+      return NextResponse.redirect(LANGFUSE_URL);
     }
 
     if (isLiteLlmLegacyPath(pathname)) {

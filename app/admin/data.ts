@@ -75,16 +75,20 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
-const SERVERS_ADMIN_PATH = '/admin/system/servers';
+const SERVERS_ADMIN_PATH = '/admin/infra/servers';
 
 export const ADMIN_NAV: NavSection[] = [
   {
-    label: 'SYSTEM ORCHESTRATION',
-    accentRgb: '126, 154, 255',
+    label: 'INFRA & PERSISTENCE',
+    accentRgb: '104, 187, 255',
     items: [
       { label: 'Servers & Nodes', href: SERVERS_ADMIN_PATH, icon: '▣' },
-      { label: 'Authentik', href: AUTHENTIK_URL, icon: '⚲', external: true },
+      { label: 'Coolify', href: '/admin/infra/coolify', icon: '◈' },
+      { label: 'Databases', href: '/admin/infra/databases', icon: '▤' },
+      { label: 'Object Storage', href: '/admin/infra/object-storage', icon: '▦' },
+      { label: 'Backups', href: '/admin/infra/backups', icon: '⟲' },
     ],
   },
   {
@@ -119,27 +123,18 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
-    label: 'INFRA & PERSISTENCE',
-    accentRgb: '104, 187, 255',
-    items: [
-      { label: 'Coolify', href: '/admin/infra/coolify', icon: '◈' },
-      { label: 'Databases', href: '/admin/infra/databases', icon: '▤' },
-      { label: 'Object Storage', href: '/admin/infra/object-storage', icon: '▦' },
-      { label: 'Backups', href: '/admin/infra/backups', icon: '⟲' },
-    ],
-  },
-  {
     label: 'OBSERVABILITY & TRACING',
     accentRgb: '155, 167, 255',
     items: [
       { label: 'Grafana', href: '/admin/observability/grafana', icon: '◔' },
-      { label: 'Langfuse', href: '/admin/observability/langfuse', icon: '◎' },
+      { label: 'Langfuse', href: LANGFUSE_URL, icon: '◎', external: true },
     ],
   },
   {
     label: 'ACCESS & SECURITY',
     accentRgb: '196, 161, 255',
     items: [
+      { label: 'Authentik', href: AUTHENTIK_URL, icon: '⚲', external: true },
       { label: 'API Keys', href: '/admin/security/api-keys', icon: '⚿' },
       { label: 'Infisical', href: '/admin/security/infisical', icon: '◫' },
       { label: 'SDK & Docs', href: '/admin/security/docs', icon: '⌥' },
@@ -173,6 +168,7 @@ export const QUICK_ACTIONS = [
   { label: 'Portal Users', href: '/admin/users' },
   { label: 'Servers & Nodes', href: SERVERS_ADMIN_PATH },
   { label: 'Authentik', href: AUTHENTIK_URL, external: true },
+  { label: 'Langfuse', href: LANGFUSE_URL, external: true },
   { label: 'API Keys', href: '/admin/security/api-keys' },
   { label: 'Webhooks', href: '/admin/automation/webhooks' },
   { label: 'Open WebUI', href: '/admin/communications/open-webui' },
@@ -278,7 +274,7 @@ export const DASHBOARD_ENVIRONMENT: InfoRow[] = [
 export const DASHBOARD_ACTIVITY: string[] = [
   'Admin portal redeployed from Coolify after transient DNS failure.',
   'Production web container is healthy on the latest image.',
-  'Infrastructure routing, storage, AI, and messaging services are online.',
+  'Infrastructure routing, storage, AI, messaging, and observability services are online.',
 ];
 
 export const SERVER_CARDS: DetailCard[] = [

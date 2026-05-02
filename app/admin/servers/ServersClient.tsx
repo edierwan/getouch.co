@@ -153,7 +153,7 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
 
   return (
     <div className="servers-shell">
-      <Breadcrumb category="System Orchestration" page="Servers & Nodes" />
+      <Breadcrumb category="Infra & Persistence" page="Servers & Nodes" />
 
       <header className="servers-page-head">
         <div>

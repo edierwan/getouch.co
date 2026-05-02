@@ -3,5 +3,5 @@ import { permanentRedirect } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 export default function AdminDashboardPage() {
-  permanentRedirect('/admin/system/servers');
+  permanentRedirect('/admin/infra/servers');
 }

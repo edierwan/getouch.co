@@ -1,6 +1,6 @@
 # Sidebar and Routes Source of Truth
 
-Updated: 2026-05-01
+Updated: 2026-05-02
 
 ## Rule Set
 
@@ -8,16 +8,20 @@ Updated: 2026-05-01
 - Runtime installation status does not change the canonical IA or route table below.
 - Old `/service-endpoints/*` routes are legacy aliases only and are not canonical.
 - Old `/developer/*`, `/access/*`, `/operations/*`, and `/infrastructure/*` public routes are legacy aliases only where redirects still exist.
-- Root `https://portal.getouch.co/` remains usable and resolves to `Servers & Nodes`.
+- Root `https://portal.getouch.co/` remains usable and resolves to `Servers & Nodes` at `/infra/servers`.
 - Legacy `/system/dashboard` and `/admin/system/dashboard` paths redirect to `Servers & Nodes` and are not canonical.
 - Authentik is a direct external link and no longer uses a portal status page as a canonical destination.
+- Langfuse is a direct external link and no longer uses a portal status page as a canonical destination.
 
 ## Sidebar IA
 
-### System Orchestration
+### Infra & Persistence
 
 - Servers & Nodes
-- Authentik
+- Coolify
+- Databases
+- Object Storage
+- Backups
 
 ### AI Engine & Cognition
 
@@ -41,13 +45,6 @@ Updated: 2026-05-01
 - Chatwoot
 - FusionPBX / Voice
 
-### Infra & Persistence
-
-- Coolify
-- Databases
-- Object Storage
-- Backups
-
 ### Observability & Tracing
 
 - Grafana
@@ -55,6 +52,7 @@ Updated: 2026-05-01
 
 ### Access & Security
 
+- Authentik
 - API Keys
 - Infisical
 - SDK & Docs
@@ -64,8 +62,11 @@ Updated: 2026-05-01
 
 | Category | Item | Canonical Public Route | Internal Admin Route |
 | --- | --- | --- | --- |
-| System Orchestration | Servers & Nodes | `/system/servers` | `/admin/system/servers` |
-| System Orchestration | Authentik | `https://sso.getouch.co` | `https://sso.getouch.co` |
+| Infra & Persistence | Servers & Nodes | `/infra/servers` | `/admin/infra/servers` |
+| Infra & Persistence | Coolify | `/infra/coolify` | `/admin/infra/coolify` |
+| Infra & Persistence | Databases | `/infra/databases` | `/admin/infra/databases` |
+| Infra & Persistence | Object Storage | `/infra/object-storage` | `/admin/infra/object-storage` |
+| Infra & Persistence | Backups | `/infra/backups` | `/admin/infra/backups` |
 | AI Engine & Cognition | vLLM Gateway | `/ai/vllm` | `/admin/ai/vllm` |
 | AI Engine & Cognition | LiteLLM Gateway | `/ai/litellm` | `/admin/ai/litellm` |
 | AI Engine & Cognition | Dify | `/ai/dify` | `/admin/ai/dify` |
@@ -79,12 +80,9 @@ Updated: 2026-05-01
 | Communication Hubs | Open WebUI | `/communications/open-webui` | `/admin/communications/open-webui` |
 | Communication Hubs | Chatwoot | `/communications/chatwoot` | `/admin/communications/chatwoot` |
 | Communication Hubs | FusionPBX / Voice | `/communications/voice` | `/admin/communications/voice` |
-| Infra & Persistence | Coolify | `/infra/coolify` | `/admin/infra/coolify` |
-| Infra & Persistence | Databases | `/infra/databases` | `/admin/infra/databases` |
-| Infra & Persistence | Object Storage | `/infra/object-storage` | `/admin/infra/object-storage` |
-| Infra & Persistence | Backups | `/infra/backups` | `/admin/infra/backups` |
 | Observability & Tracing | Grafana | `/observability/grafana` | `/admin/observability/grafana` |
-| Observability & Tracing | Langfuse | `/observability/langfuse` | `/admin/observability/langfuse` |
+| Observability & Tracing | Langfuse | `https://langfuse.getouch.co` | `https://langfuse.getouch.co` |
+| Access & Security | Authentik | `https://sso.getouch.co` | `https://sso.getouch.co` |
 | Access & Security | API Keys | `/security/api-keys` | `/admin/security/api-keys` |
 | Access & Security | Infisical | `/security/infisical` | `/admin/security/infisical` |
 | Access & Security | SDK & Docs | `/security/docs` | `/admin/security/docs` |
@@ -94,5 +92,5 @@ Updated: 2026-05-01
 
 - Sidebar and route rows: `app/admin/data.ts`
 - Portal canonical redirects: `proxy.ts`
-- Canonical admin route tree: `app/admin/system`, `app/admin/ai`, `app/admin/automation`, `app/admin/communications`, `app/admin/infra`, `app/admin/observability`, `app/admin/security`
+- Canonical admin route tree: `app/admin/infra`, `app/admin/ai`, `app/admin/automation`, `app/admin/communications`, `app/admin/observability`, `app/admin/security`
 - Live diagnostic verification: `app/api/build-info/route.ts`

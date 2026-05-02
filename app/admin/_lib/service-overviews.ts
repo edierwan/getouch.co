@@ -23,7 +23,7 @@ export type ServiceOverviewConfig = {
 
 export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
   authentik: {
-    category: 'System Orchestration',
+    category: 'Access & Security',
     title: 'Authentik',
     subtitle: 'Central SSO / identity provider for the GetTouch operator stack and future tenant-aware admin access.',
     probeKey: 'authentik',
@@ -46,7 +46,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Authentik runtime or healthy public route is live yet.',
-      onlineDetail: 'Authentik is installed and redirects correctly on sso.getouch.co. Admin onboarding is still required.',
+      onlineDetail: 'Authentik is installed and redirects correctly on sso.getouch.co.',
     },
   },
   litellm: {

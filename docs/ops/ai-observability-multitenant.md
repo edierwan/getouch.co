@@ -56,7 +56,7 @@ Every AI event, trace, prompt execution, workflow step, retrieval call, and mess
 
 - Use shared project `getouch-production` initially.
 - Standardize trace metadata keys so cross-service joins stay consistent.
-- Finish the initial admin onboarding flow before creating production projects and API keys.
+- Admin access is now live for the shared project; keep production API key issuance inside controlled operator workflows.
 
 ### n8n
 
