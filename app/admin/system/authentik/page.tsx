@@ -1,7 +1,7 @@
-import { ServiceOverviewPageByKey } from '../../_components/ServiceOverviewPage';
+import { permanentRedirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default function SystemAuthentikPage() {
-  return <ServiceOverviewPageByKey configKey="authentik" />;
+  permanentRedirect('https://sso.getouch.co');
 }

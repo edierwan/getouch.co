@@ -5,17 +5,17 @@ Updated: 2026-05-01
 ## Rule Set
 
 - The sidebar IA below is the canonical source of truth.
-- Dashboard sections must match the same category logic exactly.
 - Runtime installation status does not change the canonical IA or route table below.
 - Old `/service-endpoints/*` routes are legacy aliases only and are not canonical.
 - Old `/developer/*`, `/access/*`, `/operations/*`, and `/infrastructure/*` public routes are legacy aliases only where redirects still exist.
-- Root `https://portal.getouch.co/` remains usable and resolves to the dashboard experience.
+- Root `https://portal.getouch.co/` remains usable and resolves to `Servers & Nodes`.
+- Legacy `/system/dashboard` and `/admin/system/dashboard` paths redirect to `Servers & Nodes` and are not canonical.
+- Authentik is a direct external link and no longer uses a portal status page as a canonical destination.
 
 ## Sidebar IA
 
 ### System Orchestration
 
-- Dashboard
 - Servers & Nodes
 - Authentik
 
@@ -64,9 +64,8 @@ Updated: 2026-05-01
 
 | Category | Item | Canonical Public Route | Internal Admin Route |
 | --- | --- | --- | --- |
-| System Orchestration | Dashboard | `/system/dashboard` | `/admin/system/dashboard` |
 | System Orchestration | Servers & Nodes | `/system/servers` | `/admin/system/servers` |
-| System Orchestration | Authentik | `/system/authentik` | `/admin/system/authentik` |
+| System Orchestration | Authentik | `https://sso.getouch.co` | `https://sso.getouch.co` |
 | AI Engine & Cognition | vLLM Gateway | `/ai/vllm` | `/admin/ai/vllm` |
 | AI Engine & Cognition | LiteLLM Gateway | `/ai/litellm` | `/admin/ai/litellm` |
 | AI Engine & Cognition | Dify | `/ai/dify` | `/admin/ai/dify` |

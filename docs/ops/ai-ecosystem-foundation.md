@@ -16,9 +16,8 @@ Portal deployment remains Coolify-only.
 
 ### System Orchestration
 
-- Dashboard: portal control-plane summary and status surface.
 - Servers & Nodes: host/runtime overview for the primary VPS and ingress/runtime topology.
-- Authentik: installed central SSO and identity provider on `sso.getouch.co`.
+- Authentik: direct external SSO and identity provider UI on `sso.getouch.co`.
 
 ### AI Engine & Cognition
 

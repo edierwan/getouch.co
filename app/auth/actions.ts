@@ -15,8 +15,10 @@ import { eq, and, gt } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import crypto from 'crypto';
 
-const getPortalAdminUrl = () =>
-  process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+const getPortalAdminUrl = () => {
+  const baseUrl = process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+  return new URL('/system/servers', baseUrl).toString();
+};
 
 const SUPABASE_LOGIN_TIMEOUT_MS = 1500;
 

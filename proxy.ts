@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const getPortalAdminUrl = () => process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+const getPortalAdminUrl = () => {
+  const baseUrl = process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
+  return new URL('/system/servers', baseUrl).toString();
+};
 const getMcpPublicBaseUrl = () => process.env.MCP_PUBLIC_BASE_URL || 'https://mcp.getouch.co';
 const getRequestHost = (request: NextRequest) => {
   const forwardedHost = request.headers.get('x-forwarded-host');
@@ -16,7 +19,7 @@ const getMcpPublicHost = () => {
   const mcpUrl = new URL(getMcpPublicBaseUrl());
   return mcpUrl.host;
 };
-const getPortalRootUrl = (request: NextRequest) => new URL('/', `https://${getPortalAdminHost()}`);
+const getPortalRootUrl = (request: NextRequest) => new URL('/system/servers', `https://${getPortalAdminHost()}`);
 const isPortalHost = (request: NextRequest) => {
   return getRequestHost(request) === getPortalAdminHost().toLowerCase();
 };
@@ -40,7 +43,8 @@ const getPortalPublicPath = (pathname: string) => {
   return pathname;
 };
 const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
-  '/dashboard': '/system/dashboard',
+  '/dashboard': '/system/servers',
+  '/system/dashboard': '/system/servers',
   '/service-endpoints/vllm': '/ai/vllm',
   '/service-endpoints/litellm': '/ai/litellm',
   '/service-endpoints/dify': '/ai/dify',

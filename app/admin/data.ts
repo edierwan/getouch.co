@@ -74,14 +74,16 @@ export interface CanonicalRouteRow {
   adminPath: string;
 }
 
+const AUTHENTIK_URL = 'https://sso.getouch.co';
+const SERVERS_ADMIN_PATH = '/admin/system/servers';
+
 export const ADMIN_NAV: NavSection[] = [
   {
     label: 'SYSTEM ORCHESTRATION',
     accentRgb: '126, 154, 255',
     items: [
-      { label: 'Dashboard', href: '/admin/system/dashboard', icon: '⌘' },
-      { label: 'Servers & Nodes', href: '/admin/system/servers', icon: '▣' },
-      { label: 'Authentik', href: '/admin/system/authentik', icon: '⚲' },
+      { label: 'Servers & Nodes', href: SERVERS_ADMIN_PATH, icon: '▣' },
+      { label: 'Authentik', href: AUTHENTIK_URL, icon: '⚲', external: true },
     ],
   },
   {
@@ -149,8 +151,8 @@ export const CANONICAL_ROUTE_ROWS: CanonicalRouteRow[] = ADMIN_NAV.flatMap((sect
   section.items.map((item) => ({
     category: section.label,
     label: item.label,
-    publicPath: item.href.replace('/admin', ''),
-    adminPath: item.href,
+    publicPath: item.external ? item.href : item.href.replace('/admin', ''),
+    adminPath: item.external ? item.href : item.href,
   })),
 );
 
@@ -168,7 +170,8 @@ export const QUICK_ACTIONS = [
   { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
   { label: 'News CMS', href: '/news-cms' },
   { label: 'Portal Users', href: '/admin/users' },
-  { label: 'System Dashboard', href: '/admin/system/dashboard' },
+  { label: 'Servers & Nodes', href: SERVERS_ADMIN_PATH },
+  { label: 'Authentik', href: AUTHENTIK_URL, external: true },
   { label: 'API Keys', href: '/admin/security/api-keys' },
   { label: 'Webhooks', href: '/admin/automation/webhooks' },
   { label: 'Open WebUI', href: '/admin/communications/open-webui' },

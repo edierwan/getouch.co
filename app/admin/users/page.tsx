@@ -37,7 +37,7 @@ export default async function UsersPage() {
           <h2 className="portal-page-title">Users</h2>
           <p className="portal-page-sub">Manage platform users, roles, and downstream provisioning.</p>
         </div>
-        <a href="/admin" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>← Back to Dashboard</a>
+        <a href="/admin/system/servers" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>← Back to Servers & Nodes</a>
       </div>
 
         <section className="portal-section" style={{ marginBottom: 0 }}>
