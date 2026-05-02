@@ -95,7 +95,7 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
-    label: 'AI ENGINE & COGNITION',
+    label: 'AI ENGINE & DATA FLOW',
     accentRgb: '78, 206, 199',
     items: [
       { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
@@ -103,12 +103,6 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Dify', href: '/admin/ai/dify', icon: '◍' },
       { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
       { label: 'Qdrant', href: '/admin/ai/qdrant', icon: '◌' },
-    ],
-  },
-  {
-    label: 'AUTOMATION & DATA FLOW',
-    accentRgb: '243, 179, 73',
-    items: [
       { label: 'n8n Workflows', href: '/admin/automation/n8n', icon: '⇄' },
       { label: 'Webhooks', href: '/admin/automation/webhooks', icon: '↺' },
       { label: 'Airbyte', href: '/admin/automation/airbyte', icon: '⟷' },

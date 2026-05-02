@@ -50,7 +50,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     },
   },
   litellm: {
-    category: 'AI Engine & Cognition',
+    category: 'AI Engine & Data Flow',
     title: 'LiteLLM Gateway',
     subtitle: 'OpenAI-compatible model router and policy layer for provider failover, access control, and tenant-aware AI routing.',
     probeKey: 'litellm',
@@ -80,7 +80,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     },
   },
   qdrant: {
-    category: 'AI Engine & Cognition',
+    category: 'AI Engine & Data Flow',
     title: 'Qdrant',
     subtitle: 'Vector database for RAG, semantic search, AI memory retrieval, and tenant-aware vector collections.',
     probeKey: 'qdrant',
@@ -107,7 +107,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     },
   },
   airbyte: {
-    category: 'Automation & Data Flow',
+    category: 'AI Engine & Data Flow',
     title: 'Airbyte',
     subtitle: 'Data ingestion / ELT runtime for syncing external data into the AI ecosystem.',
     probeKey: 'airbyte',

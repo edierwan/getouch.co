@@ -15,7 +15,7 @@ A single place inside `portal.getouch.co` to issue, scope, rotate, revoke, audit
 ## Routes
 
 - UI: `/admin/api-keys` (admin only)
-- Sidebar: **Access & Security → API Keys / SDK & Docs** plus **Automation & Data Flow → Webhooks**
+- Sidebar: **Access & Security → API Keys / SDK & Docs** plus **AI Engine & Data Flow → Webhooks**
 - Service endpoint consumer: `/ai/vllm` offers a vLLM-focused view of AI keys, env-managed gateway keys, and suggested vLLM scopes.
 - API:
   - `GET /api/admin/api-keys` — list, stats, gateways, secret inventory, scope catalog

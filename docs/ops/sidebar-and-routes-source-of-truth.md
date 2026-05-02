@@ -26,16 +26,13 @@ Updated: 2026-05-02
 - Object Storage
 - Backups
 
-### AI Engine & Cognition
+### AI Engine & Data Flow
 
 - vLLM Gateway
 - LiteLLM Gateway
 - Dify
 - MCP Endpoint
 - Qdrant
-
-### Automation & Data Flow
-
 - n8n Workflows
 - Webhooks
 - Airbyte
@@ -66,14 +63,14 @@ Updated: 2026-05-02
 | Infra & Persistence | Databases | `/infra/databases` | `/admin/infra/databases` |
 | Infra & Persistence | Object Storage | `/infra/object-storage` | `/admin/infra/object-storage` |
 | Infra & Persistence | Backups | `/infra/backups` | `/admin/infra/backups` |
-| AI Engine & Cognition | vLLM Gateway | `/ai/vllm` | `/admin/ai/vllm` |
-| AI Engine & Cognition | LiteLLM Gateway | `https://litellm.getouch.co` | `https://litellm.getouch.co` |
-| AI Engine & Cognition | Dify | `/ai/dify` | `/admin/ai/dify` |
-| AI Engine & Cognition | MCP Endpoint | `/ai/mcp` | `/admin/ai/mcp` |
-| AI Engine & Cognition | Qdrant | `/ai/qdrant` | `/admin/ai/qdrant` |
-| Automation & Data Flow | n8n Workflows | `/automation/n8n` | `/admin/automation/n8n` |
-| Automation & Data Flow | Webhooks | `/automation/webhooks` | `/admin/automation/webhooks` |
-| Automation & Data Flow | Airbyte | `/automation/airbyte` | `/admin/automation/airbyte` |
+| AI Engine & Data Flow | vLLM Gateway | `/ai/vllm` | `/admin/ai/vllm` |
+| AI Engine & Data Flow | LiteLLM Gateway | `https://litellm.getouch.co` | `https://litellm.getouch.co` |
+| AI Engine & Data Flow | Dify | `/ai/dify` | `/admin/ai/dify` |
+| AI Engine & Data Flow | MCP Endpoint | `/ai/mcp` | `/admin/ai/mcp` |
+| AI Engine & Data Flow | Qdrant | `/ai/qdrant` | `/admin/ai/qdrant` |
+| AI Engine & Data Flow | n8n Workflows | `/automation/n8n` | `/admin/automation/n8n` |
+| AI Engine & Data Flow | Webhooks | `/automation/webhooks` | `/admin/automation/webhooks` |
+| AI Engine & Data Flow | Airbyte | `/automation/airbyte` | `/admin/automation/airbyte` |
 | Communication Hubs | Evolution Gateway | `/communications/evolution` | `/admin/communications/evolution` |
 | Communication Hubs | Baileys Gateway | `/communications/baileys` | `/admin/communications/baileys` |
 | Communication Hubs | Open WebUI | `/communications/open-webui` | `/admin/communications/open-webui` |

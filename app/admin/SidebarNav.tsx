@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ADMIN_NAV } from './data';
 
 const SIDEBAR_SCROLL_STORAGE_KEY = 'getouch.admin.sidebar.scrollTop';
-const SIDEBAR_EXPANDED_SECTIONS_KEY = 'getouch.admin.sidebar.expandedSections.v3';
+const SIDEBAR_EXPANDED_SECTIONS_KEY = 'getouch.admin.sidebar.expandedSections.v4';
 
 /* Convert an internal /admin/* path to a public portal path. */
 function toPublicPath(href: string): string {

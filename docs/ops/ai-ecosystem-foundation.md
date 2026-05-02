@@ -25,16 +25,13 @@ Portal deployment remains Coolify-only.
 - ClickHouse: Langfuse analytics dependency.
 - Redis / Queue Cache: internal cache and queue dependency.
 
-### AI Engine & Cognition
+### AI Engine & Data Flow
 
 - vLLM Gateway: public inference gateway surface.
 - LiteLLM Gateway: installed model routing and OpenAI-compatible proxy layer.
 - Dify: AI workflow and application builder.
 - MCP Endpoint: portal-backed Model Context Protocol endpoint.
 - Qdrant: installed vector database for RAG, retrieval, and AI memory.
-
-### Automation & Data Flow
-
 - n8n Workflows: workflow automation runtime.
 - Webhooks: portal-managed webhook and delivery surface.
 - Airbyte: still blocked because the official single-host abctl install cannot boot kind on this VPS until the root inotify limit is raised.
@@ -85,10 +82,10 @@ Portal deployment remains Coolify-only.
 | Tool | Category | Status | Public URL | Runtime Notes | Dependencies |
 | --- | --- | --- | --- | --- | --- |
 | Authentik | Access & Security | Installed | https://sso.getouch.co | Coolify-managed runtime is healthy and the public route returns the expected login redirect. | PostgreSQL `authentik`, Redis / Valkey |
-| Qdrant | AI Engine & Cognition | Installed | https://qdrant.getouch.co | Coolify-managed runtime is healthy. `GET /healthz` returns `200` and protected collection access returns `401` without credentials. | Persistent storage, API auth |
-| Airbyte | Automation & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. The official `abctl` install path was attempted, but kind failed to boot its control-plane container on this VPS with `Failed to create control group inotify object: Too many open files` while `fs.inotify.max_user_instances` remained at `128`. | PostgreSQL `airbyte` |
+| Qdrant | AI Engine & Data Flow | Installed | https://qdrant.getouch.co | Coolify-managed runtime is healthy. `GET /healthz` returns `200` and protected collection access returns `401` without credentials. | Persistent storage, API auth |
+| Airbyte | AI Engine & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. The official `abctl` install path was attempted, but kind failed to boot its control-plane container on this VPS with `Failed to create control group inotify object: Too many open files` while `fs.inotify.max_user_instances` remained at `128`. | PostgreSQL `airbyte` |
 | Infisical | Access & Security | Installed | https://infisical.getouch.co | Coolify-managed runtime is healthy, `/api/status` returns `200`, and the portal now links directly to the external vault UI instead of an intermediate status page. Initial admin onboarding is still pending. | PostgreSQL `infisical`, secure bootstrap |
-| LiteLLM | AI Engine & Cognition | Installed | https://litellm.getouch.co | Coolify-managed runtime is healthy and the public gateway responds on `/health/liveliness`. Anonymous `GET /v1/models` requests are correctly rejected with `401` until provider credentials and client auth are configured. | PostgreSQL `litellm`, auth/master key |
+| LiteLLM | AI Engine & Data Flow | Installed | https://litellm.getouch.co | Coolify-managed runtime is healthy and the public gateway responds on `/health/liveliness`. Anonymous `GET /v1/models` requests are correctly rejected with `401` until provider credentials and client auth are configured. | PostgreSQL `litellm`, auth/master key |
 | Grafana | Infra & Persistence | Installed | https://grafana.getouch.co | Grafana remains the external source of truth for infrastructure and GPU monitoring. The portal sidebar now opens the real Grafana UI directly under Infra & Persistence. | Prometheus, Grafana auth |
 | Langfuse | Infra & Persistence | Installed | https://langfuse.getouch.co | Coolify-managed runtime and dependencies are healthy. `/api/public/health` returns `200`. Operator login is working and the initial shared project is `getouch-production`. | PostgreSQL `langfuse`, ClickHouse, Redis |
 | ClickHouse | Infra & Persistence | Installed | Internal only | ClickHouse is healthy as the Langfuse analytics store and should remain internal-only unless authenticated access is explicitly designed. | Internal-only or authenticated access |
