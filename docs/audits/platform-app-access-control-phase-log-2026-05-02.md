@@ -129,6 +129,67 @@ Implement a portal-side control-plane registry for product apps, tenant bindings
 - Commit hash:
   - The pushed Phase 2A commit hash is reported in the operator handoff after push to avoid a self-referential follow-up commit.
 
+## Phase 2B — Simplified App Creation and Default Ecosystem Capabilities
+
+- Objective:
+  - Simplify App Access Control so admins create only the product container and tenant header records, while the portal auto-enables shared ecosystem capabilities by default.
+- DB target verification:
+  - Re-verified before the Phase 2B migration that the live portal Coolify app points to host `getouch-postgres`, database `getouch.co`.
+  - Re-verified separately that the live WAPI Coolify app points to host `getouch-postgres`, database `wapi`.
+  - Post-migration verification returned:
+    - portal: `getouch.co|platform_app_service_capabilities|1|9|9`
+    - wapi: `wapi|null|null`
+  - This confirms the new capability table exists only in the portal DB and that WAPI remained untouched.
+- New table and migration summary:
+  - Added `drizzle/0013_platform_app_service_capabilities.sql`.
+  - Added `platform_apps.environment` with default `production`.
+  - Added new portal-only table `platform_app_service_capabilities` with one row per app and ecosystem service.
+  - Backfilled default capability rows for existing apps, including the seeded WAPI app.
+  - Default ecosystem services backfilled or created automatically:
+    - `evolution`
+    - `baileys`
+    - `dify`
+    - `litellm`
+    - `vllm`
+    - `qdrant`
+    - `chatwoot`
+    - `langfuse`
+    - `webhooks`
+- UI changes:
+  - Replaced the technical Create App form with a simplified flow using only App Name, Environment, and optional Description.
+  - App Code is now generated automatically and shown as a read-only system identifier in the overview.
+  - Added an Ecosystem Services grid showing default capability access per app.
+  - Simplified Add Tenant Binding to Tenant Name, Environment, and optional Description.
+  - Renamed Service Integrations wording in the admin UI to Service Links.
+  - Renamed Secret Refs wording in the admin UI to Secret References.
+  - Removed technical create-time choices from the normal path, including manual app code input, auth model, default channel, and metadata flags.
+  - Kept advanced JSON behind a collapsible Advanced section only.
+- App code and tenant key generation behavior:
+  - `app_code` is now generated from App Name using lowercase slug rules.
+  - Duplicate app names append numeric suffixes such as `wapi-2` and `wapi-3`.
+  - `app_tenant_key` is now generated from Tenant Name using the same slug rules, scoped per app.
+  - Duplicate tenant names inside the same app append numeric suffixes such as `abc-trading-2`.
+- Default ecosystem capability behavior:
+  - Creating an app now automatically inserts capability rows for the shared ecosystem service catalog.
+  - The portal does not create fake tenant bindings, fake service links, or fake secret refs during app creation.
+  - Default app metadata now records ecosystem access as enabled and marks the record as created from App Access Control.
+- Meaning of status labels:
+  - `Available` means the app is allowed to use that ecosystem service, but no actual resource link exists yet.
+  - `Not Linked` means a tenant has inherited the capability, but no concrete service resource is mapped for that tenant yet.
+  - `Linked` means a real registry service link row exists for the service.
+  - `Disabled` means the capability or specific link is intentionally unavailable.
+  - `Error` means the capability or link requires operator attention.
+- What is not implemented yet:
+  - No external API provisioning for Dify, Chatwoot, Evolution, LiteLLM, vLLM, Qdrant, Langfuse, Baileys, or webhook systems.
+  - No direct writes to any external tool database.
+  - No external resource deletion.
+  - No secret value storage or display. Secret References still store only path, provider, key, and scope metadata.
+- Build result:
+  - `npx tsc --noEmit`: passed.
+  - `npm run build`: passed.
+- Commit hash:
+  - The pushed Phase 2B commit hash is reported in the operator handoff after push to avoid a self-referential follow-up commit.
+
 ## Legacy Portal Naming Cleanup
 
 - Files searched: repo-wide search across the GetTouch portal repository using the retired portal naming variants requested in the task.

@@ -4535,10 +4535,74 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
   border-color: rgba(255, 159, 141, 0.28);
 }
 
+.portal-aac-helper-note {
+  margin: 0;
+  color: var(--aac-muted);
+  line-height: 1.55;
+}
+
+.portal-aac-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+}
+
+.portal-aac-capability-card {
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(255, 248, 236, 0.04);
+  border: 1px solid rgba(255, 248, 236, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.portal-aac-capability-meta {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.portal-aac-capability-meta span {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  background: rgba(255, 248, 236, 0.06);
+  color: var(--aac-muted);
+}
+
+.portal-aac-advanced {
+  border: 1px solid rgba(255, 248, 236, 0.08);
+  border-radius: 16px;
+  padding: 0.8rem 0.95rem;
+  background: rgba(255, 248, 236, 0.02);
+}
+
+.portal-aac-advanced summary {
+  cursor: pointer;
+  color: var(--aac-ink);
+  font-weight: 600;
+  list-style: none;
+}
+
+.portal-aac-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.portal-aac-advanced[open] {
+  background: rgba(255, 248, 236, 0.035);
+}
+
+.portal-aac-advanced .portal-aac-field {
+  margin-top: 0.8rem;
+}
+
 @media (max-width: 1200px) {
   .portal-aac-stats,
   .portal-aac-overview-grid,
-  .portal-aac-panel-grid {
+  .portal-aac-panel-grid,
+  .portal-aac-capability-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -4549,6 +4613,7 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
   .portal-aac-overview-grid,
   .portal-aac-panel-grid,
   .portal-aac-stats,
+  .portal-aac-capability-grid,
   .portal-aac-detail-list,
   .portal-aac-form-grid,
   .portal-aac-snapshot-grid {

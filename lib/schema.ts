@@ -576,6 +576,7 @@ export const platformApps = pgTable(
     appCode: text('app_code').notNull(),
     name: text('name').notNull(),
     description: text('description'),
+    environment: text('environment').default('production').notNull(),
     authModel: text('auth_model').default('app_owned').notNull(),
     defaultChannel: text('default_channel'),
     status: text('status').default('active').notNull(),
@@ -586,6 +587,27 @@ export const platformApps = pgTable(
   (table) => [
     uniqueIndex('platform_apps_app_code_idx').on(table.appCode),
     index('platform_apps_status_idx').on(table.status),
+  ],
+);
+
+export const platformAppServiceCapabilities = pgTable(
+  'platform_app_service_capabilities',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    appId: uuid('app_id').references(() => platformApps.id, { onDelete: 'cascade' }).notNull(),
+    serviceName: text('service_name').notNull(),
+    displayName: text('display_name').notNull(),
+    category: text('category').default('ecosystem').notNull(),
+    capabilityStatus: text('capability_status').default('available').notNull(),
+    defaultEnabled: boolean('default_enabled').default(true).notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('platform_app_service_capabilities_unique_idx').on(table.appId, table.serviceName),
+    index('platform_app_service_capabilities_app_idx').on(table.appId),
+    index('platform_app_service_capabilities_status_idx').on(table.capabilityStatus),
   ],
 );
 

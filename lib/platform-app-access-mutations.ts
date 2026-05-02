@@ -1,7 +1,21 @@
 import { and, eq } from 'drizzle-orm';
-import { db } from './db';
+import { db, getDb } from './db';
+import {
+  APP_ENVIRONMENT_VALUES,
+  APP_STATUS_VALUES,
+  DEFAULT_ECOSYSTEM_SERVICES,
+  SECRET_PROVIDER_VALUES,
+  SECRET_SCOPE_VALUES,
+  SECRET_STATUS_VALUES,
+  SERVICE_LINK_STATUS_VALUES,
+  TENANT_ENV_VALUES,
+  TENANT_STATUS_VALUES,
+  normalizeServiceName,
+  slugifyIdentifier,
+} from './platform-app-access-config';
 import {
   platformApps,
+  platformAppServiceCapabilities,
   platformAppTenantBindings,
   platformSecretRefs,
   platformServiceIntegrations,
@@ -9,19 +23,8 @@ import {
 
 type JsonRecord = Record<string, unknown>;
 
-const APP_AUTH_MODE_VALUES = ['app_owned', 'platform_sso', 'service_only'] as const;
-const APP_DEFAULT_CHANNEL_VALUES = ['whatsapp', 'web', 'voice', 'internal', 'none'] as const;
-const APP_STATUS_VALUES = ['active', 'planned', 'disabled'] as const;
-const TENANT_ENV_VALUES = ['production', 'staging', 'sandbox', 'development'] as const;
-const TENANT_STATUS_VALUES = ['active', 'sandbox', 'disabled'] as const;
-const SERVICE_NAME_VALUES = ['evolution', 'dify', 'qdrant', 'chatwoot', 'litellm', 'langfuse', 'vllm', 'webhook', 'other'] as const;
-const SERVICE_STATUS_VALUES = ['linked', 'planned', 'disabled', 'error'] as const;
-const SECRET_PROVIDER_VALUES = ['infisical', 'coolify_env', 'manual_ref'] as const;
-const SECRET_SCOPE_VALUES = ['platform', 'app', 'tenant', 'service'] as const;
-const SECRET_STATUS_VALUES = ['active', 'planned', 'disabled'] as const;
-
-const APP_CODE_RE = /^[a-z0-9_-]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SERVICE_NAME_VALUES: string[] = DEFAULT_ECOSYSTEM_SERVICES.map((service) => service.serviceName);
 
 export class PlatformRegistryError extends Error {
   status: number;
@@ -87,29 +90,89 @@ function parseEnum<T extends readonly string[]>(value: unknown, options: T, fiel
   return normalized as T[number];
 }
 
-function parseOptionalEnum<T extends readonly string[]>(value: unknown, options: T, field: string): T[number] | null {
-  const normalized = optionalString(value, field, 80);
-  if (!normalized) return null;
-  if (!options.includes(normalized as T[number])) {
-    fail(400, `${field}_invalid`, `${field} must be one of ${options.join(', ')}`);
+function parseServiceName(value: unknown, field = 'serviceName'): string {
+  const normalized = normalizeServiceName(requiredString(value, field, 120));
+  if (!SERVICE_NAME_VALUES.includes(normalized)) {
+    fail(400, `${field}_invalid`, `${field} must be one of ${SERVICE_NAME_VALUES.join(', ')}`);
   }
-  return normalized as T[number];
-}
-
-function parseAppCode(value: unknown): string {
-  const appCode = requiredString(value, 'app_code', 120);
-  if (!APP_CODE_RE.test(appCode)) {
-    fail(400, 'app_code_invalid', 'app_code must use lowercase letters, numbers, underscore, or hyphen only');
-  }
-  return appCode;
+  return normalized;
 }
 
 function isUniqueViolation(err: unknown): boolean {
   return Boolean(err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505');
 }
 
+function cloneMetadata(value: unknown): JsonRecord {
+  return parseMetadata(value ?? {});
+}
+
+function mergeAppMetadata(metadata: JsonRecord, previousMetadata?: JsonRecord): JsonRecord {
+  const next = { ...metadata };
+  next.ecosystem_access = 'enabled';
+  const previousCreatedFrom = typeof previousMetadata?.created_from === 'string'
+    ? previousMetadata.created_from
+    : null;
+  next.created_from = typeof next.created_from === 'string' && next.created_from.trim()
+    ? next.created_from.trim()
+    : previousCreatedFrom || 'app_access_control';
+  return next;
+}
+
+function mergeTenantMetadata(metadata: JsonRecord, description: string | null | undefined): JsonRecord {
+  const next = { ...metadata };
+  if (description === undefined) return next;
+  if (description) next.description = description;
+  else delete next.description;
+  return next;
+}
+
+function buildUniqueSlug(baseSlug: string, existingValues: Set<string>): string {
+  if (!existingValues.has(baseSlug)) return baseSlug;
+  let suffix = 2;
+  while (existingValues.has(`${baseSlug}-${suffix}`)) suffix += 1;
+  return `${baseSlug}-${suffix}`;
+}
+
+async function generateUniqueAppCode(name: string): Promise<string> {
+  const rows = await db.select({ appCode: platformApps.appCode }).from(platformApps);
+  return buildUniqueSlug(slugifyIdentifier(name), new Set(rows.map((row) => row.appCode)));
+}
+
+async function generateUniqueTenantKey(appId: string, name: string): Promise<string> {
+  const rows = await db
+    .select({ appTenantKey: platformAppTenantBindings.appTenantKey })
+    .from(platformAppTenantBindings)
+    .where(eq(platformAppTenantBindings.appId, appId));
+
+  return buildUniqueSlug(slugifyIdentifier(name), new Set(rows.map((row) => row.appTenantKey)));
+}
+
+function defaultCapabilityValues(appId: string) {
+  return DEFAULT_ECOSYSTEM_SERVICES.map((service) => ({
+    appId,
+    serviceName: service.serviceName,
+    displayName: service.displayName,
+    category: 'ecosystem',
+    capabilityStatus: 'available',
+    defaultEnabled: true,
+    metadata: {},
+  }));
+}
+
 async function getPlatformAppRow(id: string) {
   const rows = await db.select().from(platformApps).where(eq(platformApps.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+async function getPlatformAppCapabilityRow(appId: string, serviceName: string) {
+  const rows = await db
+    .select()
+    .from(platformAppServiceCapabilities)
+    .where(and(
+      eq(platformAppServiceCapabilities.appId, appId),
+      eq(platformAppServiceCapabilities.serviceName, normalizeServiceName(serviceName)),
+    ))
+    .limit(1);
   return rows[0] ?? null;
 }
 
@@ -134,52 +197,73 @@ async function requireApp(appId: string) {
   return app;
 }
 
+async function requireAppCapability(appId: string, serviceName: string) {
+  const capability = await getPlatformAppCapabilityRow(appId, serviceName);
+  if (!capability) fail(400, 'service_capability_missing', 'Selected app does not expose that ecosystem service');
+  return capability;
+}
+
 async function requireTenantBinding(bindingId: string) {
   const binding = await getPlatformTenantBindingRow(bindingId);
   if (!binding) fail(404, 'tenant_binding_not_found', 'Tenant binding not found');
   return binding;
 }
 
-function normalizeAppValues(input: Record<string, unknown>, partial = false) {
+function normalizeAppValues(input: Record<string, unknown>, partial = false, previousMetadata?: JsonRecord) {
   const values: Record<string, unknown> = {};
 
   if (!partial || 'name' in input) values.name = requiredString(input.name, 'name', 180);
   if (!partial || 'description' in input) values.description = optionalString(input.description, 'description', 1000);
-  if (!partial || 'authModel' in input) values.authModel = parseEnum(input.authModel, APP_AUTH_MODE_VALUES, 'authModel');
-  if (!partial || 'defaultChannel' in input) {
-    const channel = parseEnum(input.defaultChannel ?? 'none', APP_DEFAULT_CHANNEL_VALUES, 'defaultChannel');
-    values.defaultChannel = channel === 'none' ? null : channel;
+  if (!partial || 'environment' in input) {
+    values.environment = parseEnum(input.environment ?? 'production', APP_ENVIRONMENT_VALUES, 'environment');
   }
-  if (!partial || 'status' in input) values.status = parseEnum(input.status, APP_STATUS_VALUES, 'status');
-  if (!partial || 'metadata' in input) values.metadata = parseMetadata(input.metadata);
+  if (!partial || 'status' in input) {
+    values.status = parseEnum(input.status ?? 'active', APP_STATUS_VALUES, 'status');
+  }
+  if (!partial || 'metadata' in input) {
+    values.metadata = mergeAppMetadata(parseMetadata(input.metadata), previousMetadata);
+  }
 
   return values;
 }
 
 export async function createPlatformApp(input: Record<string, unknown>) {
-  const appCode = parseAppCode(input.appCode);
-  const values = normalizeAppValues(input);
+  const values = normalizeAppValues(input, false, {});
+  const appCode = await generateUniqueAppCode(values.name as string);
 
   try {
-    const rows = await db.insert(platformApps).values({
-      appCode,
-      name: values.name as string,
-      description: values.description as string | null,
-      authModel: values.authModel as string,
-      defaultChannel: values.defaultChannel as string | null,
-      status: values.status as string,
-      metadata: values.metadata as JsonRecord,
-    }).returning();
-    return rows[0];
+    const created = await getDb().transaction(async (tx) => {
+      const rows = await tx.insert(platformApps).values({
+        appCode,
+        name: values.name as string,
+        description: values.description as string | null,
+        environment: values.environment as string,
+        authModel: 'app_owned',
+        defaultChannel: null,
+        status: 'active',
+        metadata: values.metadata as JsonRecord,
+      }).returning();
+
+      const app = rows[0];
+      if (!app) fail(500, 'app_create_failed', 'App could not be created');
+
+      await tx.insert(platformAppServiceCapabilities)
+        .values(defaultCapabilityValues(app.id))
+        .onConflictDoNothing();
+
+      return app;
+    });
+
+    return created;
   } catch (err) {
-    if (isUniqueViolation(err)) fail(409, 'app_code_conflict', 'app_code is already registered');
+    if (isUniqueViolation(err)) fail(409, 'app_code_conflict', 'A registry app with that generated code already exists');
     throw err;
   }
 }
 
 export async function updatePlatformApp(id: string, input: Record<string, unknown>) {
-  await requireApp(id);
-  const values = normalizeAppValues(input, true);
+  const app = await requireApp(id);
+  const values = normalizeAppValues(input, true, cloneMetadata(app.metadata));
   if (Object.keys(values).length === 0) fail(400, 'no_changes', 'No app changes were provided');
 
   const rows = await db.update(platformApps).set({
@@ -200,14 +284,30 @@ export async function deletePlatformApp(id: string, opts: { appCodeConfirmation?
   return rows[0] ?? null;
 }
 
-function normalizeTenantBindingValues(input: Record<string, unknown>, partial = false) {
+function normalizeTenantBindingValues(
+  input: Record<string, unknown>,
+  partial = false,
+  previousMetadata?: JsonRecord,
+) {
   const values: Record<string, unknown> = {};
 
-  if (!partial || 'appTenantKey' in input) values.appTenantKey = requiredString(input.appTenantKey, 'appTenantKey', 160);
-  if (!partial || 'displayName' in input) values.displayName = optionalString(input.displayName, 'displayName', 180);
-  if (!partial || 'environment' in input) values.environment = parseEnum(input.environment, TENANT_ENV_VALUES, 'environment');
-  if (!partial || 'status' in input) values.status = parseEnum(input.status, TENANT_STATUS_VALUES, 'status');
-  if (!partial || 'metadata' in input) values.metadata = parseMetadata(input.metadata);
+  const description = (!partial || 'description' in input)
+    ? optionalString(input.description, 'description', 1000)
+    : undefined;
+  const metadata = (!partial || 'metadata' in input)
+    ? parseMetadata(input.metadata)
+    : undefined;
+
+  if (!partial || 'name' in input) values.displayName = requiredString(input.name, 'name', 180);
+  if (!partial || 'environment' in input) {
+    values.environment = parseEnum(input.environment ?? 'production', TENANT_ENV_VALUES, 'environment');
+  }
+  if (!partial || 'status' in input) {
+    values.status = parseEnum(input.status ?? 'active', TENANT_STATUS_VALUES, 'status');
+  }
+  if (metadata !== undefined || description !== undefined) {
+    values.metadata = mergeTenantMetadata(metadata ?? cloneMetadata(previousMetadata), description);
+  }
 
   return values;
 }
@@ -216,15 +316,17 @@ export async function createPlatformTenantBinding(input: Record<string, unknown>
   const appId = optionalUuid(input.appId, 'appId');
   if (!appId) fail(400, 'appId_required', 'appId is required');
   await requireApp(appId);
-  const values = normalizeTenantBindingValues(input);
+
+  const values = normalizeTenantBindingValues(input, false, {});
+  const appTenantKey = await generateUniqueTenantKey(appId, values.displayName as string);
 
   try {
     const rows = await db.insert(platformAppTenantBindings).values({
       appId,
-      appTenantKey: values.appTenantKey as string,
-      displayName: values.displayName as string | null,
+      appTenantKey,
+      displayName: values.displayName as string,
       environment: values.environment as string,
-      status: values.status as string,
+      status: 'active',
       metadata: values.metadata as JsonRecord,
     }).returning();
     return rows[0];
@@ -235,8 +337,8 @@ export async function createPlatformTenantBinding(input: Record<string, unknown>
 }
 
 export async function updatePlatformTenantBinding(id: string, input: Record<string, unknown>) {
-  await requireTenantBinding(id);
-  const values = normalizeTenantBindingValues(input, true);
+  const binding = await requireTenantBinding(id);
+  const values = normalizeTenantBindingValues(input, true, cloneMetadata(binding.metadata));
   if (Object.keys(values).length === 0) fail(400, 'no_changes', 'No tenant binding changes were provided');
 
   try {
@@ -260,13 +362,13 @@ export async function deletePlatformTenantBinding(id: string) {
 function normalizeServiceIntegrationValues(input: Record<string, unknown>, partial = false) {
   const values: Record<string, unknown> = {};
 
-  if (!partial || 'serviceName' in input) values.serviceName = parseEnum(input.serviceName, SERVICE_NAME_VALUES, 'serviceName');
+  if (!partial || 'serviceName' in input) values.serviceName = parseServiceName(input.serviceName, 'serviceName');
   if (!partial || 'resourceType' in input) values.resourceType = requiredString(input.resourceType, 'resourceType', 160);
   if (!partial || 'resourceId' in input) values.resourceId = requiredString(input.resourceId, 'resourceId', 255);
   if (!partial || 'displayName' in input) values.displayName = optionalString(input.displayName, 'displayName', 180);
   if (!partial || 'baseUrl' in input) values.baseUrl = optionalString(input.baseUrl, 'baseUrl', 2000);
   if (!partial || 'internalBaseUrl' in input) values.internalBaseUrl = optionalString(input.internalBaseUrl, 'internalBaseUrl', 2000);
-  if (!partial || 'status' in input) values.status = parseEnum(input.status, SERVICE_STATUS_VALUES, 'status');
+  if (!partial || 'status' in input) values.status = parseEnum(input.status ?? 'linked', SERVICE_LINK_STATUS_VALUES, 'status');
   if (!partial || 'metadata' in input) values.metadata = parseMetadata(input.metadata);
 
   return values;
@@ -275,12 +377,12 @@ function normalizeServiceIntegrationValues(input: Record<string, unknown>, parti
 function normalizeSecretRefValues(input: Record<string, unknown>, partial = false) {
   const values: Record<string, unknown> = {};
 
-  if (!partial || 'serviceName' in input) values.serviceName = requiredString(input.serviceName, 'serviceName', 120);
-  if (!partial || 'refProvider' in input) values.refProvider = parseEnum(input.refProvider, SECRET_PROVIDER_VALUES, 'refProvider');
+  if (!partial || 'serviceName' in input) values.serviceName = parseServiceName(input.serviceName, 'serviceName');
+  if (!partial || 'refProvider' in input) values.refProvider = parseEnum(input.refProvider ?? 'infisical', SECRET_PROVIDER_VALUES, 'refProvider');
   if (!partial || 'refPath' in input) values.refPath = requiredString(input.refPath, 'refPath', 400);
   if (!partial || 'refKey' in input) values.refKey = optionalString(input.refKey, 'refKey', 200);
-  if (!partial || 'scope' in input) values.scope = parseEnum(input.scope, SECRET_SCOPE_VALUES, 'scope');
-  if (!partial || 'status' in input) values.status = parseEnum(input.status, SECRET_STATUS_VALUES, 'status');
+  if (!partial || 'scope' in input) values.scope = parseEnum(input.scope ?? 'app', SECRET_SCOPE_VALUES, 'scope');
+  if (!partial || 'status' in input) values.status = parseEnum(input.status ?? 'active', SECRET_STATUS_VALUES, 'status');
   if (!partial || 'metadata' in input) values.metadata = parseMetadata(input.metadata);
 
   return values;
@@ -301,7 +403,9 @@ export async function createPlatformServiceIntegration(input: Record<string, unk
   await requireApp(appId);
   const tenantBindingId = optionalUuid(input.tenantBindingId, 'tenantBindingId');
   await resolveTenantBindingForApp(appId, tenantBindingId);
+
   const values = normalizeServiceIntegrationValues(input);
+  await requireAppCapability(appId, values.serviceName as string);
 
   try {
     const rows = await db.insert(platformServiceIntegrations).values({
@@ -318,14 +422,15 @@ export async function createPlatformServiceIntegration(input: Record<string, unk
     }).returning();
     return rows[0];
   } catch (err) {
-    if (isUniqueViolation(err)) fail(409, 'service_integration_conflict', 'This service integration is already registered');
+    if (isUniqueViolation(err)) fail(409, 'service_integration_conflict', 'This service link is already registered');
     throw err;
   }
 }
 
 export async function updatePlatformServiceIntegration(id: string, input: Record<string, unknown>) {
   const integration = await getPlatformServiceIntegrationRow(id);
-  if (!integration) fail(404, 'service_integration_not_found', 'Service integration not found');
+  if (!integration) fail(404, 'service_integration_not_found', 'Service link not found');
+
   const values = normalizeServiceIntegrationValues(input, true);
   let tenantBindingId = integration.tenantBindingId;
   if ('tenantBindingId' in input) {
@@ -333,7 +438,14 @@ export async function updatePlatformServiceIntegration(id: string, input: Record
     await resolveTenantBindingForApp(integration.appId, tenantBindingId);
     values.tenantBindingId = tenantBindingId;
   }
-  if (Object.keys(values).length === 0) fail(400, 'no_changes', 'No service integration changes were provided');
+
+  const effectiveServiceName = typeof values.serviceName === 'string'
+    ? values.serviceName
+    : normalizeServiceName(integration.serviceName);
+  await requireAppCapability(integration.appId, effectiveServiceName);
+  if (effectiveServiceName !== integration.serviceName) values.serviceName = effectiveServiceName;
+
+  if (Object.keys(values).length === 0) fail(400, 'no_changes', 'No service link changes were provided');
 
   try {
     const rows = await db.update(platformServiceIntegrations).set({
@@ -342,14 +454,14 @@ export async function updatePlatformServiceIntegration(id: string, input: Record
     }).where(eq(platformServiceIntegrations.id, id)).returning();
     return rows[0] ?? null;
   } catch (err) {
-    if (isUniqueViolation(err)) fail(409, 'service_integration_conflict', 'This service integration is already registered');
+    if (isUniqueViolation(err)) fail(409, 'service_integration_conflict', 'This service link is already registered');
     throw err;
   }
 }
 
 export async function deletePlatformServiceIntegration(id: string) {
   const integration = await getPlatformServiceIntegrationRow(id);
-  if (!integration) fail(404, 'service_integration_not_found', 'Service integration not found');
+  if (!integration) fail(404, 'service_integration_not_found', 'Service link not found');
   const rows = await db.delete(platformServiceIntegrations).where(eq(platformServiceIntegrations.id, id)).returning();
   return rows[0] ?? null;
 }
@@ -360,7 +472,9 @@ export async function createPlatformSecretRef(input: Record<string, unknown>) {
   await requireApp(appId);
   const tenantBindingId = optionalUuid(input.tenantBindingId, 'tenantBindingId');
   await resolveTenantBindingForApp(appId, tenantBindingId);
+
   const values = normalizeSecretRefValues(input);
+  await requireAppCapability(appId, values.serviceName as string);
 
   try {
     const rows = await db.insert(platformSecretRefs).values({
@@ -384,6 +498,7 @@ export async function createPlatformSecretRef(input: Record<string, unknown>) {
 export async function updatePlatformSecretRef(id: string, input: Record<string, unknown>) {
   const secretRef = await getPlatformSecretRefRow(id);
   if (!secretRef) fail(404, 'secret_ref_not_found', 'Secret reference not found');
+
   const values = normalizeSecretRefValues(input, true);
   let tenantBindingId = secretRef.tenantBindingId;
   if ('tenantBindingId' in input) {
@@ -391,6 +506,13 @@ export async function updatePlatformSecretRef(id: string, input: Record<string, 
     await resolveTenantBindingForApp(secretRef.appId, tenantBindingId);
     values.tenantBindingId = tenantBindingId;
   }
+
+  const effectiveServiceName = typeof values.serviceName === 'string'
+    ? values.serviceName
+    : normalizeServiceName(secretRef.serviceName);
+  await requireAppCapability(secretRef.appId, effectiveServiceName);
+  if (effectiveServiceName !== secretRef.serviceName) values.serviceName = effectiveServiceName;
+
   if (Object.keys(values).length === 0) fail(400, 'no_changes', 'No secret reference changes were provided');
 
   try {

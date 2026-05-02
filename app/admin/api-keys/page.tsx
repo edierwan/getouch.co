@@ -1,5 +1,5 @@
 import { Breadcrumb, PageIntro } from '../ui';
-import { AppAccessControlConsole } from './AppAccessControlConsole';
+import { AppAccessControlConsole } from './AppAccessControlConsoleSimple';
 
 export const dynamic = 'force-dynamic';
 
