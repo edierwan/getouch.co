@@ -102,10 +102,10 @@ export interface PlatformAccessSnapshot {
   selectedTenantServiceIntegrations: PlatformServiceIntegrationItem[];
   selectedTenantSecretRefs: PlatformSecretRefItem[];
   writeFlows: {
-    createApp: 'planned';
-    createTenantBinding: 'planned';
-    createServiceIntegration: 'planned';
-    createSecretRef: 'planned';
+    createApp: 'enabled';
+    createTenantBinding: 'enabled';
+    createServiceIntegration: 'enabled';
+    createSecretRef: 'enabled';
   };
 }
 
@@ -343,10 +343,10 @@ export async function getPlatformAccessSnapshot(opts?: {
     selectedTenantServiceIntegrations,
     selectedTenantSecretRefs,
     writeFlows: {
-      createApp: 'planned',
-      createTenantBinding: 'planned',
-      createServiceIntegration: 'planned',
-      createSecretRef: 'planned',
+      createApp: 'enabled',
+      createTenantBinding: 'enabled',
+      createServiceIntegration: 'enabled',
+      createSecretRef: 'enabled',
     },
   };
 }

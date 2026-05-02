@@ -12,7 +12,7 @@ Implement a portal-side control-plane registry for product apps, tenant bindings
 - Verified the production WAPI Coolify application resource as `wapimain-nql6rdsjrcmlvcee1o2dz8wd`.
 - Verified the running WAPI container as `nql6rdsjrcmlvcee1o2dz8wd-045741258840` with FQDN `wapi.getouch.co` on branch `main`.
 - Verified the redacted WAPI DB target from container env as host `getouch-postgres`, port `5432`, database `wapi`.
-- No live portal resource named `getouch-web` was used. The stale naming was found only in repository docs/scripts and removed.
+- No stale legacy portal runtime name was used for the live verification path. The outdated naming was found only in repository docs/scripts and removed from active content.
 
 ## 3. Confirmed DB Target: getouch.co
 
@@ -63,11 +63,9 @@ Implement a portal-side control-plane registry for product apps, tenant bindings
 
 ## 9. What Remains Planned
 
-- Create App write flow remains planned/disabled.
-- Add Tenant Binding write flow remains planned/disabled.
-- Add Service Link write flow remains planned/disabled.
-- Add Secret Ref write flow remains planned/disabled.
-- No production tenant binding or service-link backfill was performed in this phase.
+- External API provisioning remains out of scope for this registry phase.
+- No production tenant binding, service-link, or secret-ref backfill was performed automatically.
+- The seeded WAPI registry row remains in place until an operator deletes it manually from the writable UI.
 
 ## 10. Build/Test Result
 
@@ -87,12 +85,58 @@ Implement a portal-side control-plane registry for product apps, tenant bindings
 - The final pushed HEAD hash is reported in the operator handoff after push.
 - Embedding that same final HEAD hash inside this document would require a follow-up commit, so this section intentionally records the operational limitation instead of creating a second deployment-only commit.
 
-## Legacy getouch-web Cleanup
+## Phase 2A — Writable Registry UI
 
-- Files searched: repo-wide search across the GetTouch portal repository using the requested `getouch-web`, `GETOUCH_WEB`, `getouch_web`, and `getouch web` patterns.
+- Objective:
+  - Make App Access Control writable so operators can create, edit, disable, and delete registry-only app records, tenant bindings, service integrations, and secret refs from the portal UI.
+- DB target verification:
+  - Re-verified before Phase 2A work that the live portal Coolify app points to host `getouch-postgres`, database `getouch.co`.
+  - Re-verified that the live WAPI Coolify app points to host `getouch-postgres`, database `wapi`.
+- Files changed:
+  - `app/admin/api-keys/AppAccessControlConsole.tsx`
+  - `app/globals.css`
+  - `app/api/admin/platform-app-access/_utils.ts`
+  - `app/api/admin/platform-app-access/apps/route.ts`
+  - `app/api/admin/platform-app-access/apps/[id]/route.ts`
+  - `app/api/admin/platform-app-access/tenant-bindings/route.ts`
+  - `app/api/admin/platform-app-access/tenant-bindings/[id]/route.ts`
+  - `app/api/admin/platform-app-access/service-integrations/route.ts`
+  - `app/api/admin/platform-app-access/service-integrations/[id]/route.ts`
+  - `app/api/admin/platform-app-access/secret-refs/route.ts`
+  - `app/api/admin/platform-app-access/secret-refs/[id]/route.ts`
+  - `lib/platform-app-access.ts`
+  - `lib/platform-app-access-mutations.ts`
+- CRUD actions implemented:
+  - Create app from UI.
+  - Edit app display fields and status.
+  - Disable app.
+  - Delete app from registry only, with typed app-code confirmation and cascade through registry-only child rows.
+  - Create, edit, disable, and delete tenant bindings.
+  - Create, edit, disable, and delete service integrations.
+  - Create, edit, disable, and delete secret refs.
+- Safety boundaries:
+  - All writes are admin-gated server-side via the portal auth pattern.
+  - Secret ref forms store only reference paths and metadata, never raw secret values.
+  - No WAPI business data is touched.
+  - No Dify, Chatwoot, Evolution, LiteLLM, vLLM, Langfuse, or Infisical resource is created, modified, or deleted by Phase 2A actions.
+- Reset/delete behavior:
+  - Deleting an app deletes only portal registry rows through existing foreign-key cascades.
+  - The delete modal shows app name, app code, tenant binding count, service integration count, secret ref count, and an explicit warning that only registry mappings are removed.
+  - The seeded WAPI row was not auto-deleted; it can now be removed manually from the UI and recreated cleanly through the same UI.
+- Build result:
+  - `npx tsc --noEmit`: passed.
+  - `npm run build`: passed.
+- Commit hash:
+  - The pushed Phase 2A commit hash is reported in the operator handoff after push to avoid a self-referential follow-up commit.
+
+## Legacy Portal Naming Cleanup
+
+- Files searched: repo-wide search across the GetTouch portal repository using the retired portal naming variants requested in the task.
 - Files changed:
   - `scripts/verify-no-legacy-web.sh`
   - `docs/ops/deployment-source-of-truth.md`
-- Final grep result: `grep -Rni "getouch-web\|GETOUCH_WEB\|getouch_web" .` returned no output from the GetTouch portal repository root.
+- Final grep result:
+  - Working tree search excluding `.git` returned no output.
+  - The exact repo-root grep still returns historical matches under `.git/logs` and `.git/lost-found`, which are Git metadata rather than active repository content and are not safe to rewrite as part of application work.
 - Current naming now recorded as GetTouch portal / `getouch.co` / `edierwan/getouch.co:main` / Coolify application resource.
 - No backup files were created.
