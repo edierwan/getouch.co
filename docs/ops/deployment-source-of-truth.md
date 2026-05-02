@@ -1,4 +1,4 @@
-# GetTouch Web — Deployment Source of Truth (2026-05-01)
+# GetTouch Portal — Deployment Source of Truth (2026-05-01)
 
 ## Final state
 
@@ -21,8 +21,8 @@
   via Cloudflare → `127.0.0.1:80` only.
 - The old compose-hosted portal runtime has been removed from `compose.yaml`.
   There is no compose fallback path for the Next.js portal.
-- The retired names `getouch-web` and `getouch-web-prod` are forbidden in active
-  containers, network aliases, Caddy routes, and deploy scripts.
+- Only the current GetTouch portal naming is valid in active containers,
+  network aliases, Caddy routes, and deploy scripts.
 
 ## Env source of truth
 
@@ -33,10 +33,11 @@
   run inside the `coolify` container.
 - `AUTH_SECRET` is force-overwritten to the compose value (preserves sessions).
 - Coolify-managed keys (`NODE_ENV`, `NIXPACKS_NODE_VERSION`) and pure-infra
-  keys (admin/pgadmin/cloudflared/searxng) are not authoritative for the web
+  keys (admin/pgadmin/cloudflared/searxng) are not authoritative for the portal
   app but were copied so the Coolify app sees identical env to the legacy
   container; harmless if unused.
-- Retired portal names must not be reintroduced in routes, docs, or verifiers.
+- Current portal naming must stay aligned with the Coolify application resource
+  and the `getouch.co` hostnames.
 
 ## Deploy workflow
 

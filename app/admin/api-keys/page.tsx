@@ -1,17 +1,17 @@
 import { Breadcrumb, PageIntro } from '../ui';
-import { ApiKeyManagerConsole } from './ApiKeyManagerConsole';
+import { AppAccessControlConsole } from './AppAccessControlConsole';
 
 export const dynamic = 'force-dynamic';
 
 export default function ApiKeysPage() {
   return (
     <div className="portal-body">
-      <Breadcrumb category="Access & Security" page="API Keys" />
+      <Breadcrumb category="Access & Security" page="API Keys / App Access" />
       <PageIntro
-        title="API Key Manager"
-        subtitle="Centralized keys, scopes, and usage across AI, Voice, WhatsApp, and internal APIs."
+        title="App Access Control"
+        subtitle="Master registry for apps, tenants, service integrations, and secret references across the shared AI ecosystem."
       />
-      <ApiKeyManagerConsole />
+      <AppAccessControlConsole />
     </div>
   );
 }

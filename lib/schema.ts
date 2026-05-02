@@ -563,3 +563,105 @@ export const objectStorageActivity = pgTable(
     index('object_storage_activity_created_idx').on(table.createdAt),
   ],
 );
+
+/* ─── Platform app access control plane ──────────────────────
+ * Shared registry for product apps, tenant bindings, service
+ * integrations, and secret references. Product business data
+ * stays inside each app's own runtime database.
+ * ─────────────────────────────────────────────────────────── */
+export const platformApps = pgTable(
+  'platform_apps',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    appCode: text('app_code').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    authModel: text('auth_model').default('app_owned').notNull(),
+    defaultChannel: text('default_channel'),
+    status: text('status').default('active').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('platform_apps_app_code_idx').on(table.appCode),
+    index('platform_apps_status_idx').on(table.status),
+  ],
+);
+
+export const platformAppTenantBindings = pgTable(
+  'platform_app_tenant_bindings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    appId: uuid('app_id').references(() => platformApps.id, { onDelete: 'cascade' }).notNull(),
+    appTenantKey: text('app_tenant_key').notNull(),
+    displayName: text('display_name'),
+    status: text('status').default('active').notNull(),
+    environment: text('environment').default('production').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('platform_app_tenant_bindings_unique_idx').on(table.appId, table.appTenantKey),
+    index('platform_app_tenant_bindings_app_idx').on(table.appId),
+    index('platform_app_tenant_bindings_status_idx').on(table.status),
+  ],
+);
+
+export const platformServiceIntegrations = pgTable(
+  'platform_service_integrations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    appId: uuid('app_id').references(() => platformApps.id, { onDelete: 'cascade' }).notNull(),
+    tenantBindingId: uuid('tenant_binding_id').references(() => platformAppTenantBindings.id, { onDelete: 'cascade' }),
+    serviceName: text('service_name').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: text('resource_id').notNull(),
+    displayName: text('display_name'),
+    baseUrl: text('base_url'),
+    internalBaseUrl: text('internal_base_url'),
+    status: text('status').default('linked').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('platform_service_integrations_unique_idx').on(
+      table.appId,
+      table.tenantBindingId,
+      table.serviceName,
+      table.resourceType,
+      table.resourceId,
+    ),
+    index('platform_service_integrations_app_idx').on(table.appId),
+    index('platform_service_integrations_tenant_idx').on(table.tenantBindingId),
+    index('platform_service_integrations_service_idx').on(table.serviceName),
+  ],
+);
+
+export const platformSecretRefs = pgTable(
+  'platform_secret_refs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    appId: uuid('app_id').references(() => platformApps.id, { onDelete: 'cascade' }).notNull(),
+    tenantBindingId: uuid('tenant_binding_id').references(() => platformAppTenantBindings.id, { onDelete: 'cascade' }),
+    serviceName: text('service_name').notNull(),
+    refProvider: text('ref_provider').default('infisical').notNull(),
+    refPath: text('ref_path').notNull(),
+    refKey: text('ref_key'),
+    scope: text('scope').default('app').notNull(),
+    status: text('status').default('active').notNull(),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('platform_secret_refs_app_idx').on(table.appId),
+    index('platform_secret_refs_tenant_idx').on(table.tenantBindingId),
+    index('platform_secret_refs_service_idx').on(table.serviceName),
+    index('platform_secret_refs_provider_idx').on(table.refProvider),
+  ],
+);

@@ -3892,6 +3892,422 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
 }
 .portal-akm-once-actions { display: flex; gap: 0.5rem; }
 
+/* =====================================================
+ * App Access Control (/admin/security/api-keys)
+ * Shared registry for app, tenant, service, and secret refs.
+ * ===================================================== */
+
+.portal-aac-shell {
+  --aac-ink: rgba(255, 248, 236, 0.96);
+  --aac-muted: rgba(255, 248, 236, 0.62);
+  --aac-line: rgba(255, 248, 236, 0.09);
+  --aac-surface: rgba(18, 24, 28, 0.68);
+  --aac-surface-strong: rgba(18, 24, 28, 0.84);
+  --aac-cyan: #79d2d0;
+  --aac-amber: #f2ba6b;
+  --aac-rose: #ff9f8d;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.portal-aac-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 22px;
+  border: 1px solid rgba(121, 210, 208, 0.18);
+  background:
+    radial-gradient(circle at top left, rgba(121, 210, 208, 0.18), transparent 42%),
+    radial-gradient(circle at bottom right, rgba(242, 186, 107, 0.14), transparent 38%),
+    linear-gradient(135deg, rgba(13, 20, 24, 0.96), rgba(20, 27, 31, 0.86));
+}
+
+.portal-aac-banner h2,
+.portal-aac-panel h3,
+.portal-aac-main-head h3,
+.portal-aac-app-rail h3 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  font-size: 1.45rem;
+  line-height: 1.15;
+}
+
+.portal-aac-banner p,
+.portal-aac-panel-copy,
+.portal-aac-empty-state p,
+.portal-aac-flow-list p,
+.portal-aac-app-list-copy {
+  margin: 0;
+  color: var(--aac-muted);
+  line-height: 1.55;
+}
+
+.portal-aac-eyebrow {
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(121, 210, 208, 0.84);
+  margin-bottom: 0.35rem;
+}
+
+.portal-aac-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.portal-aac-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1rem 1.05rem;
+  border-radius: 16px;
+  border: 1px solid var(--aac-line);
+  background: linear-gradient(160deg, rgba(18, 24, 28, 0.9), rgba(18, 24, 28, 0.62));
+}
+
+.portal-aac-stat-card strong {
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--aac-ink);
+}
+
+.portal-aac-stat-card span:last-child,
+.portal-aac-stat-label {
+  color: var(--aac-muted);
+}
+
+.portal-aac-stat-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.portal-aac-tabs {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.portal-aac-tab,
+.portal-aac-primary-button,
+.portal-aac-secondary-button,
+.portal-aac-link-button {
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.portal-aac-tab {
+  border-radius: 999px;
+  padding: 0.58rem 0.95rem;
+  background: rgba(255, 248, 236, 0.04);
+  border-color: rgba(255, 248, 236, 0.06);
+  color: var(--aac-muted);
+}
+
+.portal-aac-tab:hover,
+.portal-aac-secondary-button:hover:not(:disabled),
+.portal-aac-link-button:hover,
+.portal-aac-app-list-item:hover {
+  transform: translateY(-1px);
+}
+
+.portal-aac-tab-active {
+  color: #091114;
+  background: linear-gradient(135deg, var(--aac-cyan), #95e5d5);
+  border-color: transparent;
+}
+
+.portal-aac-panel,
+.portal-aac-app-rail,
+.portal-aac-main {
+  border-radius: 20px;
+  border: 1px solid var(--aac-line);
+  background: linear-gradient(180deg, var(--aac-surface-strong), var(--aac-surface));
+}
+
+.portal-aac-panel,
+.portal-aac-app-rail,
+.portal-aac-main {
+  padding: 1.1rem 1.15rem;
+}
+
+.portal-aac-workspace {
+  display: grid;
+  grid-template-columns: minmax(270px, 320px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.portal-aac-app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.portal-aac-app-list-item {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.9rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 248, 236, 0.08);
+  background: rgba(255, 248, 236, 0.035);
+  color: var(--aac-ink);
+}
+
+.portal-aac-app-list-item-active {
+  border-color: rgba(121, 210, 208, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(121, 210, 208, 0.14);
+  background: linear-gradient(160deg, rgba(121, 210, 208, 0.12), rgba(255, 248, 236, 0.04));
+}
+
+.portal-aac-app-list-item-planned {
+  opacity: 0.88;
+}
+
+.portal-aac-app-list-head,
+.portal-aac-panel-head,
+.portal-aac-main-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+
+.portal-aac-app-list-sub,
+.portal-aac-table-sub {
+  font-size: 0.8rem;
+  color: var(--aac-muted);
+}
+
+.portal-aac-app-list-meta,
+.portal-aac-chip-row,
+.portal-aac-action-row,
+.portal-aac-metadata-grid {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.portal-aac-app-list-meta span,
+.portal-aac-metadata-pill,
+.portal-aac-count-chip,
+.portal-aac-planned-pill {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.portal-aac-app-list-meta span,
+.portal-aac-metadata-pill,
+.portal-aac-count-chip {
+  background: rgba(255, 248, 236, 0.06);
+  color: var(--aac-ink);
+}
+
+.portal-aac-planned-pill {
+  background: rgba(242, 186, 107, 0.16);
+  color: #ffd79d;
+}
+
+.portal-aac-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.portal-aac-overview-grid,
+.portal-aac-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.portal-aac-detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.portal-aac-detail-list div {
+  padding: 0.8rem 0.85rem;
+  border-radius: 14px;
+  background: rgba(255, 248, 236, 0.04);
+  border: 1px solid rgba(255, 248, 236, 0.05);
+}
+
+.portal-aac-detail-list dt {
+  font-size: 0.73rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--aac-muted);
+}
+
+.portal-aac-detail-list dd {
+  margin: 0.4rem 0 0;
+  color: var(--aac-ink);
+}
+
+.portal-aac-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.8rem;
+}
+
+.portal-aac-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.91rem;
+}
+
+.portal-aac-table th {
+  padding: 0.6rem 0.7rem;
+  text-align: left;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--aac-muted);
+  border-bottom: 1px solid rgba(255, 248, 236, 0.07);
+}
+
+.portal-aac-table td {
+  padding: 0.75rem 0.7rem;
+  border-bottom: 1px solid rgba(255, 248, 236, 0.05);
+  vertical-align: top;
+}
+
+.portal-aac-table-title {
+  font-weight: 600;
+  color: var(--aac-ink);
+}
+
+.portal-aac-row-selected td {
+  background: rgba(121, 210, 208, 0.07);
+}
+
+.portal-aac-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.portal-aac-primary-button,
+.portal-aac-secondary-button,
+.portal-aac-link-button {
+  border-radius: 999px;
+  padding: 0.58rem 0.9rem;
+  font-size: 0.88rem;
+}
+
+.portal-aac-primary-button {
+  color: #0b1517;
+  background: linear-gradient(135deg, var(--aac-cyan), #99e3db);
+}
+
+.portal-aac-secondary-button,
+.portal-aac-link-button {
+  background: rgba(255, 248, 236, 0.04);
+  border-color: rgba(255, 248, 236, 0.08);
+  color: var(--aac-ink);
+}
+
+.portal-aac-secondary-button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.portal-aac-link-button {
+  padding-inline: 0.8rem;
+}
+
+.portal-aac-table-action-cell {
+  text-align: right;
+}
+
+.portal-aac-secret-path {
+  color: #ffe3a9;
+  word-break: break-all;
+}
+
+.portal-aac-flow-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.8rem 0 0;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.portal-aac-flow-list li {
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(255, 248, 236, 0.04);
+  border: 1px solid rgba(255, 248, 236, 0.05);
+}
+
+.portal-aac-flow-list strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--aac-ink);
+}
+
+.portal-aac-empty-state,
+.portal-aac-loading,
+.portal-aac-refreshing {
+  color: var(--aac-muted);
+}
+
+.portal-aac-empty-state {
+  padding: 1rem 0;
+}
+
+.portal-aac-empty-title {
+  font-weight: 600;
+  color: var(--aac-ink);
+  margin-bottom: 0.35rem;
+}
+
+.portal-aac-refreshing {
+  font-size: 0.84rem;
+  text-align: right;
+}
+
+.portal-aac-error {
+  border-color: rgba(255, 159, 141, 0.28);
+}
+
+@media (max-width: 1200px) {
+  .portal-aac-stats,
+  .portal-aac-overview-grid,
+  .portal-aac-panel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .portal-aac-banner,
+  .portal-aac-workspace,
+  .portal-aac-overview-grid,
+  .portal-aac-panel-grid,
+  .portal-aac-stats,
+  .portal-aac-detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-aac-table-action-cell {
+    text-align: left;
+  }
+}
+
 /* Reusable info-table head row used in this page */
 .portal-info-table-head .portal-info-table-label,
 .portal-info-table-head .portal-info-table-value {

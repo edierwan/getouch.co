@@ -128,7 +128,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'Authentik', href: AUTHENTIK_URL, icon: '⚲', external: true },
       { label: 'Infisical', href: INFISICAL_URL, icon: '◫', external: true },
-      { label: 'API Keys', href: '/admin/security/api-keys', icon: '⚿' },
+      { label: 'API Keys / App Access', href: '/admin/security/api-keys', icon: '⚿' },
       { label: 'SDK & Docs', href: '/admin/security/docs', icon: '⌥' },
       { label: 'Quick Links', href: '/admin/security/quick-links', icon: '⊞' },
     ],
@@ -161,7 +161,7 @@ export const QUICK_ACTIONS = [
   { label: 'Authentik', href: AUTHENTIK_URL, external: true },
   { label: 'Grafana Overview', href: GRAFANA_URL, external: true },
   { label: 'Langfuse', href: LANGFUSE_URL, external: true },
-  { label: 'API Keys', href: '/admin/security/api-keys' },
+  { label: 'API Keys / App Access', href: '/admin/security/api-keys' },
   { label: 'Webhooks', href: '/admin/automation/webhooks' },
   { label: 'Open WebUI', href: '/admin/communications/open-webui' },
   { label: 'Quick Links', href: '/admin/security/quick-links' },
