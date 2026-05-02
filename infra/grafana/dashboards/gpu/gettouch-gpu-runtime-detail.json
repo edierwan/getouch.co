@@ -305,10 +305,10 @@
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 6},
       "id": 10,
       "options": {
-        "content": "## GPU Compute vs Memory\n- `GPU Utilization` is active compute work.\n- `VRAM Used %` is memory occupancy.\n- High VRAM with `0%` compute usually means a model is loaded but idle.\n- Process rows labelled `Ollama runtime` indicate Ollama owns the VRAM.\n- `vLLM backend` and `LiteLLM gateway` hints are heuristic labels derived from the owning process or service name only.",
+        "content": "## Compute vs Memory Explanation\n- `GPU Utilization` is active compute work.\n- `VRAM Used` is model or process memory occupancy.\n- High VRAM with low or `0%` GPU utilization usually means a model is loaded but idle.\n- Use `Runtime Ownership Summary` and `Top GPU VRAM Consumers` to see which runtime, container, process, and PID currently own the memory.\n- Use `Loaded Models` to show runtime-reported model identity when the runtime exposes it.\n- Suggested action is informational only: unload or stop Ollama later only if you need VRAM for another runtime.",
         "mode": "markdown"
       },
-      "title": "Interpretation",
+      "title": "Compute vs Memory Explanation",
       "type": "text"
     },
     {
@@ -355,9 +355,9 @@
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "fieldConfig": {
-        "defaults": {"custom": {}},
+        "defaults": {"custom": {}, "decimals": 2},
         "overrides": [
-          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "VRAM Used GiB"}, "properties": [{"id": "unit", "value": "none"}]},
           {"matcher": {"id": "byName", "options": "Time"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]}
         ]
       },
@@ -369,27 +369,35 @@
       },
       "targets": [
         {
-          "expr": "topk(1, getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"})",
+          "expr": "topk(1, getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"} / 1024 / 1024 / 1024)",
           "format": "table",
           "instant": true,
-          "legendFormat": "{{owner_name}} / {{process_basename}}",
+          "legendFormat": "{{runtime}} / {{container_name}}",
           "refId": "A"
         }
       ],
-      "title": "Ollama / vLLM Runtime Hint",
+      "title": "Runtime Ownership Summary",
       "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
         {
           "id": "organize",
           "options": {
-            "excludeByName": {"gpu_uuid": true, "owner_kind": true, "pid": true, "process_name": true},
+            "excludeByName": {"__name__": true, "gpu_uuid": true, "instance": true, "job": true, "owner_kind": true, "owner_name": true, "owner_service": true, "process_name": true, "runtime_hint": true},
             "renameByName": {
               "Time": "Last Seen",
-              "Value": "VRAM Used",
+              "Value": "VRAM Used GiB",
+              "container_name": "Container",
               "gpu": "GPU",
-              "owner_name": "Owner",
-              "owner_service": "Service",
+              "pid": "PID",
               "process_basename": "Process",
-              "runtime_hint": "Runtime Hint"
+              "runtime": "Runtime",
+              "process_basename": "Process",
+              "service": "Service"
             }
           }
         }
@@ -445,43 +453,49 @@
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "fieldConfig": {
-        "defaults": {"custom": {}},
+        "defaults": {"custom": {}, "decimals": 2},
         "overrides": [
-          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "VRAM Used GiB"}, "properties": [{"id": "unit", "value": "none"}]},
           {"matcher": {"id": "byName", "options": "Time"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]}
         ]
       },
-      "gridPos": {"h": 10, "w": 16, "x": 0, "y": 23},
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 23},
       "id": 15,
       "options": {
         "footer": {"fields": "", "reducer": ["lastNotNull"], "show": false},
         "showHeader": true,
-        "sortBy": [{"desc": true, "displayName": "VRAM Used"}]
+        "sortBy": [{"desc": true, "displayName": "VRAM Used GiB"}]
       },
       "targets": [
         {
-          "expr": "sort_desc(getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"})",
+          "expr": "sort_desc(getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"} / 1024 / 1024 / 1024)",
           "format": "table",
           "instant": true,
-          "legendFormat": "{{owner_name}} / {{process_basename}}",
+          "legendFormat": "{{runtime}} / {{container_name}} / {{process_basename}}",
           "refId": "A"
         }
       ],
-      "title": "GPU Process Table",
+      "title": "Top GPU VRAM Consumers",
       "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
         {
           "id": "organize",
           "options": {
-            "excludeByName": {"gpu_uuid": true, "owner_kind": true, "process_name": true},
+            "excludeByName": {"__name__": true, "gpu_uuid": true, "instance": true, "job": true, "owner_kind": true, "owner_name": true, "owner_service": true, "process_name": true, "runtime_hint": true},
             "renameByName": {
               "Time": "Last Seen",
-              "Value": "VRAM Used",
+              "Value": "VRAM Used GiB",
+              "container_name": "Container",
               "gpu": "GPU",
-              "owner_name": "Owner",
-              "owner_service": "Service",
               "pid": "PID",
               "process_basename": "Process",
-              "runtime_hint": "Runtime Hint"
+              "runtime": "Runtime",
+              "service": "Service"
             }
           }
         }
@@ -491,31 +505,55 @@
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "continuous-GrYlRd"},
-          "unit": "bytes"
-        },
-        "overrides": []
+        "defaults": {"custom": {}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Time"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]}
+        ]
       },
-      "gridPos": {"h": 10, "w": 8, "x": 16, "y": 23},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 23},
       "id": 16,
       "options": {
-        "displayMode": "gradient",
-        "minVizHeight": 16,
-        "minVizWidth": 16,
-        "orientation": "horizontal",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "showUnfilled": true
+        "footer": {"fields": "", "reducer": ["lastNotNull"], "show": false},
+        "showHeader": true
       },
       "targets": [
         {
-          "expr": "topk(10, getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"})",
-          "legendFormat": "{{owner_name}} / {{process_basename}}",
+          "expr": "getouch_gpu_loaded_model_info{gpu=~\"$gpu\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{runtime}} / {{model}}",
           "refId": "A"
         }
       ],
-      "title": "Top VRAM Consumers",
-      "type": "bargauge"
+      "title": "Loaded Models",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"__name__": true, "instance": true, "job": true, "Value": true},
+            "renameByName": {
+              "Time": "Last Seen",
+              "container_name": "Container",
+              "context": "Context",
+              "gpu": "GPU",
+              "model": "Model",
+              "model_id": "Model ID",
+              "processor": "Processor / Residency",
+              "runtime": "Runtime",
+              "service": "Service",
+              "size": "Size / VRAM",
+              "until": "Until"
+            }
+          }
+        }
+      ],
+      "type": "table"
     }
   ],
   "refresh": "30s",
@@ -550,6 +588,6 @@
   "timezone": "browser",
   "title": "GetTouch GPU Runtime Detail",
   "uid": "gettouch-gpu-runtime-detail",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

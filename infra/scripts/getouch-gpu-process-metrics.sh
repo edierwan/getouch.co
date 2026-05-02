@@ -28,18 +28,42 @@ to_bytes_from_mib() {
   awk -v value="$1" 'BEGIN { printf "%.0f", value * 1024 * 1024 }'
 }
 
-detect_runtime_hint() {
+detect_runtime() {
   local haystack
   haystack="$(printf '%s %s %s' "$1" "$2" "$3" | tr '[:upper:]' '[:lower:]')"
 
   case "$haystack" in
-    *ollama*) printf '%s' 'Ollama runtime' ;;
-    *vllm*) printf '%s' 'vLLM backend' ;;
-    *litellm*) printf '%s' 'LiteLLM gateway' ;;
-    *open-webui*) printf '%s' 'Open WebUI process' ;;
-    *python*) printf '%s' 'Generic Python worker' ;;
+    *ollama*) printf '%s' 'ollama' ;;
+    *vllm*) printf '%s' 'vllm' ;;
+    *litellm*) printf '%s' 'litellm' ;;
+    *open-webui*) printf '%s' 'open-webui' ;;
+    *python*) printf '%s' 'python' ;;
+    *) printf '%s' 'unknown' ;;
+  esac
+}
+
+detect_runtime_hint() {
+  case "$1" in
+    ollama) printf '%s' 'Ollama runtime' ;;
+    vllm) printf '%s' 'vLLM backend' ;;
+    litellm) printf '%s' 'LiteLLM gateway' ;;
+    open-webui) printf '%s' 'Open WebUI process' ;;
+    python) printf '%s' 'Generic Python worker' ;;
     *) printf '%s' 'Unclassified runtime' ;;
   esac
+}
+
+get_ollama_ps_output() {
+  if command -v docker >/dev/null 2>&1; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'ollama'; then
+      docker exec ollama ollama ps 2>/dev/null || true
+      return
+    fi
+  fi
+
+  if command -v ollama >/dev/null 2>&1; then
+    ollama ps 2>/dev/null || true
+  fi
 }
 
 write_header() {
@@ -54,6 +78,8 @@ write_header() {
 # TYPE getouch_gpu_process_memory_mib gauge
 # HELP getouch_gpu_process_memory_bytes GPU memory used by a process in bytes.
 # TYPE getouch_gpu_process_memory_bytes gauge
+# HELP getouch_gpu_loaded_model_info Metadata row for each runtime-reported loaded model.
+# TYPE getouch_gpu_loaded_model_info gauge
 # HELP getouch_gpu_process_count Number of GPU processes detected for a given GPU.
 # TYPE getouch_gpu_process_count gauge
 # HELP getouch_gpu_device_info Metadata row for each GPU device discovered via nvidia-smi.
@@ -84,7 +110,7 @@ write_failure() {
   write_header
   printf 'getouch_gpu_process_scrape_success 0\n' >>"$TMP_FILE"
   printf 'getouch_gpu_process_collected_at_seconds %s\n' "$(date +%s)" >>"$TMP_FILE"
-  printf 'getouch_gpu_process_info{gpu="",gpu_uuid="",pid="",process_name="",process_basename="",owner_kind="collector",owner_name="collector",owner_service="",runtime_hint="%s"} 0\n' "$(escape_label "$reason")" >>"$TMP_FILE"
+  printf 'getouch_gpu_process_info{gpu="",gpu_uuid="",pid="",process_name="",process_basename="",owner_kind="collector",owner_name="collector",owner_service="",container_name="collector",service="collector",runtime="unknown",runtime_hint="%s"} 0\n' "$(escape_label "$reason")" >>"$TMP_FILE"
   chmod 0644 "$TMP_FILE"
   mv "$TMP_FILE" "$OUTPUT_FILE"
   exit 0
@@ -109,6 +135,7 @@ declare -A GPU_POWER=()
 declare -A GPU_POWER_LIMIT=()
 declare -A GPU_TEMP=()
 declare -A GPU_PROCESS_COUNT=()
+declare -A RUNTIME_GPU=()
 
 while IFS=, read -r raw_index raw_uuid raw_name raw_util raw_mem_used raw_mem_total raw_power raw_power_limit raw_temp; do
   [[ -n "${raw_uuid:-}" ]] || continue
@@ -190,6 +217,7 @@ if [[ -n "$process_output" && "$process_output" != "No running processes found" 
     owner_kind='host'
     owner_name='host'
     owner_service=''
+    container_name='host'
 
     if [[ -r "/proc/$pid/cgroup" ]]; then
       cgroup_contents="$(cat "/proc/$pid/cgroup")"
@@ -197,12 +225,14 @@ if [[ -n "$process_output" && "$process_output" != "No running processes found" 
         container_id="${BASH_REMATCH[1]}"
         owner_kind='container'
         owner_name="${CONTAINER_NAME[$container_id]:-$container_id}"
+        container_name="$owner_name"
         if command -v docker >/dev/null 2>&1; then
           inspect_output="$(docker inspect --format '{{.Name}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "coolify.service.name"}}|{{index .Config.Labels "coolify.resourceName"}}' "$container_id" 2>/dev/null || true)"
           if [[ -n "$inspect_output" ]]; then
             IFS='|' read -r inspect_name compose_service coolify_service coolify_resource <<<"$inspect_output"
             inspect_name="${inspect_name#/}"
             owner_name="${inspect_name:-$owner_name}"
+            container_name="$owner_name"
             owner_service="${compose_service:-${coolify_service:-${coolify_resource:-}}}"
           fi
         fi
@@ -211,10 +241,23 @@ if [[ -n "$process_output" && "$process_output" != "No running processes found" 
       fi
     fi
 
-    runtime_hint="$(detect_runtime_hint "$process_name" "$owner_name" "$owner_service")"
+    runtime="$(detect_runtime "$process_name" "$owner_name" "$owner_service")"
+    runtime_hint="$(detect_runtime_hint "$runtime")"
+    service="$owner_service"
+    if [[ -z "$service" ]]; then
+      case "$runtime" in
+        ollama|vllm|litellm|open-webui) service="$runtime" ;;
+        *) service="$process_basename" ;;
+      esac
+    fi
+
+    if [[ "$runtime" != "unknown" ]]; then
+      RUNTIME_GPU["$runtime|$container_name|$service"]="$gpu_index"
+    fi
+
     GPU_PROCESS_COUNT["$gpu_uuid"]=$(( ${GPU_PROCESS_COUNT[$gpu_uuid]:-0} + 1 ))
 
-    printf 'getouch_gpu_process_info{gpu="%s",gpu_uuid="%s",pid="%s",process_name="%s",process_basename="%s",owner_kind="%s",owner_name="%s",owner_service="%s",runtime_hint="%s"} 1\n' \
+    printf 'getouch_gpu_process_info{gpu="%s",gpu_uuid="%s",pid="%s",process_name="%s",process_basename="%s",owner_kind="%s",owner_name="%s",owner_service="%s",container_name="%s",service="%s",runtime="%s",runtime_hint="%s"} 1\n' \
       "$(escape_label "$gpu_index")" \
       "$(escape_label "$gpu_uuid")" \
       "$(escape_label "$pid")" \
@@ -223,8 +266,11 @@ if [[ -n "$process_output" && "$process_output" != "No running processes found" 
       "$(escape_label "$owner_kind")" \
       "$(escape_label "$owner_name")" \
       "$(escape_label "$owner_service")" \
+      "$(escape_label "$container_name")" \
+      "$(escape_label "$service")" \
+      "$(escape_label "$runtime")" \
       "$(escape_label "$runtime_hint")" >>"$TMP_FILE"
-    printf 'getouch_gpu_process_memory_mib{gpu="%s",gpu_uuid="%s",pid="%s",process_name="%s",process_basename="%s",owner_kind="%s",owner_name="%s",owner_service="%s",runtime_hint="%s"} %s\n' \
+    printf 'getouch_gpu_process_memory_mib{gpu="%s",gpu_uuid="%s",pid="%s",process_name="%s",process_basename="%s",owner_kind="%s",owner_name="%s",owner_service="%s",container_name="%s",service="%s",runtime="%s",runtime_hint="%s"} %s\n' \
       "$(escape_label "$gpu_index")" \
       "$(escape_label "$gpu_uuid")" \
       "$(escape_label "$pid")" \
@@ -233,9 +279,12 @@ if [[ -n "$process_output" && "$process_output" != "No running processes found" 
       "$(escape_label "$owner_kind")" \
       "$(escape_label "$owner_name")" \
       "$(escape_label "$owner_service")" \
+      "$(escape_label "$container_name")" \
+      "$(escape_label "$service")" \
+      "$(escape_label "$runtime")" \
       "$(escape_label "$runtime_hint")" \
       "$used_memory_mib" >>"$TMP_FILE"
-    printf 'getouch_gpu_process_memory_bytes{gpu="%s",gpu_uuid="%s",pid="%s",process_name="%s",process_basename="%s",owner_kind="%s",owner_name="%s",owner_service="%s",runtime_hint="%s"} %s\n' \
+    printf 'getouch_gpu_process_memory_bytes{gpu="%s",gpu_uuid="%s",pid="%s",process_name="%s",process_basename="%s",owner_kind="%s",owner_name="%s",owner_service="%s",container_name="%s",service="%s",runtime="%s",runtime_hint="%s"} %s\n' \
       "$(escape_label "$gpu_index")" \
       "$(escape_label "$gpu_uuid")" \
       "$(escape_label "$pid")" \
@@ -244,9 +293,31 @@ if [[ -n "$process_output" && "$process_output" != "No running processes found" 
       "$(escape_label "$owner_kind")" \
       "$(escape_label "$owner_name")" \
       "$(escape_label "$owner_service")" \
+      "$(escape_label "$container_name")" \
+      "$(escape_label "$service")" \
+      "$(escape_label "$runtime")" \
       "$(escape_label "$runtime_hint")" \
       "$(to_bytes_from_mib "$used_memory_mib")" >>"$TMP_FILE"
   done <<<"$process_output"
+fi
+
+ollama_ps_output="$(get_ollama_ps_output)"
+if [[ -n "$ollama_ps_output" ]]; then
+  while IFS='|' read -r model model_id size processor context until; do
+    [[ -n "${model:-}" ]] || continue
+    gpu_index="${RUNTIME_GPU["ollama|ollama|ollama"]:-unknown}"
+    printf 'getouch_gpu_loaded_model_info{gpu="%s",runtime="ollama",container_name="ollama",service="ollama",model="%s",model_id="%s",size="%s",processor="%s",context="%s",until="%s"} 1\n' \
+      "$(escape_label "$gpu_index")" \
+      "$(escape_label "$model")" \
+      "$(escape_label "$model_id")" \
+      "$(escape_label "$size")" \
+      "$(escape_label "$processor")" \
+      "$(escape_label "$context")" \
+      "$(escape_label "$until")" >>"$TMP_FILE"
+  done < <(printf '%s\n' "$ollama_ps_output" | tail -n +2 | sed -E 's/[[:space:]]{2,}/|/g')
+elif [[ -n "${RUNTIME_GPU["ollama|ollama|ollama"]:-}" ]]; then
+  printf 'getouch_gpu_loaded_model_info{gpu="%s",runtime="ollama",container_name="ollama",service="ollama",model="unknown",model_id="unknown",size="unknown",processor="unknown",context="",until="unknown"} 1\n' \
+    "$(escape_label "${RUNTIME_GPU["ollama|ollama|ollama"]}")" >>"$TMP_FILE"
 fi
 
 for gpu_uuid in "${!GPU_INDEX[@]}"; do
