@@ -188,7 +188,7 @@ Implement a portal-side control-plane registry for product apps, tenant bindings
   - `npx tsc --noEmit`: passed.
   - `npm run build`: passed.
 - Commit hash:
-  - The pushed Phase 2B commit hash is reported in the operator handoff after push to avoid a self-referential follow-up commit.
+  - Phase 2B feature implementation commit: `8159190`
 
 ## Legacy Portal Naming Cleanup
 
