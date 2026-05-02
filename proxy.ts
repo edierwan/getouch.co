@@ -87,7 +87,7 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/service-endpoints/litellm': '/ai/litellm',
   '/service-endpoints/dify': '/ai/dify',
   '/service-endpoints/mcp': '/ai/mcp',
-  '/service-endpoints/object-storage': '/infra/object-storage',
+  '/service-endpoints/object-storage': '/infra/databases?tab=storage',
   '/service-endpoints/evolution': '/communications/evolution',
   '/service-endpoints/baileys': '/communications/baileys',
   '/service-endpoints/open-webui': '/communications/open-webui',
@@ -98,7 +98,7 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/api-keys': '/security/api-keys',
   '/quick-links': '/security/quick-links',
   '/messaging': '/communications/baileys',
-  '/object-storage': '/infra/object-storage',
+  '/object-storage': '/infra/databases?tab=storage',
   '/whatsapp-services/evolution': '/communications/evolution',
   '/ai-services': '/ai/vllm',
   '/ai-services/vllm': '/ai/vllm',
@@ -114,11 +114,27 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/infrastructure': '/infra/databases',
   '/infrastructure/servers': '/infra/databases',
   '/infrastructure/databases': '/infra/databases',
-  '/infrastructure/object-storage': '/infra/object-storage',
-  '/infrastructure/backups': '/infra/backups',
+  '/infrastructure/object-storage': '/infra/databases?tab=storage',
+  '/infrastructure/backups': '/infra/databases?tab=backups',
+  '/infra/object-storage': '/infra/databases?tab=storage',
+  '/infra/backups': '/infra/databases?tab=backups',
 };
 const getCanonicalPortalPublicPath = (pathname: string) => {
   return LEGACY_PORTAL_PUBLIC_PATHS[pathname] || pathname;
+};
+
+const applyLegacyPathToUrl = (url: URL, mapping: string) => {
+  const queryIndex = mapping.indexOf('?');
+  if (queryIndex === -1) {
+    url.pathname = mapping;
+    return url;
+  }
+  url.pathname = mapping.slice(0, queryIndex);
+  const search = new URLSearchParams(mapping.slice(queryIndex + 1));
+  search.forEach((value, key) => {
+    url.searchParams.set(key, value);
+  });
+  return url;
 };
 const getCanonicalAdminPath = (pathname: string) => {
   if (
@@ -130,6 +146,14 @@ const getCanonicalAdminPath = (pathname: string) => {
     || pathname === '/admin/system/dashboard'
   ) {
     return '/admin/infra/databases';
+  }
+
+  if (pathname === '/admin/infra/object-storage' || pathname === '/admin/infrastructure/object-storage') {
+    return '/admin/infra/databases?tab=storage';
+  }
+
+  if (pathname === '/admin/infra/backups' || pathname === '/admin/infrastructure/backups') {
+    return '/admin/infra/databases?tab=backups';
   }
 
   return pathname;
@@ -199,7 +223,7 @@ export async function proxy(request: NextRequest) {
       const publicPath = getCanonicalPortalPublicPath(getPortalPublicPath(pathname));
       if (publicPath !== pathname) {
         const url = request.nextUrl.clone();
-        url.pathname = publicPath;
+        applyLegacyPathToUrl(url, publicPath);
         return NextResponse.redirect(url);
       }
     }
@@ -207,7 +231,7 @@ export async function proxy(request: NextRequest) {
     const canonicalPublicPath = getCanonicalPortalPublicPath(pathname);
     if (canonicalPublicPath !== pathname) {
       const url = request.nextUrl.clone();
-      url.pathname = canonicalPublicPath;
+      applyLegacyPathToUrl(url, canonicalPublicPath);
       return NextResponse.redirect(url);
     }
 
@@ -286,7 +310,9 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/admin')) {
     const canonicalAdminPath = getCanonicalAdminPath(pathname);
     if (canonicalAdminPath !== pathname) {
-      return NextResponse.redirect(new URL(canonicalAdminPath, request.url));
+      const target = new URL(request.url);
+      applyLegacyPathToUrl(target, canonicalAdminPath);
+      return NextResponse.redirect(target);
     }
 
     if (isAuthentikLegacyPath(pathname)) {

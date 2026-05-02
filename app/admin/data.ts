@@ -91,8 +91,6 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Langfuse', href: LANGFUSE_URL, icon: '◎', external: true },
       { label: 'Coolify', href: COOLIFY_URL, icon: '◈', external: true },
       { label: 'Databases', href: DATABASES_ADMIN_PATH, icon: '▤' },
-      { label: 'Object Storage', href: '/admin/infra/object-storage', icon: '▦' },
-      { label: 'Backups', href: '/admin/infra/backups', icon: '⟲' },
     ],
   },
   {
@@ -741,7 +739,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
   {
     title: 'Storage',
     links: [
-      { label: 'Object Storage Dashboard', href: '/admin/object-storage', external: false },
+      { label: 'Object Storage Dashboard', href: '/admin/infra/databases?tab=storage', external: false },
       { label: 'S3 Storage Console', href: 'https://s3.getouch.co', external: true },
     ],
   },
