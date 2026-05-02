@@ -1,0 +1,555 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "panels": [],
+      "title": "GPU Summary",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 40},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "avg(DCGM_FI_DEV_GPU_UTIL{gpu=~\"$gpu\"})",
+          "legendFormat": "GPU Util",
+          "refId": "A"
+        }
+      ],
+      "title": "Current GPU Utilization",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 12884901888},
+              {"color": "red", "value": 16106127360}
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(DCGM_FI_DEV_FB_USED{gpu=~\"$gpu\"}) * 1024 * 1024",
+          "legendFormat": "VRAM Used",
+          "refId": "A"
+        }
+      ],
+      "title": "VRAM Used",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 70},
+              {"color": "red", "value": 90}
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum(DCGM_FI_DEV_FB_USED{gpu=~\"$gpu\"}) / clamp_min(sum(DCGM_FI_DEV_FB_USED{gpu=~\"$gpu\"}) + sum(DCGM_FI_DEV_FB_FREE{gpu=~\"$gpu\"}), 1)",
+          "legendFormat": "VRAM %",
+          "refId": "A"
+        }
+      ],
+      "title": "VRAM Used %",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 120},
+              {"color": "red", "value": 160}
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(DCGM_FI_DEV_POWER_USAGE{gpu=~\"$gpu\"})",
+          "legendFormat": "Power Draw",
+          "refId": "A"
+        }
+      ],
+      "title": "Current Power Draw",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": null}
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(getouch_gpu_device_power_limit_watts{gpu=~\"$gpu\"})",
+          "legendFormat": "Power Limit",
+          "refId": "A"
+        }
+      ],
+      "title": "Power Limit",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 75},
+              {"color": "red", "value": 85}
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "max(DCGM_FI_DEV_GPU_TEMP{gpu=~\"$gpu\"})",
+          "legendFormat": "Temperature",
+          "refId": "A"
+        }
+      ],
+      "title": "Temperature",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+      "id": 8,
+      "panels": [],
+      "title": "GPU Activity",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 3,
+            "showPoints": "never"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 16, "x": 0, "y": 6},
+      "id": 9,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_GPU_UTIL{gpu=~\"$gpu\"}",
+          "legendFormat": "GPU {{gpu}} compute %",
+          "refId": "A"
+        },
+        {
+          "expr": "100 * DCGM_FI_DEV_FB_USED{gpu=~\"$gpu\"} / clamp_min(DCGM_FI_DEV_FB_USED{gpu=~\"$gpu\"} + DCGM_FI_DEV_FB_FREE{gpu=~\"$gpu\"}, 1)",
+          "legendFormat": "GPU {{gpu}} VRAM %",
+          "refId": "B"
+        }
+      ],
+      "title": "GPU Compute vs Memory",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 6},
+      "id": 10,
+      "options": {
+        "content": "## GPU Compute vs Memory\n- `GPU Utilization` is active compute work.\n- `VRAM Used %` is memory occupancy.\n- High VRAM with `0%` compute usually means a model is loaded but idle.\n- Process rows labelled `Ollama runtime` indicate Ollama owns the VRAM.\n- `vLLM backend` and `LiteLLM gateway` hints are heuristic labels derived from the owning process or service name only.",
+        "mode": "markdown"
+      },
+      "title": "Interpretation",
+      "type": "text"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "unit", "value": "watt"}]},
+          {"matcher": {"id": "byName", "options": "Time"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 14},
+      "id": 11,
+      "options": {
+        "footer": {"fields": "", "reducer": ["lastNotNull"], "show": false},
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "expr": "getouch_gpu_device_power_limit_watts{gpu=~\"$gpu\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{gpu_name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "GPU Inventory",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "renameByName": {
+              "Value": "Power Limit",
+              "gpu": "GPU",
+              "gpu_name": "Model",
+              "gpu_uuid": "GPU UUID"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "Time"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 14},
+      "id": 12,
+      "options": {
+        "footer": {"fields": "", "reducer": ["lastNotNull"], "show": false},
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "expr": "topk(1, getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{owner_name}} / {{process_basename}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Ollama / vLLM Runtime Hint",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"gpu_uuid": true, "owner_kind": true, "pid": true, "process_name": true},
+            "renameByName": {
+              "Time": "Last Seen",
+              "Value": "VRAM Used",
+              "gpu": "GPU",
+              "owner_name": "Owner",
+              "owner_service": "Service",
+              "process_basename": "Process",
+              "runtime_hint": "Runtime Hint"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 3,
+            "showPoints": "never"
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 14},
+      "id": 13,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_POWER_USAGE{gpu=~\"$gpu\"}",
+          "legendFormat": "GPU {{gpu}} draw",
+          "refId": "A"
+        },
+        {
+          "expr": "getouch_gpu_device_power_limit_watts{gpu=~\"$gpu\"}",
+          "legendFormat": "GPU {{gpu}} power limit",
+          "refId": "B"
+        }
+      ],
+      "title": "GPU Power Draw vs Limit",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+      "id": 14,
+      "panels": [],
+      "title": "GPU Processes",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"custom": {}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "Time"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]}
+        ]
+      },
+      "gridPos": {"h": 10, "w": 16, "x": 0, "y": 23},
+      "id": 15,
+      "options": {
+        "footer": {"fields": "", "reducer": ["lastNotNull"], "show": false},
+        "showHeader": true,
+        "sortBy": [{"desc": true, "displayName": "VRAM Used"}]
+      },
+      "targets": [
+        {
+          "expr": "sort_desc(getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{owner_name}} / {{process_basename}}",
+          "refId": "A"
+        }
+      ],
+      "title": "GPU Process Table",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"gpu_uuid": true, "owner_kind": true, "process_name": true},
+            "renameByName": {
+              "Time": "Last Seen",
+              "Value": "VRAM Used",
+              "gpu": "GPU",
+              "owner_name": "Owner",
+              "owner_service": "Service",
+              "pid": "PID",
+              "process_basename": "Process",
+              "runtime_hint": "Runtime Hint"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "continuous-GrYlRd"},
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 10, "w": 8, "x": 16, "y": 23},
+      "id": 16,
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 16,
+        "minVizWidth": 16,
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "topk(10, getouch_gpu_process_memory_bytes{gpu=~\"$gpu\"})",
+          "legendFormat": "{{owner_name}} / {{process_basename}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Top VRAM Consumers",
+      "type": "bargauge"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "style": "dark",
+  "tags": ["gpu", "nvidia", "getouch"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": true, "text": "0", "value": "0"},
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values(DCGM_FI_DEV_GPU_UTIL, gpu)",
+        "includeAll": false,
+        "label": "GPU",
+        "multi": false,
+        "name": "gpu",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(DCGM_FI_DEV_GPU_UTIL, gpu)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "GetTouch GPU Runtime Detail",
+  "uid": "gettouch-gpu-runtime-detail",
+  "version": 1,
+  "weekStart": ""
+}

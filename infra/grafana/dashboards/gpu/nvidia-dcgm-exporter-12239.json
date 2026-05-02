@@ -314,7 +314,7 @@
       "options": {
         "fieldOptions": {
           "calcs": [
-            "sum"
+            "lastNotNull"
           ],
           "defaults": {
             "color": {
@@ -361,7 +361,7 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "GPU Power Total",
+      "title": "Current GPU Power Draw (Selected GPUs)",
       "type": "gauge"
     },
     {

@@ -1,0 +1,8 @@
+[Unit]
+Description=Collect Getouch GPU process metrics for Prometheus textfile collector
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/deploy/apps/getouch.co/infra/scripts/getouch-gpu-process-metrics.sh

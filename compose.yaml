@@ -465,11 +465,13 @@ services:
     restart: unless-stopped
     command:
       - --path.rootfs=/host
+      - --collector.textfile.directory=/textfile_collector
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containers/.+)($|/)
       - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|mqueue|nsfs|overlay|proc|pstore|rpc_pipefs|securityfs|squashfs|sysfs|tracefs)$
     pid: host
     volumes:
       - /:/host:ro,rslave
+      - /var/lib/node_exporter/textfile_collector:/textfile_collector:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9100/metrics | grep -q node_exporter_build_info || exit 1"]
       interval: 30s

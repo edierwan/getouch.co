@@ -40,6 +40,7 @@ Enabled exporters:
 - `cadvisor` for Docker/container CPU, memory, and restart-oriented metrics
 - `blackbox-exporter` for external HTTPS uptime probes
 - `dcgm-exporter` for NVIDIA GPU metrics
+- `node-exporter` textfile collector for repo-managed supplemental GPU process metrics sourced from `nvidia-smi`
 
 GPU confirmation:
 - Host has NVIDIA GPU available
@@ -96,6 +97,7 @@ Provisioned dashboards:
 - Containers: `Cadvisor exporter` (`14282`)
 - Containers: `cAdvisor Docker Insights` (`19908`)
 - GPU: `NVIDIA DCGM Exporter Dashboard` (`12239`)
+- GPU: `GetTouch GPU Runtime Detail` (custom)
 - Uptime: `Blackbox Exporter (HTTP prober)` (`13659`)
 - Overview: `Getouch Overview` (custom)
 
