@@ -10,7 +10,25 @@ interface MasterStatus {
   total: number | null;
   free: number | null;
   active: number | null;
+  source?: 'direct' | 'host-ssh';
   error?: string;
+}
+
+interface ControlPlaneStatus {
+  source: 'direct' | 'host-ssh' | 'unavailable';
+  filerReachable: boolean;
+  error?: string;
+}
+
+interface CapacityInfo {
+  source: 'filesystem-host' | 'master-volume-estimate' | 'unavailable';
+  totalBytes: number | null;
+  usedBytes: number | null;
+  freeBytes: number | null;
+  filesystemUsedBytes: number | null;
+  mountPoint: string | null;
+  device: string | null;
+  detail: string;
 }
 
 interface GatewayStatus {
@@ -64,14 +82,16 @@ interface OverviewData {
   health: string;
   gateway: GatewayStatus;
   master: MasterStatus;
+  controlPlane: ControlPlaneStatus;
+  capacity: CapacityInfo;
   endpoints: Endpoints;
   storage: StorageInfo;
   metrics: {
     bucketCount: number;
     tenantCount: number;
     activeKeyCount: number;
-    totalObjects: number;
-    totalUsedBytes: number;
+    totalObjects: number | null;
+    totalUsedBytes: number | null;
     totalCapacityBytes: number | null;
     freeBytes: number | null;
     activity24hCount: number;
@@ -154,6 +174,18 @@ function fmtNumber(n: number | null | undefined): string {
 function fmtStatusCode(code: number | null | undefined): string {
   if (code == null || !Number.isFinite(code)) return 'unreachable';
   return String(code);
+}
+
+function capacitySourceLabel(capacity: CapacityInfo): string {
+  if (capacity.source === 'filesystem-host') return 'Backing filesystem via host relay';
+  if (capacity.source === 'master-volume-estimate') return 'SeaweedFS master estimate';
+  return 'Unavailable';
+}
+
+function controlPlaneSourceLabel(controlPlane: ControlPlaneStatus): string {
+  if (controlPlane.source === 'host-ssh') return 'Host SSH relay';
+  if (controlPlane.source === 'direct') return 'Direct runtime access';
+  return 'Unavailable';
 }
 
 function timeAgo(iso: string | null): string {
@@ -312,7 +344,9 @@ function ConsoleHeader({
 }) {
   const runtimeLabel = !overview
     ? null
-    : overview.metrics.bucketCount === 0 && overview.metrics.tenantCount === 0 && overview.metrics.totalUsedBytes === 0
+    : overview.metrics.bucketCount === 0
+        && overview.metrics.tenantCount === 0
+        && (overview.metrics.totalUsedBytes ?? 0) === 0
       ? 'Fresh install'
       : overview.status === 'online'
         ? 'Operational'
@@ -550,17 +584,12 @@ function OverviewTab({
   if (loading && !data) return <div className="os-empty">Loading…</div>;
   if (!data) return <div className="os-empty">No data.</div>;
 
-  const { metrics, gateway, master, endpoints, storage, buckets, recentActivity } = data;
+  const { metrics, gateway, master, controlPlane, capacity, endpoints, storage, buckets, recentActivity } = data;
   const usedPercent =
-    metrics.totalCapacityBytes && metrics.totalCapacityBytes > 0
+    metrics.totalCapacityBytes && metrics.totalCapacityBytes > 0 && metrics.totalUsedBytes != null
       ? Math.max(0, Math.min(100, Math.round((metrics.totalUsedBytes / metrics.totalCapacityBytes) * 100)))
       : null;
-  const statusSubtitle =
-    data.status === 'online'
-      ? metrics.bucketCount === 0 && metrics.tenantCount === 0 && metrics.totalUsedBytes === 0
-        ? 'Fresh install'
-        : 'All systems operational'
-      : gateway.error ?? master.error ?? 'Gateway unreachable';
+  const statusSubtitle = data.health;
   const activity24hValue = fmtNumber(metrics.activity24hCount);
   const requestCardSubtitle =
     metrics.activity24hCount > 0
@@ -595,7 +624,7 @@ function OverviewTab({
         <StatCard
           label="STORAGE USED"
           value={fmtBytes(metrics.totalUsedBytes)}
-          sub={metrics.totalCapacityBytes ? `of ${fmtBytes(metrics.totalCapacityBytes)}` : 'Capacity unavailable'}
+          sub={metrics.totalCapacityBytes ? `of ${fmtBytes(metrics.totalCapacityBytes)} · ${capacitySourceLabel(capacity)}` : 'Capacity unavailable'}
           icon="▥"
         />
         <StatCard label="REQUESTS (24h)" value={activity24hValue} sub={requestCardSubtitle} icon="↗" />
@@ -672,6 +701,7 @@ function OverviewTab({
         </Panel>
 
         <Panel title="Usage & Capacity">
+          <div className="os-banner os-banner-info">ⓘ {capacity.detail}</div>
           <div className="os-capacity-row">
             <CapacityRing label="Total Capacity" value={metrics.totalCapacityBytes} accent="#a855f7" />
             <CapacityRing label="Used Storage" value={metrics.totalUsedBytes} accent="#22c55e" />
@@ -699,6 +729,8 @@ function OverviewTab({
           <div className="os-divider" />
           <div className="os-info-rows">
             <InfoRow label="Storage path" value={storage.dataPath} mono />
+            <InfoRow label="Capacity source" value={capacitySourceLabel(capacity)} />
+            <InfoRow label="Telemetry relay" value={controlPlaneSourceLabel(controlPlane)} />
             <InfoRow label="Volumes (max)" value={fmtNumber(master.total)} />
             <InfoRow label="Volumes (free)" value={fmtNumber(master.free)} />
             <InfoRow label="Active nodes" value={fmtNumber(master.active)} />
@@ -2036,11 +2068,27 @@ function SettingsTab({ data }: { data: OverviewData | null }) {
           <div className="os-info-rows">
             <InfoRow label="Engine" value="SeaweedFS" />
             <InfoRow label="Data path" value={data.storage.dataPath} mono />
+            <InfoRow label="Capacity source" value={capacitySourceLabel(data.capacity)} />
+            <InfoRow label="Telemetry relay" value={controlPlaneSourceLabel(data.controlPlane)} />
+            <InfoRow label="Path usage" value={fmtBytes(data.capacity.usedBytes)} />
+            <InfoRow label="Filesystem available" value={fmtBytes(data.capacity.freeBytes)} />
+            <InfoRow label="Filesystem used (shared)" value={fmtBytes(data.capacity.filesystemUsedBytes)} />
             <InfoRow label="Volumes (max)" value={fmtNumber(data.master.total)} />
             <InfoRow label="Volumes (free)" value={fmtNumber(data.master.free)} />
             <InfoRow label="Active nodes" value={fmtNumber(data.master.active)} />
             <InfoRow label="Gateway" value={<span className={statusPill(data.gateway.reachable ? 'healthy' : 'degraded')}>{data.gateway.reachable ? 'Healthy' : 'Degraded'}</span>} />
-            <InfoRow label="Control plane access" value={<span className={statusPill(data.master.reachable ? 'healthy' : 'degraded')}>{data.master.reachable ? 'Reachable' : 'Unavailable from portal runtime'}</span>} />
+            <InfoRow
+              label="Control plane access"
+              value={
+                <span className={statusPill(data.master.reachable || data.controlPlane.filerReachable ? 'healthy' : 'degraded')}>
+                  {data.master.reachable || data.controlPlane.filerReachable
+                    ? data.controlPlane.source === 'host-ssh'
+                      ? 'Reachable via host relay'
+                      : 'Reachable'
+                    : 'Unavailable from portal runtime'}
+                </span>
+              }
+            />
           </div>
         </Panel>
       </div>

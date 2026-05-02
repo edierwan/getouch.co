@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listBuckets, describeBucket, createBucket } from '@/lib/object-storage/seaweed';
+import { createBucket } from '@/lib/object-storage/seaweed';
+import { getObjectStorageSnapshot } from '@/lib/object-storage/telemetry';
 import { requireAdmin } from '../_helpers';
 import { logActivity } from '../_activity';
 
@@ -8,8 +9,8 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const { error } = await requireAdmin();
   if (error) return error;
-  const names = await listBuckets();
-  const buckets = await Promise.all(names.map(describeBucket));
+  const snapshot = await getObjectStorageSnapshot();
+  const buckets = snapshot.buckets;
   return NextResponse.json({ buckets });
 }
 

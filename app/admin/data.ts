@@ -75,6 +75,7 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const COOLIFY_URL = 'https://coolify.getouch.co';
 const DATABASES_ADMIN_PATH = '/admin/infra/databases';
 const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
@@ -88,7 +89,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'Grafana', href: GRAFANA_URL, icon: '◔', external: true },
       { label: 'Langfuse', href: LANGFUSE_URL, icon: '◎', external: true },
-      { label: 'Coolify', href: '/admin/infra/coolify', icon: '◈' },
+      { label: 'Coolify', href: COOLIFY_URL, icon: '◈', external: true },
       { label: 'Databases', href: DATABASES_ADMIN_PATH, icon: '▤' },
       { label: 'Object Storage', href: '/admin/infra/object-storage', icon: '▦' },
       { label: 'Backups', href: '/admin/infra/backups', icon: '⟲' },
@@ -162,7 +163,7 @@ export const QUICK_ACTIONS = [
   { label: 'Webhooks', href: '/admin/automation/webhooks' },
   { label: 'Open WebUI', href: '/admin/communications/open-webui' },
   { label: 'Quick Links', href: '/admin/security/quick-links' },
-  { label: 'Coolify Overview', href: '/admin/infra/coolify' },
+  { label: 'Coolify Overview', href: COOLIFY_URL, external: true },
 ];
 
 export const DASHBOARD_SERVICES: ResourceRow[] = [

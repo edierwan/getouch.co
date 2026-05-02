@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getMasterStatus, listBuckets, ENDPOINTS, STORAGE } from '@/lib/object-storage/seaweed';
+import { ENDPOINTS, STORAGE } from '@/lib/object-storage/seaweed';
+import { getObjectStorageSnapshot } from '@/lib/object-storage/telemetry';
 import { requireAdmin } from '../_helpers';
 
 export const dynamic = 'force-dynamic';
@@ -7,8 +8,9 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const { error } = await requireAdmin();
   if (error) return error;
-  const master = await getMasterStatus();
-  const buckets = await listBuckets();
+  const snapshot = await getObjectStorageSnapshot();
+  const { master, buckets, controlPlane, capacity } = snapshot;
+
   return NextResponse.json({
     endpoints: ENDPOINTS,
     storage: STORAGE,
@@ -16,12 +18,15 @@ export async function GET() {
       engine: 'SeaweedFS',
       version: 'latest',
       dataPath: STORAGE.dataPath,
-      reachable: master.reachable,
+      reachable: master.reachable || controlPlane.filerReachable,
+      accessSource: controlPlane.source,
       maxVolumes: master.total,
       freeVolumes: master.free,
       activeNodes: master.active,
+      allocatedVolumes: master.volumes,
+      filesystemCapacity: capacity,
     },
-    buckets,
+    buckets: buckets.map((bucket) => bucket.name),
     multiTenant: {
       strategy: 'service-bucket-with-tenant-prefix',
       defaultBucket: STORAGE.defaultBucket,

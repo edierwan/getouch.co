@@ -11,6 +11,7 @@ Updated: 2026-05-02
 - Root `https://portal.getouch.co/` remains usable and resolves to `Databases` at `/infra/databases`.
 - Legacy `/system/dashboard`, `/admin/system/dashboard`, `/infra/servers`, and `/admin/infra/servers` redirect to `Databases` and are not canonical.
 - Grafana is a direct external link and no longer uses a portal status page as a canonical destination.
+- Coolify is a direct external link and no longer uses a portal status page as a canonical destination.
 - Authentik is a direct external link and no longer uses a portal status page as a canonical destination.
 - Infisical is a direct external link and no longer uses a portal status page as a canonical destination.
 - Langfuse is a direct external link and no longer uses a portal status page as a canonical destination.
@@ -59,7 +60,7 @@ Updated: 2026-05-02
 | --- | --- | --- | --- |
 | Infra & Persistence | Grafana | `https://grafana.getouch.co` | `https://grafana.getouch.co` |
 | Infra & Persistence | Langfuse | `https://langfuse.getouch.co` | `https://langfuse.getouch.co` |
-| Infra & Persistence | Coolify | `/infra/coolify` | `/admin/infra/coolify` |
+| Infra & Persistence | Coolify | `https://coolify.getouch.co` | `https://coolify.getouch.co` |
 | Infra & Persistence | Databases | `/infra/databases` | `/admin/infra/databases` |
 | Infra & Persistence | Object Storage | `/infra/object-storage` | `/admin/infra/object-storage` |
 | Infra & Persistence | Backups | `/infra/backups` | `/admin/infra/backups` |
@@ -88,6 +89,7 @@ Updated: 2026-05-02
 - `/admin/security/infisical` and `/security/infisical` are legacy aliases and now redirect directly to `https://infisical.getouch.co`.
 - `/admin/observability/grafana` and `/observability/grafana` are legacy aliases and now redirect directly to `https://grafana.getouch.co`.
 - `/admin/observability/langfuse` and `/observability/langfuse` are legacy aliases and now redirect directly to `https://langfuse.getouch.co`.
+- `/admin/infra/coolify`, `/infra/coolify`, `/admin/infrastructure/coolify`, and `/infrastructure/coolify` are legacy aliases and now redirect directly to `https://coolify.getouch.co`.
 - `API Keys` remains the internal portal page for tenant and client key management.
 
 ## Source Files

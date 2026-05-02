@@ -16,6 +16,27 @@ const S3_INTERNAL_URL = process.env.SEAWEED_S3_INTERNAL_URL ?? 'http://seaweed-s
 
 const DEFAULT_TIMEOUT_MS = 4000;
 
+type SeaweedDataNode = {
+  Volumes?: number;
+};
+
+type SeaweedRack = {
+  DataNodes?: SeaweedDataNode[];
+};
+
+type SeaweedDataCenter = {
+  Racks?: SeaweedRack[];
+};
+
+type SeaweedTopology = {
+  Max?: number;
+  Free?: number;
+  Active?: number;
+  DataCenters?: SeaweedDataCenter[];
+  layouts?: unknown;
+  Layouts?: unknown;
+};
+
 async function fetchJson<T = unknown>(url: string, init: RequestInit = {}): Promise<T> {
   const controller = AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
   const res = await fetch(url, {
@@ -40,24 +61,48 @@ export interface MasterStatus {
   free: number | null;
   active: number | null;
   volumes: number | null;
+  usedBytes?: number | null;
+  source?: 'direct' | 'host-ssh';
   layout?: unknown;
   error?: string;
 }
 
+function countActiveNodes(dataCenters: SeaweedDataCenter[] | undefined) {
+  const racks = (dataCenters ?? []).flatMap((dataCenter) => dataCenter.Racks ?? []);
+  const nodes = racks.flatMap((rack) => rack.DataNodes ?? []);
+  return nodes.length > 0 ? nodes.length : null;
+}
+
+function countAllocatedVolumes(dataCenters: SeaweedDataCenter[] | undefined) {
+  const nodes = (dataCenters ?? [])
+    .flatMap((dataCenter) => dataCenter.Racks ?? [])
+    .flatMap((rack) => rack.DataNodes ?? []);
+  const total = nodes.reduce((count, node) => count + (typeof node.Volumes === 'number' ? node.Volumes : 0), 0);
+  return total > 0 ? total : null;
+}
+
+export function parseMasterStatusPayload(
+  json: { Topology?: unknown },
+  source: MasterStatus['source'] = 'direct',
+): MasterStatus {
+  const topology = (json.Topology ?? {}) as SeaweedTopology;
+
+  return {
+    reachable: true,
+    total: typeof topology.Max === 'number' ? topology.Max : null,
+    free: typeof topology.Free === 'number' ? topology.Free : null,
+    active: typeof topology.Active === 'number' ? topology.Active : countActiveNodes(topology.DataCenters),
+    volumes: countAllocatedVolumes(topology.DataCenters),
+    usedBytes: null,
+    source,
+    layout: topology.layouts ?? topology.Layouts,
+  };
+}
+
 export async function getMasterStatus(): Promise<MasterStatus> {
   try {
-    const json = await fetchJson<{ Topology?: { Max?: number; Free?: number; Active?: number; layouts?: unknown } }>(
-      `${MASTER_URL}/dir/status`,
-    );
-    const t = json.Topology ?? {};
-    return {
-      reachable: true,
-      total: typeof t.Max === 'number' ? t.Max : null,
-      free: typeof t.Free === 'number' ? t.Free : null,
-      active: typeof t.Active === 'number' ? t.Active : null,
-      volumes: typeof t.Max === 'number' ? t.Max : null,
-      layout: t.layouts,
-    };
+    const json = await fetchJson<{ Topology?: SeaweedTopology }>(`${MASTER_URL}/dir/status`);
+    return parseMasterStatusPayload(json, 'direct');
   } catch (err) {
     return {
       reachable: false,
@@ -65,6 +110,8 @@ export async function getMasterStatus(): Promise<MasterStatus> {
       free: null,
       active: null,
       volumes: null,
+      usedBytes: null,
+      source: 'direct',
       error: err instanceof Error ? err.message : 'fetch_failed',
     };
   }
@@ -185,8 +232,9 @@ export async function describeBucket(name: string): Promise<BucketInfo> {
   try {
     const listing = await listFilerPath(`/buckets/${name}/`);
     const entries = listing.Entries ?? [];
-    const objectCount = entries.filter((e) => e.Mime).length;
-    const sizeBytes = entries.reduce((sum, e) => sum + (e.FileSize ?? 0), 0);
+    const hasNestedPrefixes = entries.some((entry) => !entry.Mime);
+    const objectCount = hasNestedPrefixes ? null : entries.filter((e) => e.Mime).length;
+    const sizeBytes = hasNestedPrefixes ? null : entries.reduce((sum, e) => sum + (e.FileSize ?? 0), 0);
     return {
       name,
       objectCount,

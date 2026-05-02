@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteBucket, describeBucket, listObjects } from '@/lib/object-storage/seaweed';
+import { getObjectStorageSnapshot } from '@/lib/object-storage/telemetry';
 import { requireAdmin } from '../../_helpers';
 import { logActivity } from '../../_activity';
 
@@ -9,7 +10,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ bucket: st
   const { error } = await requireAdmin();
   if (error) return error;
   const { bucket } = await ctx.params;
-  const info = await describeBucket(bucket);
+  const snapshot = await getObjectStorageSnapshot();
+  const info = snapshot.buckets.find((entry) => entry.name === bucket) ?? await describeBucket(bucket);
   return NextResponse.json({ bucket: info });
 }
 

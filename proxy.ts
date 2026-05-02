@@ -25,6 +25,7 @@ const isPortalHost = (request: NextRequest) => {
 };
 const isMcpHost = (request: NextRequest) => getRequestHost(request) === getMcpPublicHost().toLowerCase();
 const GRAFANA_URL = 'https://grafana.getouch.co';
+const COOLIFY_URL = 'https://coolify.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
@@ -58,6 +59,12 @@ const isLangfuseLegacyPath = (pathname: string) => {
 const isGrafanaLegacyPath = (pathname: string) => {
   return pathname === '/observability/grafana'
     || pathname === '/admin/observability/grafana';
+};
+const isCoolifyLegacyPath = (pathname: string) => {
+  return pathname === '/infra/coolify'
+    || pathname === '/admin/infra/coolify'
+    || pathname === '/infrastructure/coolify'
+    || pathname === '/admin/infrastructure/coolify';
 };
 const isInfisicalLegacyPath = (pathname: string) => {
   return pathname === '/security/infisical'
@@ -165,6 +172,10 @@ export async function proxy(request: NextRequest) {
 
     if (isGrafanaLegacyPath(pathname)) {
       return NextResponse.redirect(GRAFANA_URL);
+    }
+
+    if (isCoolifyLegacyPath(pathname)) {
+      return NextResponse.redirect(COOLIFY_URL);
     }
 
     if (isInfisicalLegacyPath(pathname)) {

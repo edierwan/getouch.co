@@ -39,6 +39,36 @@ The portal now owns:
 The portal does **not** become the S3 gateway itself. End-user and service
 traffic still flows through `s3api.getouch.co`.
 
+## Portal telemetry mode
+
+The live Coolify app container is **not** attached to the SeaweedFS Docker
+network, so the portal runtime cannot resolve or reach:
+
+- `seaweed-master:9333`
+- `seaweed-filer:8888`
+- `seaweed-s3:8333`
+
+Because of that runtime boundary, the Object Storage overview and settings
+telemetry now use the same host-side SSH relay pattern already used by the
+portal infrastructure pages.
+
+Current telemetry sources:
+
+- master status: `docker exec seaweed-master wget -qO- http://127.0.0.1:9333/dir/status`
+- filer bucket index: `docker exec seaweed-filer wget -qO- --header="Accept: application/json" "http://127.0.0.1:8888/buckets/?limit=200"`
+- backing filesystem capacity: `df -B1 /srv/archive/seaweedfs`
+- SeaweedFS path usage: `du -sb /srv/archive/seaweedfs`
+
+UI semantics after this change:
+
+- `Used Storage` reflects the SeaweedFS data path footprint under
+  `/srv/archive/seaweedfs`
+- `Free` reflects backing filesystem availability on `/srv/archive`, which is a
+  shared filesystem used by other platform services too
+- bucket-level object and size totals intentionally degrade to `Unavailable`
+  when the filer can only provide a prefix-level root listing and the totals
+  would otherwise be misleading
+
 ## Storage engine decision
 
 SeaweedFS was retained after live VPS audit.
@@ -216,6 +246,13 @@ Current smoke sequence:
 4. delete the object
 
 This validates the live filer/master control path and basic object lifecycle.
+
+Important note after the Coolify runtime isolation audit:
+
+- overview and settings telemetry use the host SSH relay described above
+- the round-trip smoke test still uses the direct portal runtime control path
+  and should be migrated to the same relay model if it needs to run from the
+  isolated Coolify app container
 
 ## Rollback
 
