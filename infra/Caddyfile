@@ -63,7 +63,6 @@ http://ai.getouch.co {
 }
 
 # Protected vLLM API gateway. Implemented inside portal app at /v1/*, /health, /ready.
-# litellm.getouch.co is RESERVED for the future LiteLLM gateway and is NOT used here.
 http://vllm.getouch.co {
   import common_headers
 
@@ -74,6 +73,13 @@ http://vllm.getouch.co {
 
   handle {
     respond "Not Found. Use /v1/models, /v1/chat/completions, /v1/embeddings, /health, /ready." 404
+  }
+}
+
+http://litellm.getouch.co {
+  import common_headers
+  reverse_proxy litellm:4000 {
+    header_up X-Forwarded-Proto https
   }
 }
 

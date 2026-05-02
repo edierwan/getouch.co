@@ -116,7 +116,8 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     dependencies: ['PostgreSQL database: airbyte', 'Destination connectors', 'Worker runtime'],
     readinessNotes: [
       'Airbyte is still not deployed on the host.',
-      'This Coolify version does not include a built-in production Airbyte template, so installation remains blocked pending a vetted custom stack.',
+      'The official single-host abctl install path was attempted on this VPS, but kind cannot boot its control-plane container because the host inotify limit is too low for this container-dense environment.',
+      'A root-level sysctl increase for fs.inotify.max_user_instances is required before retrying the official abctl install.',
       'Connector credentials should stay in a secrets manager, not in Git or client-side code.',
     ],
     multiTenantNotes: [
@@ -124,14 +125,14 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Tag jobs and destination tables with tenant metadata to support lineage and revocation.',
     ],
     externalOpenUrl: 'https://airbyte.getouch.co',
-    healthCheck: 'No live runtime is deployed yet.',
-    securityStatus: 'Not applicable until a vetted Airbyte stack exists.',
-    setupStatus: 'Blocked pending a vetted custom Coolify-compatible stack review.',
+    healthCheck: 'No live runtime is deployed yet. The official abctl install currently fails before cluster bootstrap completes.',
+    securityStatus: 'Not applicable until a live Airbyte runtime exists. When retried, keep auth enabled and terminate TLS at Caddy.',
+    setupStatus: 'Blocked by host prerequisites: kind fails to boot on this VPS until the root inotify limit is raised.',
     statusOptions: {
       requirePublicRoute: true,
       missingLabel: 'BLOCKED',
       missingTone: 'warning',
-      missingDetail: 'Airbyte is still blocked. This Coolify version has no built-in production template and no vetted custom stack is deployed.',
+      missingDetail: 'Airbyte is blocked on this VPS. The official abctl install fails because kind cannot boot its control-plane container until the host inotify limit is increased.',
     },
   },
   infisical: {

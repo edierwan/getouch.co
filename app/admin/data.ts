@@ -75,6 +75,7 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const LITELLM_URL = 'https://litellm.getouch.co';
 const SERVERS_ADMIN_PATH = '/admin/system/servers';
 
 export const ADMIN_NAV: NavSection[] = [
@@ -91,7 +92,7 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '78, 206, 199',
     items: [
       { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
-      { label: 'LiteLLM Gateway', href: '/admin/ai/litellm', icon: '◎' },
+      { label: 'LiteLLM Gateway', href: LITELLM_URL, icon: '◎', external: true },
       { label: 'Dify', href: '/admin/ai/dify', icon: '◍' },
       { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
       { label: 'Qdrant', href: '/admin/ai/qdrant', icon: '◌' },

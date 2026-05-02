@@ -347,10 +347,10 @@ export function getGatewayServices(): GatewayService[] {
       id: 'litellm',
       name: 'LiteLLM',
       domain: 'litellm.getouch.co',
-      region: 'reserved',
-      status: 'planned',
-      validation: 'planned',
-      description: 'Reserved for future LiteLLM gateway.',
+      region: 'us-east-1',
+      status: 'active',
+      validation: 'manual',
+      description: 'OpenAI-compatible LiteLLM gateway with auth enabled and provider setup still pending.',
     },
   ];
 }

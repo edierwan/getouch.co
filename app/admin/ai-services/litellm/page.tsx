@@ -1,7 +1,7 @@
-import { ServiceOverviewPageByKey } from '../../_components/ServiceOverviewPage';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default function AiServicesLiteLlmPage() {
-	return <ServiceOverviewPageByKey configKey="litellm" />;
+	redirect('https://litellm.getouch.co');
 }

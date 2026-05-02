@@ -24,6 +24,7 @@ const isPortalHost = (request: NextRequest) => {
   return getRequestHost(request) === getPortalAdminHost().toLowerCase();
 };
 const isMcpHost = (request: NextRequest) => getRequestHost(request) === getMcpPublicHost().toLowerCase();
+const LITELLM_URL = 'https://litellm.getouch.co';
 const getPortalInternalPath = (pathname: string) => {
   if (pathname === '/' || pathname === '') {
     return '/admin';
@@ -44,6 +45,14 @@ const getPortalPublicPath = (pathname: string) => {
 };
 const isAuthentikLegacyPath = (pathname: string) => {
   return pathname === '/system/authentik' || pathname === '/admin/system/authentik';
+};
+const isLiteLlmLegacyPath = (pathname: string) => {
+  return pathname === '/ai/litellm'
+    || pathname === '/admin/ai/litellm'
+    || pathname === '/ai-services/litellm'
+    || pathname === '/admin/ai-services/litellm'
+    || pathname === '/service-endpoints/litellm'
+    || pathname === '/admin/service-endpoints/litellm';
 };
 const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/dashboard': '/system/servers',
@@ -116,6 +125,10 @@ export async function proxy(request: NextRequest) {
   if (portalHost) {
     if (isAuthentikLegacyPath(pathname)) {
       return NextResponse.redirect('https://sso.getouch.co');
+    }
+
+    if (isLiteLlmLegacyPath(pathname)) {
+      return NextResponse.redirect(LITELLM_URL);
     }
 
     // Public diagnostic — let it through without any auth/redirect logic.
@@ -218,6 +231,10 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/admin')) {
     if (isAuthentikLegacyPath(pathname)) {
       return NextResponse.redirect('https://sso.getouch.co');
+    }
+
+    if (isLiteLlmLegacyPath(pathname)) {
+      return NextResponse.redirect(LITELLM_URL);
     }
 
     const token = request.cookies.get('session')?.value;

@@ -222,7 +222,7 @@ export function describeLiteLlm(snapshot: PlatformServicesSnapshot): PlatformDis
   if (probePending) {
     return createPendingStatus('LiteLLM status is pending because the shared runtime probe timed out.');
   }
-  return { label: 'NOT INSTALLED', tone: 'info', detail: 'Canonical litellm.getouch.co endpoint is reserved, but no live LiteLLM runtime is detected yet.' };
+  return { label: 'NOT INSTALLED', tone: 'info', detail: 'No live LiteLLM runtime is currently detected at litellm.getouch.co.' };
 }
 
 export function describeLangfuse(snapshot: PlatformServicesSnapshot): PlatformDisplayStatus {

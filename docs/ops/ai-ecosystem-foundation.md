@@ -31,7 +31,7 @@ Portal deployment remains Coolify-only.
 
 - n8n Workflows: workflow automation runtime.
 - Webhooks: portal-managed webhook and delivery surface.
-- Airbyte: still blocked pending a vetted custom stack for this Coolify version.
+- Airbyte: still blocked because the official single-host abctl install cannot boot kind on this VPS until the root inotify limit is raised.
 
 ### Communication Hubs
 
@@ -93,7 +93,7 @@ Portal deployment remains Coolify-only.
 | --- | --- | --- | --- | --- | --- |
 | Authentik | System Orchestration | Installed | https://sso.getouch.co | Coolify-managed runtime is healthy and the public route returns the expected login redirect. Admin onboarding is still pending. | PostgreSQL `authentik`, Redis / Valkey |
 | Qdrant | AI Engine & Cognition | Installed | https://qdrant.getouch.co | Coolify-managed runtime is healthy. `GET /healthz` returns `200` and protected collection access returns `401` without credentials. | Persistent storage, API auth |
-| Airbyte | Automation & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. Coolify `4.0.0` on this host has no built-in Airbyte template, and no vetted custom stack has been deployed yet. | PostgreSQL `airbyte` |
+| Airbyte | Automation & Data Flow | Blocked | https://airbyte.getouch.co | No live runtime detected. The official `abctl` install path was attempted, but kind failed to boot its control-plane container on this VPS with `Failed to create control group inotify object: Too many open files` while `fs.inotify.max_user_instances` remained at `128`. | PostgreSQL `airbyte` |
 | Infisical | Access & Security | Installed | https://infisical.getouch.co | Coolify-managed runtime is healthy and `/api/status` returns `200`. Initial admin onboarding is still pending. | PostgreSQL `infisical`, secure bootstrap |
 | LiteLLM | AI Engine & Cognition | Installed | https://litellm.getouch.co | Coolify-managed runtime is healthy and the public gateway responds on `/health/liveliness`. Anonymous `GET /v1/models` requests are correctly rejected with `401` until provider credentials and client auth are configured. | PostgreSQL `litellm`, auth/master key |
 | Langfuse | Observability & Tracing | Installed | https://langfuse.getouch.co | Coolify-managed runtime and dependencies are healthy. `/api/public/health` returns `200`. Initial admin onboarding is still pending. | PostgreSQL `langfuse`, ClickHouse, Redis |
@@ -129,14 +129,14 @@ The missing foundation runtimes that were safe to install through built-in Cooli
 - Langfuse
 - ClickHouse and dedicated Redis dependencies for Langfuse
 
-Airbyte remains blocked because the current Coolify release on this host does not ship a production-ready Airbyte template, and a custom stack was not introduced blindly into production.
+Airbyte remains blocked because the official `abctl` path cannot complete on this host until a root operator raises the inotify instance limit that kind depends on during control-plane boot.
 
 ## Airbyte Next Safe Action
 
-- Status: Blocked pending a vetted custom Coolify-compatible stack.
+- Status: Blocked by host prerequisites for the official `abctl` install path.
 - Database: `airbyte` remains the prepared target database name.
 - Domain: `airbyte.getouch.co` remains the prepared public hostname.
-- Next safe action: review the official Airbyte self-managed production stack, adapt it explicitly for Coolify, and validate its database, worker, and storage requirements before any deployment.
+- Next safe action: raise `fs.inotify.max_user_instances` as root on the VPS, retry `abctl local install --host airbyte.getouch.co --port 18081 --low-resource-mode`, then add the missing `airbyte.getouch.co` Caddy vhost once the runtime is healthy.
 
 ## Security Guardrails Verified
 

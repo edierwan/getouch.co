@@ -326,7 +326,7 @@ catalog = {
     'airbyte.getouch.co',
     '/',
     'http://airbyte-server:8000',
-    ['Data ingestion / ELT runtime.', 'Database target: airbyte.'],
+    ['Data ingestion / ELT runtime.', 'Database target: airbyte.', 'Official abctl install is currently blocked on this host because kind control-plane boot fails until the root inotify limit is increased.'],
   ),
   'infisical': build_probe(
     [r'infisical'],
@@ -451,7 +451,7 @@ payload = {
       'publicOriginCode': host_header_code('litellm.getouch.co', '/health/liveliness'),
       'publicEdgeCode': public_edge_code('litellm.getouch.co', '/health/liveliness'),
         'internalUrl': 'http://litellm:4000/v1' if litellm_containers else None,
-      'notes': ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.', 'Provider configuration still needs model credentials after gateway install.'],
+          'notes': ['Canonical LiteLLM endpoint is published at litellm.getouch.co.', 'Database target: litellm.', 'Provider configuration still needs model credentials after gateway install.'],
     },
     'langfuse': {
         'found': bool(langfuse_containers),
@@ -643,7 +643,7 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
           },
           litellm: normalizeService(parsed.litellm, {
             publicUrl: 'https://litellm.getouch.co',
-            notes: ['Canonical LiteLLM endpoint reserved at litellm.getouch.co.', 'Database target: litellm.'],
+            notes: ['Canonical LiteLLM endpoint is published at litellm.getouch.co.', 'Database target: litellm.'],
           }),
           langfuse: normalizeService(parsed.langfuse, {
             publicUrl: 'https://langfuse.getouch.co',
