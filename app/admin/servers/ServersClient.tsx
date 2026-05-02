@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { InfrastructureStorageSnapshot } from '@/lib/infrastructure';
+import type { InfrastructureNodeSnapshot, InfrastructureStorageSnapshot } from '@/lib/infrastructure';
 import { Breadcrumb } from '../ui';
 
 /* ----------------------------- Helpers ----------------------------- */
-function formatStorage(bytes: number): string {
+function formatStorage(bytes: number | null): string {
+  if (bytes === null || !Number.isFinite(bytes)) return 'Unavailable';
   if (!bytes || bytes <= 0) return '0 GB';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let value = bytes;
@@ -29,6 +30,44 @@ function formatTimeAgo(iso?: string | null): string {
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}h ago`;
   return `${Math.floor(hr / 24)}d ago`;
+}
+
+function formatPercent(percent: number | null, digits = 0): string {
+  if (percent === null || !Number.isFinite(percent)) return 'Unavailable';
+  return `${percent.toFixed(digits)}%`;
+}
+
+function formatDecimal(value: number | null, digits = 2): string {
+  if (value === null || !Number.isFinite(value)) return 'Unavailable';
+  return value.toFixed(digits);
+}
+
+function formatMiB(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'Unavailable';
+  return formatStorage(value * 1024 * 1024);
+}
+
+function formatPower(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'Unavailable';
+  return `${value.toFixed(value >= 100 ? 0 : 1)} W`;
+}
+
+function formatTemperature(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'Unavailable';
+  return `${Math.round(value)} C`;
+}
+
+function formatMetricRatio(used: number | null, total: number | null, formatter: (value: number | null) => string): string {
+  if (used === null || total === null) return 'Unavailable';
+  return `${formatter(used)} / ${formatter(total)}`;
+}
+
+function metricTone(percent: number | null): StatusTone {
+  if (percent === null || !Number.isFinite(percent)) return 'info';
+  if (percent >= 90) return 'critical';
+  if (percent >= 75) return 'warning';
+  if (percent >= 40) return 'active';
+  return 'healthy';
 }
 
 /* ----------------------------- Types ----------------------------- */
@@ -88,33 +127,14 @@ function Donut({
   );
 }
 
-function FauxLineChart({ tone = 'active' }: { tone?: StatusTone }) {
-  // Pure CSS decorative chart. Clearly labeled "Awaiting integration" externally.
-  const points = [22, 38, 28, 46, 34, 50, 40, 55, 45, 62, 52, 60, 48, 65, 58, 72, 62, 70, 56, 68];
-  const w = 600;
-  const h = 140;
-  const max = 80;
-  const stepX = w / (points.length - 1);
-  const path = points
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * stepX).toFixed(1)},${(h - (p / max) * h).toFixed(1)}`)
-    .join(' ');
-  const area = `${path} L${w},${h} L0,${h} Z`;
-  return (
-    <svg className="servers-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden>
-      <defs>
-        <linearGradient id={`grad-${tone}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={`var(--servers-tone-${tone})`} stopOpacity="0.45" />
-          <stop offset="100%" stopColor={`var(--servers-tone-${tone})`} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#grad-${tone})`} />
-      <path d={path} fill="none" stroke={`var(--servers-tone-${tone})`} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 /* ----------------------------- Page ----------------------------- */
-export default function ServersClient({ storage }: { storage: InfrastructureStorageSnapshot }) {
+export default function ServersClient({
+  storage,
+  node,
+}: {
+  storage: InfrastructureStorageSnapshot;
+  node: InfrastructureNodeSnapshot;
+}) {
   const [now, setNow] = useState<string>(new Date().toISOString());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date().toISOString()), 30_000);
@@ -124,12 +144,20 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
   const totalBytes = storage.available ? storage.total.totalBytes : 0;
   const usedBytes = storage.available ? storage.total.usedBytes : 0;
   const diskPct = totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : null;
-
-  const containerCount = 74;
-  const containerHealthy = 64;
-  const containerDegraded = 6;
-  const containerUnhealthy = 2;
-  const containerStopped = 2;
+  const liveCollectedAt = node.collectedAt || storage.collectedAt || now;
+  const primaryGpu = node.gpu.devices[0] || null;
+  const topGpuProcess = node.gpu.processes[0] || null;
+  const memoryPct = node.memory.percentUsed;
+  const runningContainers = node.containers.running;
+  const gpuUtilization = primaryGpu?.utilizationPercent ?? null;
+  const gpuMemoryPct = primaryGpu?.memoryPercent ?? null;
+  const gpuPower = primaryGpu?.powerDrawWatts ?? null;
+  const gpuTemperature = primaryGpu?.temperatureC ?? null;
+  const gpuMemoryDetail = formatMetricRatio(primaryGpu?.memoryUsedMiB ?? null, primaryGpu?.memoryTotalMiB ?? null, formatMiB);
+  const memoryDetail = formatMetricRatio(node.memory.usedBytes, node.memory.totalBytes, formatStorage);
+  const gpuPowerDetail = [formatPower(gpuPower), formatTemperature(gpuTemperature)]
+    .filter((value) => value !== 'Unavailable')
+    .join(' · ');
 
   const runtimeStack = useMemo(
     () => [
@@ -165,21 +193,58 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
         <div className="servers-page-head-meta">
           <span className="servers-live-dot" aria-hidden /> Live data
           <span className="servers-live-sep">·</span>
-          Updated {formatTimeAgo(storage.collectedAt || now)}
+          Updated {formatTimeAgo(liveCollectedAt)}
         </div>
       </header>
 
       {/* Top metric strip */}
       <div className="servers-metric-strip">
         <MetricCard label="Active Nodes" value="1" tone="active" trend="ACTIVE" icon="▣" />
-        <MetricCard label="Runtime Health" value="98%" tone="healthy" trend="HEALTHY" icon="♡" />
-        <MetricCard label="Containers Running" value={String(containerCount)} tone="active" trend="RUNNING" icon="◧" />
-        <MetricCard label="CPU Load" value="38%" tone="info" trend="NORMAL" icon="◆" />
-        <MetricCard label="RAM Usage" value="61%" tone="warning" trend="MEDIUM" icon="▥" />
-        <MetricCard label="GPU Memory" value="82%" tone="warning" trend="HIGH" icon="◉" />
+        <MetricCard
+          label="Containers Running"
+          value={runningContainers === null ? 'Unavailable' : String(runningContainers)}
+          tone={runningContainers === null ? 'info' : 'active'}
+          trend={runningContainers === null ? 'Host probe unavailable' : 'LIVE'}
+          icon="◧"
+        />
+        <MetricCard
+          label="Load Avg (1m)"
+          value={formatDecimal(node.loadAverage1m)}
+          tone={node.loadAverage1m === null ? 'info' : node.loadAverage1m >= 4 ? 'warning' : 'healthy'}
+          trend={node.loadAverage1m === null ? 'Unavailable' : 'LIVE'}
+          icon="◆"
+        />
+        <MetricCard
+          label="RAM Usage"
+          value={formatPercent(memoryPct, 1)}
+          tone={metricTone(memoryPct)}
+          trend={memoryDetail}
+          icon="▥"
+        />
+        <MetricCard
+          label="GPU Utilization"
+          value={formatPercent(gpuUtilization)}
+          tone={metricTone(gpuUtilization)}
+          trend={topGpuProcess ? `${topGpuProcess.name} holding ${formatMiB(topGpuProcess.memoryUsedMiB)}` : node.gpu.available ? 'No active compute process' : (node.gpu.error || 'Unavailable')}
+          icon="◎"
+        />
+        <MetricCard
+          label="GPU Memory"
+          value={formatPercent(gpuMemoryPct, 1)}
+          tone={metricTone(gpuMemoryPct)}
+          trend={gpuMemoryDetail}
+          icon="◉"
+        />
+        <MetricCard
+          label="GPU Power"
+          value={formatPower(gpuPower)}
+          tone={gpuPower === null ? 'info' : gpuPower >= 120 ? 'warning' : 'healthy'}
+          trend={gpuTemperature === null ? 'Unavailable' : formatTemperature(gpuTemperature)}
+          icon="◌"
+        />
         <MetricCard
           label="Disk Usage"
-          value={diskPct !== null ? `${diskPct}%` : 'N/A'}
+          value={diskPct !== null ? `${diskPct}%` : 'Unavailable'}
           tone={diskPct !== null && diskPct >= 80 ? 'warning' : 'healthy'}
           trend={diskPct !== null ? `${formatStorage(usedBytes)} / ${formatStorage(totalBytes)}` : 'No data'}
           icon="▦"
@@ -209,30 +274,31 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
             <div className="servers-spec"><span>Region</span><strong>NYC</strong></div>
             <div className="servers-spec"><span>CPU</span><strong>12 vCPU · Intel Xeon</strong></div>
             <div className="servers-spec"><span>RAM</span><strong>64 GB DDR5</strong></div>
-            <div className="servers-spec"><span>GPU</span><strong>RTX 5060 Ti · 16 GB VRAM</strong></div>
+            <div className="servers-spec"><span>GPU</span><strong>{primaryGpu?.name || 'RTX 5060 Ti · telemetry unavailable'}</strong></div>
             <div className="servers-spec"><span>OS</span><strong>Ubuntu 24.04 LTS</strong></div>
             <div className="servers-spec"><span>Public IP</span><strong>100.84.14.93</strong></div>
             <div className="servers-spec"><span>Tailscale IP</span><strong>100.106.2.18</strong></div>
-            <div className="servers-spec"><span>Uptime</span><strong>23d 14h 27m</strong></div>
-            <div className="servers-spec"><span>Load Avg (1m)</span><strong>0.72</strong></div>
+            <div className="servers-spec"><span>Uptime</span><strong>{node.uptime || 'Unavailable'}</strong></div>
+            <div className="servers-spec"><span>Load Avg (1m)</span><strong>{formatDecimal(node.loadAverage1m)}</strong></div>
           </div>
 
           <div className="servers-chart-block">
-            <div className="servers-chart-tabs" role="tablist" aria-label="Resource trends">
-              <button type="button" className="servers-chart-tab servers-chart-tab-active">CPU</button>
-              <button type="button" className="servers-chart-tab">RAM</button>
-              <button type="button" className="servers-chart-tab">Network</button>
-              <button type="button" className="servers-chart-tab">GPU Utilization</button>
+            <div className="servers-chart-meta">Historical Grafana/DCGM trend data is unavailable from the portal runtime, so this page only shows current host telemetry.</div>
+            <div className="servers-empty">
+              {primaryGpu
+                ? `Current GPU state: ${formatPercent(gpuUtilization)} utilization, ${gpuMemoryDetail}, ${gpuPowerDetail || 'power unavailable'}.`
+                : (node.gpu.error || node.error || 'Live GPU telemetry is temporarily unavailable.')}
             </div>
-            <div className="servers-chart-meta">CPU Utilization (%) · trend visual · awaiting Grafana wiring</div>
-            <FauxLineChart tone="active" />
+            {topGpuProcess ? (
+              <div className="servers-empty-note">Top VRAM process: {topGpuProcess.name} · PID {topGpuProcess.pid ?? 'unknown'} · {formatMiB(topGpuProcess.memoryUsedMiB)}</div>
+            ) : null}
           </div>
 
           <div className="servers-donut-grid">
-            <Donut percent={64} label="GPU Utilization" tone="active" />
-            <Donut percent={82} label="GPU Memory" tone="warning" />
+            <Donut percent={gpuUtilization} label="GPU Utilization" tone={metricTone(gpuUtilization)} sub={gpuPowerDetail || undefined} />
+            <Donut percent={gpuMemoryPct} label="GPU Memory" tone={metricTone(gpuMemoryPct)} sub={gpuMemoryDetail} />
             <Donut percent={diskPct} label="Disk Usage" tone={diskPct !== null && diskPct >= 80 ? 'warning' : 'healthy'} sub={diskPct !== null ? `${formatStorage(usedBytes)} / ${formatStorage(totalBytes)}` : 'No data'} />
-            <Donut percent={98} label="Runtime Health" tone="healthy" />
+            <Donut percent={memoryPct} label="Memory Usage" tone={metricTone(memoryPct)} sub={memoryDetail} />
           </div>
         </div>
       </section>
@@ -327,18 +393,14 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
         <section className="servers-card servers-container-card">
           <div className="servers-card-head">
             <h3 className="servers-card-title">Container Health</h3>
-            <StatusChip status={`${containerCount} TOTAL`} tone="active" />
+            <StatusChip status={runningContainers === null ? 'UNAVAILABLE' : `${runningContainers} RUNNING`} tone={runningContainers === null ? 'warning' : 'active'} />
           </div>
-          <div className="servers-container-body">
-            <Donut percent={(containerHealthy / containerCount) * 100} label="" tone="healthy" sub={`${containerHealthy} healthy`} />
-            <ul className="servers-container-legend">
-              <li><span className="servers-dot servers-tone-healthy" /> Healthy<span>{containerHealthy} ({Math.round((containerHealthy / containerCount) * 100)}%)</span></li>
-              <li><span className="servers-dot servers-tone-warning" /> Degraded<span>{containerDegraded} ({Math.round((containerDegraded / containerCount) * 100)}%)</span></li>
-              <li><span className="servers-dot servers-tone-critical" /> Unhealthy<span>{containerUnhealthy} ({Math.round((containerUnhealthy / containerCount) * 100)}%)</span></li>
-              <li><span className="servers-dot servers-tone-info" /> Stopped<span>{containerStopped} ({Math.round((containerStopped / containerCount) * 100)}%)</span></li>
-            </ul>
+          <div className="servers-empty">Live per-container health aggregation is unavailable from the portal runtime.</div>
+          <div className="servers-empty-note">
+            {runningContainers === null
+              ? 'The host probe could not confirm how many containers are running.'
+              : `${runningContainers} containers are currently running on the host. Health breakdown remains unavailable until Coolify telemetry is wired in.`}
           </div>
-          <div className="servers-empty-note">Container counts are operational estimates. Live per-container health pending Coolify API integration.</div>
         </section>
 
         {/* System Alerts */}
@@ -450,24 +512,9 @@ export default function ServersClient({ storage }: { storage: InfrastructureStor
       <section className="servers-card">
         <div className="servers-card-head">
           <h3 className="servers-card-title">Resource Utilization (Last 24h)</h3>
-          <span className="servers-muted">Awaiting Grafana metrics integration</span>
+          <span className="servers-muted">Unavailable</span>
         </div>
-        <div className="servers-trends-grid">
-          {[
-            { label: 'CPU', tone: 'active' as StatusTone, avg: 'Avg 34%' },
-            { label: 'RAM', tone: 'warning' as StatusTone, avg: 'Avg 58%' },
-            { label: 'Network In', tone: 'active' as StatusTone, avg: 'Avg 85 Mbps' },
-            { label: 'Network Out', tone: 'active' as StatusTone, avg: 'Avg 62 Mbps' },
-          ].map((t) => (
-            <div key={t.label} className="servers-trend">
-              <div className="servers-trend-head">
-                <span className="servers-trend-label">{t.label}</span>
-                <span className="servers-trend-avg">{t.avg}</span>
-              </div>
-              <FauxLineChart tone={t.tone} />
-            </div>
-          ))}
-        </div>
+        <div className="servers-empty">Historical CPU, RAM, and network trend graphs are hidden until Grafana/DCGM series are reachable from the portal runtime.</div>
       </section>
 
       <ServersStyles />

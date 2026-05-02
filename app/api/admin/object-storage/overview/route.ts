@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 import { objectStorageActivity, objectStorageAccessKeys, objectStorageTenantMappings } from '@/lib/object-storage/schema';
-import { getMasterStatus, listBuckets, describeBucket, ENDPOINTS, STORAGE } from '@/lib/object-storage/seaweed';
+import { getMasterStatus, getGatewayStatus, listBuckets, describeBucket, ENDPOINTS, STORAGE } from '@/lib/object-storage/seaweed';
 import { requireAdmin } from '../_helpers';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +11,7 @@ export async function GET() {
   const { error } = await requireAdmin();
   if (error) return error;
 
-  const [master, buckets] = await Promise.all([getMasterStatus(), listBuckets()]);
+  const [master, gateway, buckets] = await Promise.all([getMasterStatus(), getGatewayStatus(), listBuckets()]);
 
   const bucketInfos = await Promise.all(buckets.slice(0, 32).map(describeBucket));
   const totalObjects = bucketInfos.reduce((s, b) => s + (b.objectCount ?? 0), 0);
@@ -61,8 +61,9 @@ export async function GET() {
   } catch { /* table may not exist yet */ }
 
   return NextResponse.json({
-    status: master.reachable ? 'online' : 'degraded',
-    health: master.reachable ? 'healthy' : 'unreachable',
+    status: gateway.reachable ? 'online' : 'degraded',
+    health: gateway.reachable ? 'healthy' : 'unreachable',
+    gateway,
     master,
     endpoints: ENDPOINTS,
     storage: STORAGE,

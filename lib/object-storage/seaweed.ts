@@ -70,6 +70,60 @@ export async function getMasterStatus(): Promise<MasterStatus> {
   }
 }
 
+type EndpointProbe = {
+  reachable: boolean;
+  statusCode: number | null;
+  error?: string;
+};
+
+export interface GatewayStatus {
+  reachable: boolean;
+  apiReachable: boolean;
+  consoleReachable: boolean;
+  apiStatusCode: number | null;
+  consoleStatusCode: number | null;
+  error?: string;
+}
+
+const ACCEPTABLE_GATEWAY_STATUS_CODES = new Set([200, 204, 301, 302, 307, 308, 401, 403, 404, 405]);
+
+async function probeEndpoint(url: string, init: RequestInit = {}): Promise<EndpointProbe> {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+    return {
+      reachable: res.ok || ACCEPTABLE_GATEWAY_STATUS_CODES.has(res.status),
+      statusCode: res.status,
+    };
+  } catch (err) {
+    return {
+      reachable: false,
+      statusCode: null,
+      error: err instanceof Error ? err.message : 'fetch_failed',
+    };
+  }
+}
+
+export async function getGatewayStatus(): Promise<GatewayStatus> {
+  const [api, console] = await Promise.all([
+    probeEndpoint('https://s3api.getouch.co', { method: 'HEAD' }),
+    probeEndpoint('https://s3.getouch.co'),
+  ]);
+  const errors = [api.error, console.error].filter(Boolean).join('; ');
+
+  return {
+    reachable: api.reachable || console.reachable,
+    apiReachable: api.reachable,
+    consoleReachable: console.reachable,
+    apiStatusCode: api.statusCode,
+    consoleStatusCode: console.statusCode,
+    error: errors || undefined,
+  };
+}
+
 export interface FilerEntry {
   FullPath: string;
   Mtime?: string;

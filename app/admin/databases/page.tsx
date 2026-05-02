@@ -11,6 +11,7 @@ type DatabasesPageOptions = {
   breadcrumbPage?: string;
   title?: string;
   subtitle?: string;
+  showDataStores?: boolean;
 };
 
 export async function renderDatabasesPage({
@@ -18,6 +19,7 @@ export async function renderDatabasesPage({
   breadcrumbPage = 'Databases',
   title = 'Databases & Backups',
   subtitle = 'Core platform databases, AI observability data stores, and preprod backup controls.',
+  showDataStores = true,
 }: DatabasesPageOptions = {}) {
   const resolvedSearchParams = (await searchParams) || {};
 
@@ -40,6 +42,7 @@ export async function renderDatabasesPage({
       breadcrumbPage={breadcrumbPage}
       title={title}
       subtitle={subtitle}
+      showDataStores={showDataStores}
     />
   );
 }

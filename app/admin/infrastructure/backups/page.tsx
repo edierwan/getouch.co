@@ -12,5 +12,6 @@ export default async function InfrastructureBackupsPage({
     breadcrumbPage: 'Backups',
     title: 'Backups',
     subtitle: 'Preprod backup controls, restore queueing, and retention visibility for platform data stores.',
+    showDataStores: false,
   });
 }

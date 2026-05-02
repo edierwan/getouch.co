@@ -137,6 +137,7 @@ export function DatabasesClient({
   breadcrumbPage = 'Databases',
   title = 'Databases & Backups',
   subtitle = 'Core platform databases, AI observability data stores, and preprod backup controls.',
+  showDataStores = true,
 }: {
   initialOverview: PreprodBackupOverview | null;
   initialNotice?: string;
@@ -145,6 +146,7 @@ export function DatabasesClient({
   breadcrumbPage?: string;
   title?: string;
   subtitle?: string;
+  showDataStores?: boolean;
 }) {
   const [overview, setOverview] = useState(initialOverview);
   const [notice, setNotice] = useState(initialNotice || '');
@@ -188,81 +190,83 @@ export function DatabasesClient({
         </div>
       ) : null}
 
-      <section id="databases" className="portal-panel">
-        <div className="portal-panel-head">
-          <div>
-            <h3 className="portal-panel-title">AI Observability Data Stores</h3>
-            <p className="portal-page-sub">ClickHouse and Redis are represented here as internal platform dependencies, while Langfuse stays under Observability & Tracing.</p>
+      {showDataStores ? (
+        <section id="databases" className="portal-panel">
+          <div className="portal-panel-head">
+            <div>
+              <h3 className="portal-panel-title">AI Observability Data Stores</h3>
+              <p className="portal-page-sub">ClickHouse and Redis are represented here as internal platform dependencies, while Langfuse stays under Observability & Tracing.</p>
+            </div>
           </div>
-        </div>
 
-        <div className="portal-detail-grid">
-          <section className="portal-panel">
-            <div className="portal-detail-head">
-              <h3 className="portal-detail-title">PostgreSQL 16</h3>
-              <span className="portal-status portal-status-good">HEALTHY</span>
-            </div>
-            <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Primary relational database</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Portal auth, user, and platform state</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Admin tools</span><span className="portal-info-table-value">pgAdmin available on db.getouch.co</span></div>
-            </div>
-          </section>
+          <div className="portal-detail-grid">
+            <section className="portal-panel">
+              <div className="portal-detail-head">
+                <h3 className="portal-detail-title">PostgreSQL 16</h3>
+                <span className="portal-status portal-status-good">HEALTHY</span>
+              </div>
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Primary relational database</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Portal auth, user, and platform state</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Admin tools</span><span className="portal-info-table-value">pgAdmin available on db.getouch.co</span></div>
+              </div>
+            </section>
 
-          <section className="portal-panel">
-            <div className="portal-detail-head">
-              <h3 className="portal-detail-title">Langfuse PostgreSQL</h3>
-              <span className={statusClassName(langfuseStatus.tone)}>{langfuseStatus.label}</span>
-            </div>
-            <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">PostgreSQL</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Database</span><span className="portal-info-table-value">langfuse</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Users, projects, settings, and API key metadata for Langfuse</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Verification</span><span className="portal-info-table-value">Installed with the live Langfuse runtime</span></div>
-            </div>
-          </section>
+            <section className="portal-panel">
+              <div className="portal-detail-head">
+                <h3 className="portal-detail-title">Langfuse PostgreSQL</h3>
+                <span className={statusClassName(langfuseStatus.tone)}>{langfuseStatus.label}</span>
+              </div>
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">PostgreSQL</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Database</span><span className="portal-info-table-value">langfuse</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Users, projects, settings, and API key metadata for Langfuse</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Verification</span><span className="portal-info-table-value">Installed with the live Langfuse runtime</span></div>
+              </div>
+            </section>
 
-          <section className="portal-panel">
-            <div className="portal-detail-head">
-              <h3 className="portal-detail-title">ClickHouse</h3>
-              <span className={statusClassName(clickhouseStatus.tone)}>{clickhouseStatus.label}</span>
-            </div>
-            <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Analytics DB / OLAP</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Trace, observation, score, token, cost, and latency analytics</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime</span><span className="portal-info-table-value">{clickhousePrimary?.name || platform.clickhouse.internalUrl || 'Awaiting deployment'}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(platform.clickhouse.publicOriginCode)}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(platform.clickhouse.publicEdgeCode)}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Security</span><span className="portal-info-table-value">Keep internal-only unless authenticated and intentional</span></div>
-            </div>
-          </section>
+            <section className="portal-panel">
+              <div className="portal-detail-head">
+                <h3 className="portal-detail-title">ClickHouse</h3>
+                <span className={statusClassName(clickhouseStatus.tone)}>{clickhouseStatus.label}</span>
+              </div>
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Analytics DB / OLAP</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Trace, observation, score, token, cost, and latency analytics</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime</span><span className="portal-info-table-value">{clickhousePrimary?.name || platform.clickhouse.internalUrl || 'Awaiting deployment'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(platform.clickhouse.publicOriginCode)}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(platform.clickhouse.publicEdgeCode)}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Security</span><span className="portal-info-table-value">Keep internal-only unless authenticated and intentional</span></div>
+              </div>
+            </section>
 
-          <section className="portal-panel">
-            <div className="portal-detail-head">
-              <h3 className="portal-detail-title">Redis / Queue Cache</h3>
-              <span className={statusClassName(redisStatus.tone)}>{redisStatus.label}</span>
-            </div>
-            <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Cache + queue</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Langfuse ingestion queue, cache, and shared platform background jobs</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Primary runtime</span><span className="portal-info-table-value">{platform.redis.primary?.name || 'Not detected'}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(platform.redis.primary))}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Exposure</span><span className="portal-info-table-value">Internal only</span></div>
-            </div>
-          </section>
+            <section className="portal-panel">
+              <div className="portal-detail-head">
+                <h3 className="portal-detail-title">Redis / Queue Cache</h3>
+                <span className={statusClassName(redisStatus.tone)}>{redisStatus.label}</span>
+              </div>
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Type</span><span className="portal-info-table-value">Cache + queue</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Langfuse ingestion queue, cache, and shared platform background jobs</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Primary runtime</span><span className="portal-info-table-value">{platform.redis.primary?.name || 'Not detected'}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{formatRuntimeSource(resolveRuntimeSource(platform.redis.primary))}</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Exposure</span><span className="portal-info-table-value">Internal only</span></div>
+              </div>
+            </section>
 
-          <section className="portal-panel">
-            <div className="portal-detail-head">
-              <h3 className="portal-detail-title">pgAdmin</h3>
-              <span className="portal-status portal-status-good">ONLINE</span>
-            </div>
-            <div className="portal-info-table">
-              <div className="portal-info-table-row"><span className="portal-info-table-label">UI</span><span className="portal-info-table-value">db.getouch.co</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Admin tooling for PostgreSQL inspection and maintenance</span></div>
-            </div>
-          </section>
-        </div>
-      </section>
+            <section className="portal-panel">
+              <div className="portal-detail-head">
+                <h3 className="portal-detail-title">pgAdmin</h3>
+                <span className="portal-status portal-status-good">ONLINE</span>
+              </div>
+              <div className="portal-info-table">
+                <div className="portal-info-table-row"><span className="portal-info-table-label">UI</span><span className="portal-info-table-value">db.getouch.co</span></div>
+                <div className="portal-info-table-row"><span className="portal-info-table-label">Purpose</span><span className="portal-info-table-value">Admin tooling for PostgreSQL inspection and maintenance</span></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      ) : null}
 
       <section id="backups" className="portal-panel">
         <div className="portal-panel-head portal-panel-head-inline">

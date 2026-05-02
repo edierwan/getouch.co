@@ -78,6 +78,69 @@ export type InfrastructureStorageSnapshot = {
   error?: string;
 };
 
+export type InfrastructureGpuProcess = {
+  pid: number | null;
+  name: string;
+  memoryUsedMiB: number | null;
+};
+
+export type InfrastructureGpuDevice = {
+  index: number | null;
+  name: string;
+  utilizationPercent: number | null;
+  memoryUsedMiB: number | null;
+  memoryTotalMiB: number | null;
+  memoryPercent: number | null;
+  powerDrawWatts: number | null;
+  temperatureC: number | null;
+};
+
+export type InfrastructureNodeSnapshot = {
+  available: boolean;
+  collectedAt: string;
+  uptime: string | null;
+  loadAverage1m: number | null;
+  memory: {
+    totalBytes: number | null;
+    usedBytes: number | null;
+    percentUsed: number | null;
+  };
+  containers: {
+    running: number | null;
+  };
+  gpu: {
+    available: boolean;
+    devices: InfrastructureGpuDevice[];
+    processes: InfrastructureGpuProcess[];
+    error?: string;
+  };
+  error?: string;
+};
+
+type RemoteInfrastructureGpuProcess = Partial<InfrastructureGpuProcess>;
+
+type RemoteInfrastructureGpuDevice = Partial<InfrastructureGpuDevice>;
+
+type RemoteInfrastructureNodeSnapshot = {
+  collectedAt?: string;
+  uptime?: string | null;
+  loadAverage1m?: number | null;
+  memory?: {
+    totalBytes?: number | null;
+    usedBytes?: number | null;
+    percentUsed?: number | null;
+  };
+  containers?: {
+    running?: number | null;
+  };
+  gpu?: {
+    available?: boolean;
+    devices?: RemoteInfrastructureGpuDevice[];
+    processes?: RemoteInfrastructureGpuProcess[];
+    error?: string;
+  };
+};
+
 function runRemoteScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -136,6 +199,123 @@ lsblk -J -b -o NAME,PATH,PKNAME,TYPE,TRAN,MODEL,SIZE,MOUNTPOINTS
 `;
 }
 
+function buildNodeRemoteScript() {
+  return String.raw`
+set -euo pipefail
+
+python3 - <<'PY'
+import json
+import subprocess
+from datetime import datetime, timezone
+
+
+def run(cmd: str):
+  completed = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+  return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+
+
+def parse_number(value: str):
+  try:
+    return float(value)
+  except (TypeError, ValueError):
+    return None
+
+
+status = {
+  'collectedAt': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+  'uptime': None,
+  'loadAverage1m': None,
+  'memory': {
+    'totalBytes': None,
+    'usedBytes': None,
+    'percentUsed': None,
+  },
+  'containers': {
+    'running': None,
+  },
+  'gpu': {
+    'available': False,
+    'devices': [],
+    'processes': [],
+  },
+}
+
+rc, out, _err = run('uptime -p')
+if rc == 0 and out:
+  status['uptime'] = out.replace('up ', '', 1)
+
+rc, out, _err = run('cat /proc/loadavg')
+if rc == 0 and out:
+  parts = out.split()
+  if parts:
+    status['loadAverage1m'] = parse_number(parts[0])
+
+rc, out, _err = run('free -b')
+if rc == 0 and out:
+  lines = [line for line in out.splitlines() if line.strip()]
+  if len(lines) >= 2:
+    parts = lines[1].split()
+    if len(parts) >= 3:
+      total = parse_number(parts[1])
+      used = parse_number(parts[2])
+      status['memory']['totalBytes'] = total
+      status['memory']['usedBytes'] = used
+      if total and total > 0 and used is not None:
+        status['memory']['percentUsed'] = round((used / total) * 100, 1)
+
+rc, out, _err = run("docker ps --format '{{.ID}}'")
+if rc == 0:
+  status['containers']['running'] = len([line for line in out.splitlines() if line.strip()])
+
+gpu_query = 'nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,power.draw,temperature.gpu --format=csv,noheader,nounits'
+rc, out, err = run(gpu_query)
+if rc == 0 and out:
+  devices = []
+  for line in out.splitlines():
+    parts = [part.strip() for part in line.split(',')]
+    if len(parts) < 7:
+      continue
+    memory_used = parse_number(parts[3])
+    memory_total = parse_number(parts[4])
+    memory_percent = None
+    if memory_used is not None and memory_total and memory_total > 0:
+      memory_percent = round((memory_used / memory_total) * 100, 1)
+    devices.append({
+      'index': int(parts[0]) if parts[0].isdigit() else None,
+      'name': parts[1],
+      'utilizationPercent': parse_number(parts[2]),
+      'memoryUsedMiB': memory_used,
+      'memoryTotalMiB': memory_total,
+      'memoryPercent': memory_percent,
+      'powerDrawWatts': parse_number(parts[5]),
+      'temperatureC': parse_number(parts[6]),
+    })
+  status['gpu']['devices'] = devices
+  status['gpu']['available'] = len(devices) > 0
+else:
+  status['gpu']['error'] = err or 'nvidia-smi unavailable'
+
+proc_query = 'nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits'
+rc, out, _err = run(proc_query)
+if rc == 0 and out:
+  processes = []
+  for line in out.splitlines():
+    parts = [part.strip() for part in line.split(',')]
+    if len(parts) < 3:
+      continue
+    processes.append({
+      'pid': int(parts[0]) if parts[0].isdigit() else None,
+      'name': parts[1],
+      'memoryUsedMiB': parse_number(parts[2]),
+    })
+  processes.sort(key=lambda item: item.get('memoryUsedMiB') or 0, reverse=True)
+  status['gpu']['processes'] = processes
+
+print(json.dumps(status))
+PY
+`;
+}
+
 function extractSection(raw: string, marker: string, nextMarker?: string) {
   const start = raw.indexOf(marker);
   if (start < 0) return '';
@@ -149,6 +329,15 @@ function toNumber(value: number | string | undefined) {
   if (typeof value === 'number') return value;
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toOptionalNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 function flattenFilesystems(filesystems: FindmntFilesystem[] | undefined) {
@@ -276,6 +465,30 @@ function emptySnapshot(error?: string): InfrastructureStorageSnapshot {
   };
 }
 
+function emptyNodeSnapshot(error?: string): InfrastructureNodeSnapshot {
+  return {
+    available: false,
+    collectedAt: new Date().toISOString(),
+    uptime: null,
+    loadAverage1m: null,
+    memory: {
+      totalBytes: null,
+      usedBytes: null,
+      percentUsed: null,
+    },
+    containers: {
+      running: null,
+    },
+    gpu: {
+      available: false,
+      devices: [],
+      processes: [],
+      error,
+    },
+    error,
+  };
+}
+
 export async function getInfrastructureStorageSnapshot(): Promise<InfrastructureStorageSnapshot> {
   try {
     const raw = await runRemoteScript(buildRemoteScript());
@@ -337,5 +550,61 @@ export async function getInfrastructureStorageSnapshot(): Promise<Infrastructure
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to collect infrastructure storage metrics';
     return emptySnapshot(message);
+  }
+}
+
+export async function getInfrastructureNodeSnapshot(): Promise<InfrastructureNodeSnapshot> {
+  try {
+    const raw = await runRemoteScript(buildNodeRemoteScript());
+    const parsed = JSON.parse(raw) as RemoteInfrastructureNodeSnapshot;
+    const devices = (parsed.gpu?.devices || []).map((device) => {
+      const memoryUsedMiB = toOptionalNumber(device.memoryUsedMiB);
+      const memoryTotalMiB = toOptionalNumber(device.memoryTotalMiB);
+      const memoryPercent = toOptionalNumber(device.memoryPercent)
+        ?? (memoryUsedMiB !== null && memoryTotalMiB && memoryTotalMiB > 0
+          ? (memoryUsedMiB / memoryTotalMiB) * 100
+          : null);
+
+      return {
+        index: toOptionalNumber(device.index),
+        name: device.name || 'Unknown GPU',
+        utilizationPercent: toOptionalNumber(device.utilizationPercent),
+        memoryUsedMiB,
+        memoryTotalMiB,
+        memoryPercent,
+        powerDrawWatts: toOptionalNumber(device.powerDrawWatts),
+        temperatureC: toOptionalNumber(device.temperatureC),
+      } satisfies InfrastructureGpuDevice;
+    });
+
+    const processes = (parsed.gpu?.processes || []).map((process) => ({
+      pid: toOptionalNumber(process.pid),
+      name: process.name || 'Unknown process',
+      memoryUsedMiB: toOptionalNumber(process.memoryUsedMiB),
+    } satisfies InfrastructureGpuProcess));
+
+    return {
+      available: true,
+      collectedAt: parsed.collectedAt || new Date().toISOString(),
+      uptime: parsed.uptime || null,
+      loadAverage1m: toOptionalNumber(parsed.loadAverage1m),
+      memory: {
+        totalBytes: toOptionalNumber(parsed.memory?.totalBytes),
+        usedBytes: toOptionalNumber(parsed.memory?.usedBytes),
+        percentUsed: toOptionalNumber(parsed.memory?.percentUsed),
+      },
+      containers: {
+        running: toOptionalNumber(parsed.containers?.running),
+      },
+      gpu: {
+        available: Boolean(parsed.gpu?.available && devices.length > 0),
+        devices,
+        processes,
+        error: parsed.gpu?.error,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to collect infrastructure node telemetry';
+    return emptyNodeSnapshot(message);
   }
 }

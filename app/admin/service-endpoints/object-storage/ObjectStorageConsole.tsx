@@ -13,6 +13,15 @@ interface MasterStatus {
   error?: string;
 }
 
+interface GatewayStatus {
+  reachable: boolean;
+  apiReachable: boolean;
+  consoleReachable: boolean;
+  apiStatusCode: number | null;
+  consoleStatusCode: number | null;
+  error?: string;
+}
+
 interface Endpoints {
   fileConsole: string;
   s3Api: string;
@@ -53,6 +62,7 @@ interface ActivityEvent {
 interface OverviewData {
   status: 'online' | 'degraded';
   health: string;
+  gateway: GatewayStatus;
   master: MasterStatus;
   endpoints: Endpoints;
   storage: StorageInfo;
@@ -139,6 +149,11 @@ function fmtBytes(bytes: number | null | undefined): string {
 function fmtNumber(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—';
   return n.toLocaleString();
+}
+
+function fmtStatusCode(code: number | null | undefined): string {
+  if (code == null || !Number.isFinite(code)) return 'unreachable';
+  return String(code);
 }
 
 function timeAgo(iso: string | null): string {
@@ -535,7 +550,7 @@ function OverviewTab({
   if (loading && !data) return <div className="os-empty">Loading…</div>;
   if (!data) return <div className="os-empty">No data.</div>;
 
-  const { metrics, master, endpoints, storage, buckets, recentActivity } = data;
+  const { metrics, gateway, master, endpoints, storage, buckets, recentActivity } = data;
   const usedPercent =
     metrics.totalCapacityBytes && metrics.totalCapacityBytes > 0
       ? Math.max(0, Math.min(100, Math.round((metrics.totalUsedBytes / metrics.totalCapacityBytes) * 100)))
@@ -545,12 +560,15 @@ function OverviewTab({
       ? metrics.bucketCount === 0 && metrics.tenantCount === 0 && metrics.totalUsedBytes === 0
         ? 'Fresh install'
         : 'All systems operational'
-      : master.error ?? 'Backend unreachable';
+      : gateway.error ?? master.error ?? 'Gateway unreachable';
   const activity24hValue = fmtNumber(metrics.activity24hCount);
   const requestCardSubtitle =
     metrics.activity24hCount > 0
       ? `${fmtNumber(metrics.activity24hCount)} admin events logged`
       : 'No admin events logged in the last 24 hours';
+  const gatewaySubtitle = gateway.reachable
+    ? `S3 API ${fmtStatusCode(gateway.apiStatusCode)} · Console ${fmtStatusCode(gateway.consoleStatusCode)}`
+    : gateway.error ?? 'Gateway unreachable';
 
   return (
     <div className="os-overview">
@@ -582,10 +600,10 @@ function OverviewTab({
         />
         <StatCard label="REQUESTS (24h)" value={activity24hValue} sub={requestCardSubtitle} icon="↗" />
         <StatCard
-          label="API HEALTH"
-          value={master.reachable ? 'Healthy' : 'Down'}
-          tone={master.reachable ? 'good' : 'bad'}
-          sub={master.reachable ? 'S3 API operational' : 'Master unreachable'}
+          label="GATEWAY HEALTH"
+          value={gateway.reachable ? 'Healthy' : 'Down'}
+          tone={gateway.reachable ? 'good' : 'bad'}
+          sub={gatewaySubtitle}
           icon="♡"
         />
       </div>
@@ -2021,7 +2039,8 @@ function SettingsTab({ data }: { data: OverviewData | null }) {
             <InfoRow label="Volumes (max)" value={fmtNumber(data.master.total)} />
             <InfoRow label="Volumes (free)" value={fmtNumber(data.master.free)} />
             <InfoRow label="Active nodes" value={fmtNumber(data.master.active)} />
-            <InfoRow label="Health" value={<span className={statusPill(data.master.reachable ? 'healthy' : 'degraded')}>{data.master.reachable ? 'Healthy' : 'Degraded'}</span>} />
+            <InfoRow label="Gateway" value={<span className={statusPill(data.gateway.reachable ? 'healthy' : 'degraded')}>{data.gateway.reachable ? 'Healthy' : 'Degraded'}</span>} />
+            <InfoRow label="Control plane access" value={<span className={statusPill(data.master.reachable ? 'healthy' : 'degraded')}>{data.master.reachable ? 'Reachable' : 'Unavailable from portal runtime'}</span>} />
           </div>
         </Panel>
       </div>
