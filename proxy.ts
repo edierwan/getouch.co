@@ -26,6 +26,7 @@ const isPortalHost = (request: NextRequest) => {
 const isMcpHost = (request: NextRequest) => getRequestHost(request) === getMcpPublicHost().toLowerCase();
 const GRAFANA_URL = 'https://grafana.getouch.co';
 const COOLIFY_URL = 'https://coolify.getouch.co';
+const DIFY_URL = 'https://dify.getouch.co/apps';
 const LITELLM_URL = 'https://litellm.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
@@ -77,6 +78,13 @@ const isLiteLlmLegacyPath = (pathname: string) => {
     || pathname === '/admin/ai-services/litellm'
     || pathname === '/service-endpoints/litellm'
     || pathname === '/admin/service-endpoints/litellm';
+};
+const isDifyLegacyPath = (pathname: string) => {
+  return pathname === '/ai/dify'
+    || pathname === '/admin/ai/dify'
+    || pathname === '/ai-services/dify'
+    || pathname === '/admin/ai-services/dify'
+    || pathname === '/service-endpoints/dify';
 };
 const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/dashboard': '/infra/databases',
@@ -193,6 +201,10 @@ export async function proxy(request: NextRequest) {
   if (portalHost) {
     if (isAuthentikLegacyPath(pathname)) {
       return NextResponse.redirect('https://sso.getouch.co');
+    }
+
+    if (isDifyLegacyPath(pathname)) {
+      return NextResponse.redirect(DIFY_URL);
     }
 
     if (isLangfuseLegacyPath(pathname)) {
@@ -318,6 +330,10 @@ export async function proxy(request: NextRequest) {
       const target = new URL(request.url);
       applyLegacyPathToUrl(target, canonicalAdminPath);
       return NextResponse.redirect(target);
+    }
+
+    if (isDifyLegacyPath(pathname)) {
+      return NextResponse.redirect(DIFY_URL);
     }
 
     if (isAuthentikLegacyPath(pathname)) {

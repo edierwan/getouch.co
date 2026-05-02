@@ -75,12 +75,17 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const AIRBYTE_URL = 'https://airbyte.getouch.co';
+const CHATWOOT_URL = 'https://chatwoot.getouch.co';
 const COOLIFY_URL = 'https://coolify.getouch.co';
 const DATABASES_ADMIN_PATH = '/admin/infra/databases';
+const DIFY_URL = 'https://dify.getouch.co/apps';
 const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
+const N8N_URL = 'https://n8n.getouch.my';
+const OPEN_WEBUI_URL = 'https://ai.getouch.co';
 
 export const ADMIN_NAV: NavSection[] = [
   {
@@ -97,24 +102,24 @@ export const ADMIN_NAV: NavSection[] = [
     label: 'AI ENGINE & DATA FLOW',
     accentRgb: '78, 206, 199',
     items: [
-      { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
       { label: 'LiteLLM Gateway', href: LITELLM_URL, icon: '◎', external: true },
-      { label: 'Dify', href: '/admin/ai/dify', icon: '◍' },
+      { label: 'n8n Workflows', href: N8N_URL, icon: '⇄', external: true },
+      { label: 'Airbyte', href: AIRBYTE_URL, icon: '⟷', external: true },
+      { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
       { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
-      { label: 'n8n Workflows', href: '/admin/automation/n8n', icon: '⇄' },
       { label: 'Webhooks', href: '/admin/automation/webhooks', icon: '↺' },
-      { label: 'Airbyte', href: '/admin/automation/airbyte', icon: '⟷' },
     ],
   },
   {
     label: 'COMMUNICATION HUBS',
     accentRgb: '92, 210, 184',
     items: [
+      { label: 'Dify', href: DIFY_URL, icon: '◍', external: true },
+      { label: 'Chatwoot', href: CHATWOOT_URL, icon: '◐', external: true },
+      { label: 'Open WebUI', href: OPEN_WEBUI_URL, icon: '◎', external: true },
+      { label: 'FusionPBX / Voice', href: '/admin/communications/voice', icon: '◍' },
       { label: 'Evolution Gateway', href: '/admin/communications/evolution', icon: '◈' },
       { label: 'Baileys Gateway', href: '/admin/communications/baileys', icon: '◌' },
-      { label: 'Open WebUI', href: '/admin/communications/open-webui', icon: '◎' },
-      { label: 'Chatwoot', href: '/admin/communications/chatwoot', icon: '◐' },
-      { label: 'FusionPBX / Voice', href: '/admin/communications/voice', icon: '◍' },
     ],
   },
   {
@@ -122,8 +127,8 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '196, 161, 255',
     items: [
       { label: 'Authentik', href: AUTHENTIK_URL, icon: '⚲', external: true },
-      { label: 'API Keys', href: '/admin/security/api-keys', icon: '⚿' },
       { label: 'Infisical', href: INFISICAL_URL, icon: '◫', external: true },
+      { label: 'API Keys', href: '/admin/security/api-keys', icon: '⚿' },
       { label: 'SDK & Docs', href: '/admin/security/docs', icon: '⌥' },
       { label: 'Quick Links', href: '/admin/security/quick-links', icon: '⊞' },
     ],

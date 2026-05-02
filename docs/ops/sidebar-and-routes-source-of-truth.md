@@ -24,33 +24,30 @@ Updated: 2026-05-02
 - Langfuse
 - Coolify
 - Databases
-- Object Storage
-- Backups
 
 ### AI Engine & Data Flow
 
-- vLLM Gateway
 - LiteLLM Gateway
-- Dify
-- MCP Endpoint
-- Qdrant
 - n8n Workflows
-- Webhooks
 - Airbyte
+- vLLM Gateway
+- MCP Endpoint
+- Webhooks
 
 ### Communication Hubs
 
+- Dify
+- Chatwoot
+- Open WebUI
+- FusionPBX / Voice
 - Evolution Gateway
 - Baileys Gateway
-- Open WebUI
-- Chatwoot
-- FusionPBX / Voice
 
 ### Access & Security
 
 - Authentik
-- API Keys
 - Infisical
+- API Keys
 - SDK & Docs
 - Quick Links
 
@@ -62,24 +59,21 @@ Updated: 2026-05-02
 | Infra & Persistence | Langfuse | `https://langfuse.getouch.co` | `https://langfuse.getouch.co` |
 | Infra & Persistence | Coolify | `https://coolify.getouch.co` | `https://coolify.getouch.co` |
 | Infra & Persistence | Databases | `/infra/databases` | `/admin/infra/databases` |
-| Infra & Persistence | Object Storage | `/infra/object-storage` | `/admin/infra/object-storage` |
-| Infra & Persistence | Backups | `/infra/backups` | `/admin/infra/backups` |
-| AI Engine & Data Flow | vLLM Gateway | `/ai/vllm` | `/admin/ai/vllm` |
 | AI Engine & Data Flow | LiteLLM Gateway | `https://litellm.getouch.co` | `https://litellm.getouch.co` |
-| AI Engine & Data Flow | Dify | `/ai/dify` | `/admin/ai/dify` |
+| AI Engine & Data Flow | n8n Workflows | `https://n8n.getouch.my` | `https://n8n.getouch.my` |
+| AI Engine & Data Flow | Airbyte | `https://airbyte.getouch.co` | `https://airbyte.getouch.co` |
+| AI Engine & Data Flow | vLLM Gateway | `/ai/vllm` | `/admin/ai/vllm` |
 | AI Engine & Data Flow | MCP Endpoint | `/ai/mcp` | `/admin/ai/mcp` |
-| AI Engine & Data Flow | Qdrant | `/ai/qdrant` | `/admin/ai/qdrant` |
-| AI Engine & Data Flow | n8n Workflows | `/automation/n8n` | `/admin/automation/n8n` |
 | AI Engine & Data Flow | Webhooks | `/automation/webhooks` | `/admin/automation/webhooks` |
-| AI Engine & Data Flow | Airbyte | `/automation/airbyte` | `/admin/automation/airbyte` |
+| Communication Hubs | Dify | `https://dify.getouch.co/apps` | `https://dify.getouch.co/apps` |
+| Communication Hubs | Chatwoot | `https://chatwoot.getouch.co` | `https://chatwoot.getouch.co` |
+| Communication Hubs | Open WebUI | `https://ai.getouch.co` | `https://ai.getouch.co` |
+| Communication Hubs | FusionPBX / Voice | `/communications/voice` | `/admin/communications/voice` |
 | Communication Hubs | Evolution Gateway | `/communications/evolution` | `/admin/communications/evolution` |
 | Communication Hubs | Baileys Gateway | `/communications/baileys` | `/admin/communications/baileys` |
-| Communication Hubs | Open WebUI | `/communications/open-webui` | `/admin/communications/open-webui` |
-| Communication Hubs | Chatwoot | `/communications/chatwoot` | `/admin/communications/chatwoot` |
-| Communication Hubs | FusionPBX / Voice | `/communications/voice` | `/admin/communications/voice` |
 | Access & Security | Authentik | `https://sso.getouch.co` | `https://sso.getouch.co` |
-| Access & Security | API Keys | `/security/api-keys` | `/admin/security/api-keys` |
 | Access & Security | Infisical | `https://infisical.getouch.co` | `https://infisical.getouch.co` |
+| Access & Security | API Keys | `/security/api-keys` | `/admin/security/api-keys` |
 | Access & Security | SDK & Docs | `/security/docs` | `/admin/security/docs` |
 | Access & Security | Quick Links | `/security/quick-links` | `/admin/security/quick-links` |
 
@@ -90,6 +84,7 @@ Updated: 2026-05-02
 - `/admin/observability/grafana` and `/observability/grafana` are legacy aliases and now redirect directly to `https://grafana.getouch.co`.
 - `/admin/observability/langfuse` and `/observability/langfuse` are legacy aliases and now redirect directly to `https://langfuse.getouch.co`.
 - `/admin/infra/coolify`, `/infra/coolify`, `/admin/infrastructure/coolify`, and `/infrastructure/coolify` are legacy aliases and now redirect directly to `https://coolify.getouch.co`.
+- `/ai/dify`, `/admin/ai/dify`, `/ai-services/dify`, and `/admin/ai-services/dify` now redirect directly to `https://dify.getouch.co/apps`; the internal monitoring page remains available at `/admin/service-endpoints/dify`.
 - `API Keys` remains the internal portal page for tenant and client key management.
 
 ## Source Files
