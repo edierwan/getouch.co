@@ -330,6 +330,7 @@ export const evolutionTenantBindings = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     tenantId: uuid('tenant_id').notNull().unique(),
+    tenantKey: varchar('tenant_key', { length: 160 }).notNull(),
     tenantName: varchar('tenant_name', { length: 160 }),
     tenantDomain: varchar('tenant_domain', { length: 255 }),
     instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
@@ -341,6 +342,7 @@ export const evolutionTenantBindings = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('evolution_tenant_bindings_tenant_key_unique').on(table.tenantKey),
     index('evolution_tenant_bindings_instance_idx').on(table.instanceId),
     index('evolution_tenant_bindings_status_idx').on(table.status),
   ],
@@ -354,9 +356,11 @@ export const evolutionSessions = pgTable(
     tenantId: uuid('tenant_id'),
     sessionName: varchar('session_name', { length: 120 }).notNull(),
     phoneNumber: varchar('phone_number', { length: 40 }),
+    pairedNumber: varchar('paired_number', { length: 40 }),
     status: evolutionSessionStatus('status').default('disconnected').notNull(),
     qrStatus: varchar('qr_status', { length: 40 }),
     qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
+    lastQrAt: timestamp('last_qr_at', { withTimezone: true }),
     evolutionRemoteId: varchar('evolution_remote_id', { length: 160 }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
     lastConnectedAt: timestamp('last_connected_at', { withTimezone: true }),
@@ -474,7 +478,7 @@ export const evolutionEvents = pgTable(
 export const evolutionSettings = pgTable('evolution_settings', {
   id: integer('id').primaryKey().default(1),
   defaultWebhookEvents: jsonb('default_webhook_events').$type<string[]>()
-    .default(['message.received', 'message.sent', 'session.connected', 'session.disconnected', 'qr.updated'])
+    .default(['message.received', 'message.sent', 'session.connected', 'session.disconnected', 'qrcode.updated'])
     .notNull(),
   retryMaxAttempts: integer('retry_max_attempts').default(5).notNull(),
   rateLimitPerMinute: integer('rate_limit_per_minute').default(60).notNull(),

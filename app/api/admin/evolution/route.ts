@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { evolutionInstances, evolutionTenantBindings } from '@/lib/schema';
+import { evolutionInstances } from '@/lib/schema';
 import {
   getEvolutionConfig,
   getOverviewStats,
   getSystemHealth,
+  listTenantBindings,
   listRecentEvents,
 } from '@/lib/evolution';
 import { requireAdmin } from './_helpers';
@@ -21,7 +22,7 @@ export async function GET() {
     const [stats, instances, tenants, events, health] = await Promise.all([
       getOverviewStats(),
       db.select().from(evolutionInstances).orderBy(desc(evolutionInstances.createdAt)).limit(10),
-      db.select().from(evolutionTenantBindings).orderBy(desc(evolutionTenantBindings.updatedAt)).limit(10),
+      listTenantBindings(),
       listRecentEvents(8),
       getSystemHealth(),
     ]);
@@ -30,7 +31,7 @@ export async function GET() {
       config: getEvolutionConfig(),
       stats,
       instances: instances.map(sanitizeInstance),
-      tenants,
+      tenants: tenants.slice(0, 10),
       events,
       systemHealth: health,
     });

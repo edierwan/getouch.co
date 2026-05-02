@@ -1,4 +1,5 @@
 import { evolutionFetch, type EvolutionResult } from '@/lib/evolution';
+import { normalizeMyPhone } from '@/lib/phone';
 import { evolutionSessions } from '@/lib/schema';
 
 export const EVOLUTION_DEPENDENCY_FAILURE_STATUS = 424;
@@ -77,6 +78,13 @@ export function isMissingRemoteInstance(data: unknown) {
   return message.includes('does not exist') || (message.includes('instance') && message.includes('not found'));
 }
 
+export function isRemoteInstanceAlreadyPresent(data: unknown) {
+  const message = getBackendMessage(data)?.toLowerCase() ?? '';
+  return message.includes('already exists')
+    || message.includes('already registered')
+    || message.includes('already in use');
+}
+
 export function getRemoteIdCandidates(row: typeof evolutionSessions.$inferSelect) {
   const values = [
     row.evolutionRemoteId?.trim() || null,
@@ -151,6 +159,97 @@ export async function probeInstanceState(remoteId: string): Promise<string | nul
   });
 
   return match?.connectionStatus ?? match?.instance?.state ?? null;
+}
+
+export interface EnsureRemoteSessionResult {
+  ok: boolean;
+  status: number;
+  remoteId: string;
+  state: string | null;
+  created: boolean;
+  error?: string;
+  data?: EvolutionCreatePayload | EvolutionInstanceSummaryPayload[];
+}
+
+export async function ensureRemoteSession(sessionName: string): Promise<EnsureRemoteSessionResult> {
+  const expectedName = sessionName.trim();
+  const instances = await evolutionFetch<EvolutionInstanceSummaryPayload[]>('/instance/fetchInstances', {
+    method: 'GET',
+    timeoutMs: 5000,
+  });
+
+  if (instances.ok && Array.isArray(instances.data)) {
+    const existing = instances.data.find((instance) => {
+      const instanceName = instance.name ?? instance.instance?.instanceName;
+      return instanceName?.toLowerCase() === expectedName.toLowerCase();
+    });
+
+    if (existing) {
+      return {
+        ok: true,
+        status: 200,
+        remoteId: existing.name ?? existing.instance?.instanceName ?? expectedName,
+        state: existing.connectionStatus ?? existing.instance?.state ?? null,
+        created: false,
+        data: instances.data,
+      };
+    }
+  }
+
+  const created = await evolutionFetch<EvolutionCreatePayload>('/instance/create', {
+    method: 'POST',
+    timeoutMs: 8000,
+    body: JSON.stringify({
+      instanceName: expectedName,
+      qrcode: false,
+      integration: 'WHATSAPP-BAILEYS',
+    }),
+  });
+
+  if (created.ok) {
+    return {
+      ok: true,
+      status: created.status,
+      remoteId: created.data?.instance?.instanceName ?? expectedName,
+      state: created.data?.instance?.state ?? null,
+      created: true,
+      data: created.data,
+    };
+  }
+
+  if (created.status === 409 || isRemoteInstanceAlreadyPresent(created.data)) {
+    return {
+      ok: true,
+      status: created.status,
+      remoteId: expectedName,
+      state: await probeInstanceState(expectedName),
+      created: false,
+      data: created.data,
+    };
+  }
+
+  if (isRetryableTimeoutFailure(created.status, created.error)) {
+    const state = await probeInstanceState(expectedName);
+    if (state) {
+      return {
+        ok: true,
+        status: 200,
+        remoteId: expectedName,
+        state,
+        created: true,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    status: created.status,
+    remoteId: expectedName,
+    state: null,
+    created: false,
+    error: created.error,
+    data: created.data,
+  };
 }
 
 export async function resolveRemoteState(row: typeof evolutionSessions.$inferSelect) {
@@ -230,6 +329,42 @@ export function extractProviderMessageId(data: unknown): string | null {
 
     for (const key of ['data', 'message', 'response', 'result']) {
       if (record[key] && typeof record[key] === 'object') queue.push(record[key]);
+    }
+  }
+
+  return null;
+}
+
+function normalizePhoneCandidate(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeMyPhone(value.split('@')[0]?.replace(/[^0-9+]/g, '') ?? '');
+  return normalized || null;
+}
+
+export function extractPairedNumber(data: unknown): string | null {
+  const queue: unknown[] = [data];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+
+    if (typeof current !== 'object') continue;
+    const record = current as Record<string, unknown>;
+
+    for (const key of ['phone', 'phoneNumber', 'number', 'owner', 'ownerJid', 'remoteJid', 'wid']) {
+      const normalized = normalizePhoneCandidate(record[key]);
+      if (normalized) return normalized;
+    }
+
+    for (const value of Object.values(record)) {
+      if (Array.isArray(value) || (value && typeof value === 'object')) {
+        queue.push(value);
+      }
     }
   }
 

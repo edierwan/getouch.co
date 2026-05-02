@@ -79,7 +79,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const [row] = await db.select().from(evolutionSessions).where(eq(evolutionSessions.id, id));
   if (!row) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  if (samePhone(recipientPhone, row.phoneNumber)) {
+  const sessionPhone = row.pairedNumber ?? row.phoneNumber;
+  if (samePhone(recipientPhone, sessionPhone)) {
     return NextResponse.json({
       error: 'recipient_matches_session',
       detail: 'Choose a recipient different from the paired WhatsApp number.',
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       sessionId: id,
       direction: 'outbound',
       toNumber: recipientPhone,
-      fromNumber: row.phoneNumber,
+      fromNumber: sessionPhone,
       messageType: 'text',
       status: 'sent',
       providerMessageId,
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     sessionId: id,
     direction: 'outbound',
     toNumber: recipientPhone,
-    fromNumber: row.phoneNumber,
+    fromNumber: sessionPhone,
     messageType: 'text',
     status: 'failed',
     providerMessageId: extractProviderMessageId(response.data),

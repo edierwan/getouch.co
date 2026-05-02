@@ -5,7 +5,9 @@ import { evolutionSessions } from '@/lib/schema';
 import { evolutionFetch, recordEvent } from '@/lib/evolution';
 import {
   buildConnectPath,
+  ensureRemoteSession,
   EVOLUTION_DEPENDENCY_FAILURE_STATUS,
+  extractPairedNumber,
   fetchConnectionState,
   getDetailForState,
   getFailureDetail,
@@ -15,7 +17,6 @@ import {
   mapBackendStateToSessionStatus,
   normalizeQrPayload,
   recoverTimedOutConnect,
-  type EvolutionCreatePayload,
   type EvolutionQrPayload,
 } from '../../_shared';
 import { requireAdmin } from '../../../_helpers';
@@ -24,7 +25,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 interface Ctx { params: Promise<{ id: string }> }
-const ACTIONS = new Set(['connect', 'reconnect', 'disconnect', 'qr']);
+const ACTIONS = new Set(['connect', 'reconnect', 'disconnect', 'logout', 'qr', 'restart']);
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   const auth = await requireAdmin();
@@ -43,10 +44,19 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   const remoteId = row.evolutionRemoteId ?? row.sessionName;
 
-  if (action === 'connect' || action === 'reconnect' || action === 'qr') {
+  if (action === 'connect' || action === 'reconnect' || action === 'qr' || action === 'restart') {
     let resolvedRemoteId = remoteId;
-    let detailPrefix: string | null = null;
-    let r = null as Awaited<ReturnType<typeof evolutionFetch<EvolutionQrPayload>>> | Awaited<ReturnType<typeof evolutionFetch<EvolutionCreatePayload>>> | null;
+    let detailPrefix: string | null = action === 'restart'
+      ? 'Session restart requested. Requesting a fresh connection now.'
+      : null;
+    let r = null as Awaited<ReturnType<typeof evolutionFetch<EvolutionQrPayload>>> | null;
+
+    if (action === 'restart') {
+      await evolutionFetch(`/instance/logout/${encodeURIComponent(remoteId)}`, {
+        method: 'DELETE',
+        timeoutMs: 6000,
+      });
+    }
 
     for (const candidate of getRemoteIdCandidates(row)) {
       const attempt = await evolutionFetch<EvolutionQrPayload>(
@@ -71,55 +81,29 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     }
 
     if (!r) {
-      const created = await evolutionFetch<EvolutionCreatePayload>('/instance/create', {
-        method: 'POST',
-        timeoutMs: 8000,
-        body: JSON.stringify({
-          instanceName: row.sessionName,
-          qrcode: true,
-          integration: 'WHATSAPP-BAILEYS',
-        }),
-      });
-
-      if (!created.ok) {
-        if (isRetryableTimeoutFailure(created.status, created.error)) {
-          const recovered = await recoverTimedOutConnect(row.sessionName);
-          if (recovered) {
-            resolvedRemoteId = row.sessionName;
-            detailPrefix = 'Evolution runtime session was missing. Recreation is still starting in the background.';
-            r = recovered;
-          }
-        }
-
-        if (r) {
-          // Continue through the shared success path below with a waiting state.
-        } else {
-          return NextResponse.json({
-            ok: false,
-            status: created.status,
-            error: created.error ?? 'backend_error',
-            detail: `Evolution runtime session is missing and recreation failed. ${getFailureDetail({
-              status: created.status,
-              error: created.error,
-              data: created.data,
-              remoteId: row.sessionName,
-            })}`,
-          }, { status: EVOLUTION_DEPENDENCY_FAILURE_STATUS });
-        }
+      const ensured = await ensureRemoteSession(row.sessionName);
+      if (!ensured.ok) {
+        return NextResponse.json({
+          ok: false,
+          status: ensured.status,
+          error: ensured.error ?? 'backend_error',
+          detail: `Evolution runtime session is missing and recreation failed. ${getFailureDetail({
+            status: ensured.status,
+            error: ensured.error,
+            data: ensured.data,
+            remoteId: row.sessionName,
+          })}`,
+        }, { status: EVOLUTION_DEPENDENCY_FAILURE_STATUS });
       }
 
-      if (!r) {
-        resolvedRemoteId = created.data?.instance?.instanceName ?? row.sessionName;
-        detailPrefix = 'Evolution runtime session was missing. The portal recreated it and requested a fresh QR.';
-        const createdQr = normalizeQrPayload(created.data);
-
-        r = createdQr.qr || createdQr.qrCode || createdQr.pairingCode || createdQr.state
-          ? created
-          : await evolutionFetch<EvolutionQrPayload>(
-              buildConnectPath(resolvedRemoteId),
-              { method: 'GET', timeoutMs: 8000 },
-            );
-      }
+      resolvedRemoteId = ensured.remoteId;
+      detailPrefix = ensured.created
+        ? [detailPrefix, 'Evolution runtime session was missing. The portal created it before requesting a fresh QR.'].filter(Boolean).join(' ')
+        : detailPrefix;
+      r = await evolutionFetch<EvolutionQrPayload>(
+        buildConnectPath(resolvedRemoteId),
+        { method: 'GET', timeoutMs: 8000 },
+      );
     }
 
     if (r && !r.ok && isRetryableTimeoutFailure(r.status, r.error)) {
@@ -134,14 +118,18 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       const qr = normalizeQrPayload(r.data);
       const state = qr.state ?? await fetchConnectionState(resolvedRemoteId);
       const sessionStatus = mapBackendStateToSessionStatus(state);
+      const now = new Date();
+      const pairedNumber = extractPairedNumber(r.data) ?? row.pairedNumber ?? row.phoneNumber;
       const detail = [detailPrefix, getDetailForState({ ...qr, state })].filter(Boolean).join(' ') || null;
       await db.update(evolutionSessions).set({
         evolutionRemoteId: resolvedRemoteId,
         status: sessionStatus,
         qrStatus: state === 'open' ? 'connected' : qr.qr || qr.qrCode || qr.pairingCode ? 'pending' : null,
-        updatedAt: new Date(),
-        qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(Date.now() + 60 * 1000) : null,
-        lastConnectedAt: state === 'open' ? new Date() : row.lastConnectedAt,
+        updatedAt: now,
+        qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(now.getTime() + 60 * 1000) : null,
+        lastQrAt: qr.qr || qr.qrCode ? now : row.lastQrAt,
+        lastConnectedAt: state === 'open' ? now : row.lastConnectedAt,
+        pairedNumber: state === 'open' ? pairedNumber : row.pairedNumber,
       }).where(eq(evolutionSessions.id, id));
       await recordEvent({
         eventType: `session.${action}_requested`,
@@ -174,21 +162,22 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     }, { status: EVOLUTION_DEPENDENCY_FAILURE_STATUS });
   }
 
-  if (action === 'disconnect') {
+  if (action === 'disconnect' || action === 'logout') {
     const r = await evolutionFetch(`/instance/logout/${encodeURIComponent(remoteId)}`, {
       method: 'DELETE', timeoutMs: 6000,
     });
+    const now = new Date();
     await db.update(evolutionSessions).set({
       status: 'disconnected', qrStatus: null, qrExpiresAt: null,
-      lastDisconnectedAt: new Date(), updatedAt: new Date(),
+      lastDisconnectedAt: now, updatedAt: now,
     }).where(eq(evolutionSessions.id, id));
     await recordEvent({
-      eventType: 'session.disconnected', severity: 'warn',
-      summary: `Session "${row.sessionName}" disconnected`,
+      eventType: action === 'logout' ? 'session.logged_out' : 'session.disconnected', severity: 'warn',
+      summary: `Session "${row.sessionName}" ${action === 'logout' ? 'logged out' : 'disconnected'}`,
       actorEmail: auth.session?.email ?? null,
       instanceId: row.instanceId, sessionId: id, tenantId: row.tenantId,
     });
-    return NextResponse.json({ ok: r.ok || true });
+    return NextResponse.json({ ok: r.ok || true, state: 'disconnected' });
   }
 
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 });

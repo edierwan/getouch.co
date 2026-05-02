@@ -27,8 +27,11 @@ export const EVOLUTION_DEFAULT_WEBHOOK_EVENTS = [
   'message.failed',
   'session.connected',
   'session.disconnected',
-  'qr.updated',
+  'qrcode.updated',
 ] as const;
+
+export const DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY = 'getouch-internal';
+export const DEFAULT_INTERNAL_EVOLUTION_TENANT_NAME = 'GetTouch Internal';
 
 export type EvolutionEvent = (typeof EVOLUTION_DEFAULT_WEBHOOK_EVENTS)[number];
 
@@ -147,6 +150,45 @@ export function generateWebhookSecret(): { plaintext: string; prefix: string; ha
   return { plaintext, prefix: plaintext.slice(0, 12), hash };
 }
 
+export async function buildUniqueEvolutionTenantKey(input: string) {
+  const base = slugify(input || 'tenant').slice(0, 120) || 'tenant';
+  const rows = await db
+    .select({ tenantKey: evolutionTenantBindings.tenantKey })
+    .from(evolutionTenantBindings)
+    .where(dsql`${evolutionTenantBindings.tenantKey} like ${`${base}%`}`);
+  const existing = new Set(rows.map((row) => row.tenantKey));
+  if (!existing.has(base)) return base;
+
+  for (let suffix = 2; suffix < 500; suffix += 1) {
+    const candidate = `${base}-${suffix}`.slice(0, 160);
+    if (!existing.has(candidate)) return candidate;
+  }
+
+  return `${base}-${crypto.randomBytes(3).toString('hex')}`.slice(0, 160);
+}
+
+export async function ensureDefaultEvolutionTenant() {
+  const [existing] = await db
+    .select()
+    .from(evolutionTenantBindings)
+    .where(eq(evolutionTenantBindings.tenantKey, DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY))
+    .limit(1);
+  if (existing) return existing;
+
+  const [created] = await db.insert(evolutionTenantBindings).values({
+    tenantId: crypto.randomUUID(),
+    tenantKey: DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY,
+    tenantName: DEFAULT_INTERNAL_EVOLUTION_TENANT_NAME,
+    tenantDomain: null,
+    instanceId: null,
+    defaultSessionId: null,
+    plan: 'trial',
+    status: 'active',
+    metadata: { internal: true },
+  }).returning();
+  return created;
+}
+
 /* ─── Audit/event log helper ──────────────────────────── */
 
 export interface AuditEventInput {
@@ -213,6 +255,7 @@ export interface OverviewStats {
 }
 
 export async function getOverviewStats(): Promise<OverviewStats> {
+  await ensureDefaultEvolutionTenant();
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -287,6 +330,7 @@ export async function listSessions(opts: { tenantId?: string; instanceId?: strin
 }
 
 export async function listTenantBindings() {
+  await ensureDefaultEvolutionTenant();
   return db.select().from(evolutionTenantBindings).orderBy(desc(evolutionTenantBindings.updatedAt));
 }
 

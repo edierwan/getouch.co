@@ -54,16 +54,17 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     qrCount: row.qrStatus === 'pending' ? 0 : null,
   });
 
-  const shouldUpdate = resolvedRemoteId !== row.evolutionRemoteId || sessionStatus !== row.status;
-  if (shouldUpdate || (state === 'open' && !row.lastConnectedAt)) {
-    await db.update(evolutionSessions).set({
-      evolutionRemoteId: resolvedRemoteId,
-      status: sessionStatus,
-      lastConnectedAt: state === 'open' ? new Date() : row.lastConnectedAt,
-      lastDisconnectedAt: state === 'close' || state === 'disconnected' ? new Date() : row.lastDisconnectedAt,
-      updatedAt: new Date(),
-    }).where(eq(evolutionSessions.id, id));
-  }
+  const now = new Date();
+  await db.update(evolutionSessions).set({
+    evolutionRemoteId: resolvedRemoteId,
+    status: sessionStatus,
+    qrStatus: state === 'open' ? 'connected' : sessionStatus === 'qr_pending' ? 'pending' : null,
+    qrExpiresAt: state === 'open' ? null : row.qrExpiresAt,
+    pairedNumber: state === 'open' ? row.pairedNumber ?? row.phoneNumber : row.pairedNumber,
+    lastConnectedAt: state === 'open' ? row.lastConnectedAt ?? now : row.lastConnectedAt,
+    lastDisconnectedAt: state === 'close' || state === 'disconnected' ? now : row.lastDisconnectedAt,
+    updatedAt: now,
+  }).where(eq(evolutionSessions.id, id));
 
   return NextResponse.json({
     ok: true,
@@ -72,11 +73,13 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     waitRecommended: state === 'connecting' || state === 'qr' || (!state && row.status === 'qr_pending'),
     detail,
     qrExpiresAt: row.qrExpiresAt?.toISOString() ?? null,
-    lastCheckedAt: new Date().toISOString(),
+    lastCheckedAt: now.toISOString(),
     session: {
       ...row,
       evolutionRemoteId: resolvedRemoteId,
       status: sessionStatus,
+      qrStatus: state === 'open' ? 'connected' : sessionStatus === 'qr_pending' ? 'pending' : null,
+      updatedAt: now,
     },
   });
 }

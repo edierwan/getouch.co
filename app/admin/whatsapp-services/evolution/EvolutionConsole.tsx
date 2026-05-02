@@ -28,9 +28,9 @@ interface Instance {
 }
 interface Session {
   id: string; instanceId: string | null; tenantId: string | null;
-  sessionName: string; phoneNumber: string | null;
+  sessionName: string; phoneNumber: string | null; pairedNumber?: string | null;
   status: 'connected' | 'connecting' | 'disconnected' | 'expired' | 'error' | 'qr_pending';
-  qrStatus: string | null; qrExpiresAt?: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
+  qrStatus: string | null; qrExpiresAt?: string | null; lastQrAt?: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
   createdAt: string; updatedAt: string;
 }
 interface SessionQrResponse {
@@ -49,7 +49,7 @@ interface SessionQrResponse {
   lastCheckedAt?: string;
 }
 interface TenantBinding {
-  id: string; tenantId: string; tenantName: string | null; tenantDomain: string | null;
+  id: string; tenantId: string; tenantKey: string; tenantName: string | null; tenantDomain: string | null;
   instanceId: string | null;
   plan: 'trial' | 'starter' | 'pro' | 'business' | 'enterprise';
   status: 'active' | 'suspended' | 'pending';
@@ -104,9 +104,11 @@ interface SessionTestResult {
   createdAt: string;
 }
 
+const DEFAULT_INTERNAL_TENANT_KEY = 'getouch-internal';
+
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'instances', label: 'Instances' },
+  { id: 'instances', label: 'Gateways' },
   { id: 'tenants', label: 'Tenants' },
   { id: 'sessions', label: 'Sessions' },
   { id: 'webhooks', label: 'Webhooks' },
@@ -186,6 +188,14 @@ function formatDateTime(iso: string | null | undefined): string {
   return value.toLocaleString();
 }
 
+function getTenantDisplay(tenant: TenantBinding | null | undefined): string {
+  return tenant?.tenantName ?? tenant?.tenantKey ?? 'Unassigned';
+}
+
+function getSessionPhone(session: Session | null | undefined): string | null {
+  return session?.pairedNumber ?? session?.phoneNumber ?? null;
+}
+
 /* ─── Top-level component ─────────────────────────────── */
 export function EvolutionConsole() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -255,7 +265,7 @@ function EvolutionHeader({ config, onCreateInstance }: { config: EvolutionConfig
       <div className="evo-page-head-row">
         <div>
           <h1 className="evo-title">Evolution WhatsApp Gateway</h1>
-          <p className="evo-subtitle">Multi-tenant WhatsApp gateway powered by Evolution API</p>
+          <p className="evo-subtitle">Manage gateway backends, tenant ownership, WhatsApp sessions, and test sends from one control plane.</p>
           {config && !config.configured ? (
             <div className="evo-banner evo-banner-warn">
               ⚠ Evolution backend not configured.
@@ -271,7 +281,7 @@ function EvolutionHeader({ config, onCreateInstance }: { config: EvolutionConfig
             <span className="evo-btn-ico">▤</span> View Logs
           </button>
           <button type="button" className="evo-btn evo-btn-primary" onClick={onCreateInstance}>
-            <span className="evo-btn-ico">＋</span> Create Instance
+            <span className="evo-btn-ico">＋</span> Create Gateway
           </button>
         </div>
       </div>
@@ -297,7 +307,7 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewResponse | nu
   return (
     <div className="evo-overview">
       <div className="evo-stat-grid">
-        <StatCard label="TOTAL INSTANCES" value={fmtNumber(stats.totalInstances)} sub={`${stats.activeInstances} Active · ${stats.stoppedInstances} Stopped`} icon="◫" />
+        <StatCard label="TOTAL GATEWAYS" value={fmtNumber(stats.totalInstances)} sub={`${stats.activeInstances} Active · ${stats.stoppedInstances} Stopped`} icon="◫" />
         <StatCard label="ACTIVE SESSIONS" value={fmtNumber(stats.activeSessions)} sub={stats.totalSessions > 0 ? `${stats.totalSessions} total` : 'No sessions yet'} icon="▤" tone="good" />
         <StatCard label="TOTAL TENANTS" value={fmtNumber(stats.totalTenants)} sub={stats.newTenantsThisWeek > 0 ? `+${stats.newTenantsThisWeek} this week` : 'No new this week'} icon="⌬" />
         <StatCard label="MESSAGES (24h)" value={fmtNumber(stats.messages24h)} sub={stats.messages24hDelta != null ? `${stats.messages24hDelta >= 0 ? '+' : ''}${stats.messages24hDelta}% vs prev` : 'No prior data'} icon="✉" tone="amber" />
@@ -307,11 +317,11 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewResponse | nu
       <div className="evo-grid-2">
         <section className="evo-panel evo-panel-fill">
           <div className="evo-panel-head">
-            <h3 className="evo-panel-title">Evolution Instances</h3>
+            <h3 className="evo-panel-title">Gateway Backends</h3>
             <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={onRefresh}>↻ Refresh</button>
           </div>
           {instances.length === 0 ? (
-            <div className="evo-empty-row">No instances configured. Use “Create Instance” to add one.</div>
+            <div className="evo-empty-row">No gateways configured. Use “Create Gateway” to add an Evolution backend connection.</div>
           ) : (
             <table className="evo-table">
               <thead><tr><th>NAME</th><th>STATUS</th><th>HEALTH</th><th>UPDATED</th></tr></thead>
@@ -350,8 +360,8 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewResponse | nu
                 {tenants.slice(0, 6).map((t) => (
                   <tr key={t.id}>
                     <td>
-                      <div className="evo-cell-strong">{t.tenantName ?? t.tenantId.slice(0, 8)}</div>
-                      <div className="evo-cell-muted">{t.tenantDomain ?? '—'}</div>
+                      <div className="evo-cell-strong">{t.tenantName ?? t.tenantKey}</div>
+                      <div className="evo-cell-muted">{t.tenantKey}{t.tenantDomain ? ` · ${t.tenantDomain}` : ''}</div>
                     </td>
                     <td><span className={planBadge(t.plan)}>{t.plan}</span></td>
                     <td><span className={statusBadge(t.status)}>{t.status}</span></td>
@@ -497,27 +507,30 @@ function InstancesTab({ onChange }: { onChange: () => void }) {
   return (
     <section className="evo-panel evo-panel-fill">
       <div className="evo-panel-head">
-        <h3 className="evo-panel-title">Instances</h3>
-        <button type="button" className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => setShowCreate((v) => !v)}>＋ New Instance</button>
+        <div>
+          <h3 className="evo-panel-title">Gateway Backends</h3>
+          <div className="evo-cell-muted">A gateway is the Evolution API server connection. It is not the WhatsApp number itself.</div>
+        </div>
+        <button type="button" className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => setShowCreate((v) => !v)}>＋ New Gateway</button>
       </div>
 
       {showCreate && (
         <form className="evo-form-inline" onSubmit={submit}>
-          <input className="evo-input" placeholder="Name (e.g. evo-main-01)" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          <input className="evo-input" placeholder="Gateway name (e.g. evo-main-01)" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           <input className="evo-input" placeholder="Slug (auto if blank)" value={form.slug} onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))} />
           <input className="evo-input" placeholder="Internal URL (http://evolution-api:8080)" required value={form.internalUrl} onChange={(e) => setForm((f) => ({ ...f, internalUrl: e.target.value }))} />
           <input className="evo-input" placeholder="Region" value={form.region} onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))} />
-          <button className="evo-btn evo-btn-primary evo-btn-xs" disabled={busy} type="submit">Create</button>
+          <button className="evo-btn evo-btn-primary evo-btn-xs" disabled={busy} type="submit">Create Gateway</button>
           <button className="evo-btn evo-btn-ghost evo-btn-xs" type="button" onClick={() => setShowCreate(false)}>Cancel</button>
           {err ? <div className="evo-form-err">{err}</div> : null}
         </form>
       )}
 
       {loading ? <div className="evo-empty">Loading…</div> : rows.length === 0 ? (
-        <div className="evo-empty-row">No instances configured.</div>
+        <div className="evo-empty-row">No gateways configured.</div>
       ) : (
         <table className="evo-table">
-          <thead><tr><th>NAME</th><th>URL</th><th>STATUS</th><th>HEALTH</th><th>UPDATED</th><th>ACTIONS</th></tr></thead>
+          <thead><tr><th>GATEWAY</th><th>URL</th><th>STATUS</th><th>HEALTH</th><th>UPDATED</th><th>ACTIONS</th></tr></thead>
           <tbody>
             {rows.map((i) => (
               <tr key={i.id}>
@@ -550,7 +563,7 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
   const [rows, setRows] = useState<TenantBinding[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ tenantId: '', tenantName: '', tenantDomain: '', instanceId: '', plan: 'trial', status: 'active' });
+  const [form, setForm] = useState({ tenantName: '', tenantDomain: '', instanceId: '', plan: 'trial', status: 'active' });
   const [err, setErr] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -574,7 +587,7 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
         body: JSON.stringify({ ...form, instanceId: form.instanceId || null }),
       });
       if (!r.ok) { setErr((await r.json()).error ?? 'failed'); return; }
-      setForm({ tenantId: '', tenantName: '', tenantDomain: '', instanceId: '', plan: 'trial', status: 'active' });
+      setForm({ tenantName: '', tenantDomain: '', instanceId: '', plan: 'trial', status: 'active' });
       await reload(); onChange();
     });
   }
@@ -582,22 +595,31 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
   return (
     <div className="evo-grid-2-1">
       <section className="evo-panel evo-panel-fill">
-        <div className="evo-panel-head"><h3 className="evo-panel-title">Tenant Bindings</h3></div>
+        <div className="evo-panel-head">
+          <div>
+            <h3 className="evo-panel-title">Tenant Directory</h3>
+            <div className="evo-cell-muted">Default internal tenant bootstrap is automatic. Use named tenants for real business ownership.</div>
+          </div>
+        </div>
         {loading ? <div className="evo-empty">Loading…</div> : rows.length === 0 ? (
-          <div className="evo-empty-row">No tenants bound. Use the form to assign a tenant to an instance.</div>
+          <div className="evo-empty-row">No tenants yet. The portal will create GetTouch Internal automatically.</div>
         ) : (
           <table className="evo-table">
-            <thead><tr><th>TENANT</th><th>INSTANCE</th><th>PLAN</th><th>STATUS</th><th>UPDATED</th></tr></thead>
+            <thead><tr><th>TENANT</th><th>TENANT KEY</th><th>GATEWAY</th><th>STATUS</th><th>PLAN</th><th>UPDATED</th></tr></thead>
             <tbody>
               {rows.map((t) => (
                 <tr key={t.id}>
                   <td>
-                    <div className="evo-cell-strong">{t.tenantName ?? t.tenantId.slice(0, 8)}</div>
-                    <div className="evo-cell-muted">{t.tenantDomain ?? t.tenantId}</div>
+                    <div className="evo-cell-strong">{t.tenantName ?? t.tenantKey}</div>
+                    <div className="evo-cell-muted">{t.tenantDomain ?? 'No domain set'}</div>
                   </td>
-                  <td>{instances.find((i) => i.id === t.instanceId)?.name ?? <span className="evo-cell-muted">—</span>}</td>
-                  <td><span className={planBadge(t.plan)}>{t.plan}</span></td>
+                  <td>
+                    <div className="evo-cell-strong">{t.tenantKey}</div>
+                    {t.tenantKey === DEFAULT_INTERNAL_TENANT_KEY ? <div className="evo-cell-muted">Default internal tenant</div> : null}
+                  </td>
+                  <td>{instances.find((i) => i.id === t.instanceId)?.name ?? <span className="evo-cell-muted">Shared / unassigned</span>}</td>
                   <td><span className={statusBadge(t.status)}>{t.status}</span></td>
+                  <td><span className={planBadge(t.plan)}>{t.plan}</span></td>
                   <td className="evo-cell-muted">{timeAgo(t.updatedAt)}</td>
                 </tr>
               ))}
@@ -607,18 +629,15 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
       </section>
 
       <section className="evo-panel">
-        <h3 className="evo-panel-title">Bind / Update Tenant</h3>
+        <h3 className="evo-panel-title">Create Tenant</h3>
         <form className="evo-form-vert" onSubmit={submit}>
-          <label className="evo-label">Tenant ID (UUID)
-            <input className="evo-input" required pattern="[0-9a-fA-F-]{32,40}" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))} />
-          </label>
           <label className="evo-label">Display name
-            <input className="evo-input" value={form.tenantName} onChange={(e) => setForm((f) => ({ ...f, tenantName: e.target.value }))} />
+            <input className="evo-input" required placeholder="ABC Trading" value={form.tenantName} onChange={(e) => setForm((f) => ({ ...f, tenantName: e.target.value }))} />
           </label>
-          <label className="evo-label">Domain
+          <label className="evo-label">Domain (optional)
             <input className="evo-input" placeholder="abc.com.my" value={form.tenantDomain} onChange={(e) => setForm((f) => ({ ...f, tenantDomain: e.target.value }))} />
           </label>
-          <label className="evo-label">Instance
+          <label className="evo-label">Gateway (optional)
             <select className="evo-input" value={form.instanceId} onChange={(e) => setForm((f) => ({ ...f, instanceId: e.target.value }))}>
               <option value="">— None —</option>
               {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
@@ -636,7 +655,8 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
               </select>
             </label>
           </div>
-          <button className="evo-btn evo-btn-primary" disabled={busy} type="submit">Save Binding</button>
+          <div className="evo-field-note">The tenant key is generated automatically. Admins do not need to enter UUIDs for control-plane setup.</div>
+          <button className="evo-btn evo-btn-primary" disabled={busy} type="submit">Create Tenant</button>
           {err ? <div className="evo-form-err">{err}</div> : null}
         </form>
       </section>
@@ -648,10 +668,12 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
 function SessionsTab({ onChange }: { onChange: () => void }) {
   const [rows, setRows] = useState<Session[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [tenants, setTenants] = useState<TenantBinding[]>([]);
+  const [defaultTenantId, setDefaultTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ instanceId: '', status: '', tenantId: '', query: '' });
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
+  const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', connectMethod: 'qr' as 'qr' | 'pairing', phoneNumber: '' });
   const [busy, startTransition] = useTransition();
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [testInstanceId, setTestInstanceId] = useState('');
@@ -663,8 +685,8 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
   const [qrModal, setQrModal] = useState<{
     id: string;
     sessionName: string;
+    tenantLabel: string;
     instanceName: string;
-    provider: string;
     qr: string | null;
     qrCodeText: string | null;
     pairing: string | null;
@@ -673,7 +695,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     qrExpiresAt: string | null;
     lastCheckedAt: string;
     pollAttempt: number;
-    pollStatus: 'connecting' | 'waiting_qr' | 'ready' | 'connected' | 'timeout' | 'failed';
+    pollStatus: 'idle' | 'connecting' | 'waiting_qr' | 'ready' | 'connected' | 'timeout' | 'failed';
     activeTab: 'qr' | 'pairing';
     pairingPhone: string;
     pairingBusy: boolean;
@@ -689,18 +711,22 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     if (filter.tenantId) params.set('tenantId', filter.tenantId);
 
     try {
-      const [sessionsResponse, instancesResponse] = await Promise.all([
+      const [sessionsResponse, instancesResponse, tenantsResponse] = await Promise.all([
         fetch(`/api/admin/evolution/sessions?${params}`, { cache: 'no-store' }),
         fetch('/api/admin/evolution/instances', { cache: 'no-store' }),
+        fetch('/api/admin/evolution/tenants', { cache: 'no-store' }),
       ]);
 
-      const [sessionsJson, instancesJson] = await Promise.all([
+      const [sessionsJson, instancesJson, tenantsJson] = await Promise.all([
         sessionsResponse.json().catch(() => ({ sessions: [] })),
         instancesResponse.json().catch(() => ({ instances: [] })),
+        tenantsResponse.json().catch(() => ({ tenants: [], defaultTenantId: '' })),
       ]);
 
       setRows(sessionsJson.sessions ?? []);
       setInstances(instancesJson.instances ?? []);
+      setTenants(tenantsJson.tenants ?? []);
+      setDefaultTenantId(tenantsJson.defaultTenantId ?? '');
     } finally {
       setLoading(false);
     }
@@ -708,18 +734,32 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
   useEffect(() => { void reload(); }, [reload]);
 
+  useEffect(() => {
+    if (!defaultTenantId) return;
+    setForm((current) => current.tenantId ? current : { ...current, tenantId: defaultTenantId });
+  }, [defaultTenantId]);
+
   const instanceMap = useMemo(() => new Map(instances.map((instance) => [instance.id, instance])), [instances]);
+  const tenantMap = useMemo(() => new Map(tenants.map((tenant) => [tenant.tenantId, tenant])), [tenants]);
   const visibleRows = useMemo(() => {
     const query = filter.query.trim().toLowerCase();
-    if (!query) return rows;
-    return rows.filter((row) => {
+    const filteredRows = filter.tenantId ? rows.filter((row) => row.tenantId === filter.tenantId) : rows;
+    if (!query) return filteredRows;
+    return filteredRows.filter((row) => {
       const instanceName = row.instanceId ? instanceMap.get(row.instanceId)?.name ?? '' : '';
-      return [row.sessionName, row.phoneNumber ?? '', row.tenantId ?? '', instanceName]
+      const tenant = row.tenantId ? tenantMap.get(row.tenantId) ?? null : null;
+      return [
+        row.sessionName,
+        getSessionPhone(row) ?? '',
+        getTenantDisplay(tenant),
+        tenant?.tenantKey ?? '',
+        instanceName,
+      ]
         .join(' ')
         .toLowerCase()
         .includes(query);
     });
-  }, [filter.query, instanceMap, rows]);
+  }, [filter.query, filter.tenantId, instanceMap, rows, tenantMap]);
 
   const sessionOptions = useMemo(() => {
     if (!testInstanceId) return rows;
@@ -764,12 +804,13 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     [rows, selectedSessionId],
   );
   const selectedInstance = selectedSession?.instanceId ? instanceMap.get(selectedSession.instanceId) ?? null : null;
+  const selectedTenant = selectedSession?.tenantId ? tenantMap.get(selectedSession.tenantId) ?? null : null;
   const normalizedRecipient = useMemo(
     () => normalizeMyPhone(testForm.recipientPhone),
     [testForm.recipientPhone],
   );
   const pairingPhoneNormalized = qrModal ? normalizeMyPhone(qrModal.pairingPhone) : null;
-  const recipientMatchesSession = samePhone(testForm.recipientPhone, selectedSession?.phoneNumber);
+  const recipientMatchesSession = samePhone(testForm.recipientPhone, getSessionPhone(selectedSession));
 
   const sendDisabledReason = useMemo(() => {
     if (!selectedSession) return 'Choose a session before sending a test message.';
@@ -804,7 +845,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     void loadTestResults(selectedSessionId);
   }, [loadTestResults, selectedSessionId]);
 
-  async function requestQr(id: string, actionName: 'connect' | 'reconnect' | 'qr'): Promise<SessionQrResponse> {
+  async function requestQr(id: string, actionName: 'connect' | 'reconnect' | 'qr' | 'restart'): Promise<SessionQrResponse> {
     const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -965,25 +1006,26 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         return;
       }
 
-      setForm({ sessionName: '', instanceId: '', tenantId: '', phoneNumber: '' });
+      setForm({ sessionName: '', instanceId: '', tenantId: defaultTenantId, connectMethod: 'qr', phoneNumber: '' });
       setShowCreate(false);
       await reload();
       onChange();
     });
   }
 
-  async function action(id: string, a: 'connect' | 'reconnect' | 'disconnect' | 'qr') {
+  async function action(id: string, a: 'connect' | 'reconnect' | 'disconnect' | 'logout' | 'qr' | 'restart') {
     setErr(null);
 
-    if (a === 'disconnect' && !window.confirm('Disconnect this session?')) return;
-    if (a === 'connect' || a === 'reconnect' || a === 'qr') {
+    if ((a === 'disconnect' || a === 'logout') && !window.confirm('Log out this session from WhatsApp?')) return;
+    if (a === 'connect' || a === 'reconnect' || a === 'qr' || a === 'restart') {
       const session = rows.find((row) => row.id === id);
       const instance = instances.find((row) => row.id === session?.instanceId);
+      const tenant = session?.tenantId ? tenantMap.get(session.tenantId) ?? null : null;
       setQrModal({
         id,
         sessionName: session?.sessionName ?? 'Unknown session',
+        tenantLabel: getTenantDisplay(tenant),
         instanceName: instance?.name ?? 'Unknown instance',
-        provider: 'Evolution API',
         qr: null,
         qrCodeText: null,
         pairing: null,
@@ -994,7 +1036,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         pollAttempt: 0,
         pollStatus: 'connecting',
         activeTab: 'qr',
-        pairingPhone: session?.phoneNumber ?? '',
+        pairingPhone: getSessionPhone(session) ?? '',
         pairingBusy: false,
         pairingError: null,
       });
@@ -1040,6 +1082,43 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
     await reload();
     onChange();
+  }
+
+  async function openPairingModal(id: string) {
+    const session = rows.find((row) => row.id === id);
+    const instance = instances.find((row) => row.id === session?.instanceId);
+    const tenant = session?.tenantId ? tenantMap.get(session.tenantId) ?? null : null;
+    setErr(null);
+    setQrModal({
+      id,
+      sessionName: session?.sessionName ?? 'Unknown session',
+      tenantLabel: getTenantDisplay(tenant),
+      instanceName: instance?.name ?? 'Unknown gateway',
+      qr: null,
+      qrCodeText: null,
+      pairing: null,
+      detail: 'Enter the WhatsApp phone number and request a pairing code.',
+      state: null,
+      qrExpiresAt: session?.qrExpiresAt ?? null,
+      lastCheckedAt: new Date().toISOString(),
+      pollAttempt: 0,
+      pollStatus: 'idle',
+      activeTab: 'pairing',
+      pairingPhone: getSessionPhone(session) ?? '',
+      pairingBusy: false,
+      pairingError: null,
+    });
+  }
+
+  async function checkStatus(id: string) {
+    setErr(null);
+    try {
+      await requestSessionStatus(id);
+      await reload();
+      onChange();
+    } catch (statusError) {
+      setErr(statusError instanceof Error ? statusError.message : 'Failed to refresh the session status.');
+    }
   }
 
   async function remove(id: string, name: string) {
@@ -1108,7 +1187,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         <div className="evo-panel-head">
           <div>
             <h3 className="evo-panel-title">WhatsApp Sessions</h3>
-            <div className="evo-cell-muted">Select a session to drive QR pairing and test-message checks from the same workspace.</div>
+            <div className="evo-cell-muted">Create the WhatsApp session first, then connect it by QR code or pairing code from the row actions below.</div>
           </div>
           <div className="evo-row-actions evo-session-toolbar">
             <input
@@ -1118,8 +1197,12 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
               onChange={(e) => setFilter((current) => ({ ...current, query: e.target.value }))}
             />
             <select className="evo-input evo-input-sm" value={filter.instanceId} onChange={(e) => setFilter((current) => ({ ...current, instanceId: e.target.value }))}>
-              <option value="">All instances</option>
+              <option value="">All gateways</option>
               {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
+            </select>
+            <select className="evo-input evo-input-sm" value={filter.tenantId} onChange={(e) => setFilter((current) => ({ ...current, tenantId: e.target.value }))}>
+              <option value="">All tenants</option>
+              {tenants.map((tenant) => <option key={tenant.id} value={tenant.tenantId}>{getTenantDisplay(tenant)}</option>)}
             </select>
             <select className="evo-input evo-input-sm" value={filter.status} onChange={(e) => setFilter((current) => ({ ...current, status: e.target.value }))}>
               <option value="">All statuses</option>
@@ -1132,18 +1215,30 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
         {showCreate && (
           <form className="evo-form-inline" onSubmit={submit}>
-            <input className="evo-input" required placeholder="Session name" value={form.sessionName} onChange={(e) => setForm((current) => ({ ...current, sessionName: e.target.value }))} />
+            <input className="evo-input" required placeholder="Session name (e.g. getouch-main)" value={form.sessionName} onChange={(e) => setForm((current) => ({ ...current, sessionName: e.target.value }))} />
             <select className="evo-input" required value={form.instanceId} onChange={(e) => setForm((current) => ({ ...current, instanceId: e.target.value }))}>
-              <option value="">Choose instance…</option>
+              <option value="">Choose gateway…</option>
               {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
             </select>
-            <input className="evo-input" placeholder="Tenant ID (optional)" value={form.tenantId} onChange={(e) => setForm((current) => ({ ...current, tenantId: e.target.value }))} />
-            <input className="evo-input" placeholder="Phone (optional, +60…)" value={form.phoneNumber} onChange={(e) => setForm((current) => ({ ...current, phoneNumber: e.target.value }))} />
-            <button className="evo-btn evo-btn-primary evo-btn-xs" type="submit" disabled={busy}>Create</button>
+            <select className="evo-input" value={form.tenantId} onChange={(e) => setForm((current) => ({ ...current, tenantId: e.target.value }))}>
+              <option value={defaultTenantId || ''}>GetTouch Internal (default)</option>
+              {tenants.filter((tenant) => tenant.tenantId !== defaultTenantId).map((tenant) => (
+                <option key={tenant.id} value={tenant.tenantId}>{getTenantDisplay(tenant)}</option>
+              ))}
+            </select>
+            <select className="evo-input" value={form.connectMethod} onChange={(e) => setForm((current) => ({ ...current, connectMethod: e.target.value as 'qr' | 'pairing' }))}>
+              <option value="qr">QR Code</option>
+              <option value="pairing">Pairing Code</option>
+            </select>
+            <input className="evo-input" placeholder={form.connectMethod === 'pairing' ? 'Phone number required for pairing' : 'Phone number optional for QR'} value={form.phoneNumber} onChange={(e) => setForm((current) => ({ ...current, phoneNumber: e.target.value }))} />
+            <button className="evo-btn evo-btn-primary evo-btn-xs" type="submit" disabled={busy}>Create Session</button>
             <button className="evo-btn evo-btn-ghost evo-btn-xs" type="button" onClick={() => setShowCreate(false)}>Cancel</button>
+            <div className="evo-field-note">Gateway is required. Tenant defaults to GetTouch Internal. Pairing code requires a valid Malaysian phone number.</div>
             {err ? <div className="evo-form-err">{err}</div> : null}
           </form>
         )}
+
+        {!showCreate && err ? <div className="evo-form-err">{err}</div> : null}
 
         {loading ? <div className="evo-empty">Loading…</div> : visibleRows.length === 0 ? (
           <div className="evo-empty-row">No sessions match the current filters.</div>
@@ -1151,12 +1246,14 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           <div className="evo-table-wrap">
             <table className="evo-table">
               <thead>
-                <tr><th>SESSION</th><th>INSTANCE</th><th>PHONE</th><th>STATUS</th><th>LAST CONNECTED</th><th>LAST MSG</th><th>ACTIONS</th></tr>
+                <tr><th>SESSION</th><th>TENANT</th><th>GATEWAY</th><th>PAIRED NUMBER</th><th>STATUS</th><th>LAST CHECKED</th><th>ACTIONS</th></tr>
               </thead>
               <tbody>
                 {visibleRows.map((row) => {
                   const isSelected = row.id === selectedSessionId;
                   const instanceName = row.instanceId ? instanceMap.get(row.instanceId)?.name ?? '—' : '—';
+                  const tenant = row.tenantId ? tenantMap.get(row.tenantId) ?? null : null;
+                  const pairedNumber = getSessionPhone(row);
                   return (
                     <tr
                       key={row.id}
@@ -1169,21 +1266,32 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
                     >
                       <td>
                         <div className="evo-cell-strong">{row.sessionName}</div>
-                        <div className="evo-cell-muted">{row.tenantId ? row.tenantId.slice(0, 12) : 'System session'}</div>
+                        <div className="evo-cell-muted">Created {formatDateTime(row.createdAt)}</div>
+                      </td>
+                      <td>
+                        <div className="evo-cell-strong">{getTenantDisplay(tenant)}</div>
+                        <div className="evo-cell-muted">{tenant?.tenantKey ?? 'legacy-session'}</div>
                       </td>
                       <td>
                         <div className="evo-cell-strong">{instanceName}</div>
                         <div className="evo-cell-muted">{row.instanceId ?? '—'}</div>
                       </td>
-                      <td className="evo-cell-mono">{row.phoneNumber ?? '—'}</td>
-                      <td><span className={statusBadge(row.status)}>{row.status.replace('_', ' ')}</span></td>
-                      <td className="evo-cell-muted">{timeAgo(row.lastConnectedAt)}</td>
-                      <td className="evo-cell-muted">{timeAgo(row.lastMessageAt)}</td>
+                      <td className="evo-cell-mono">{pairedNumber ?? '—'}</td>
+                      <td>
+                        <span className={statusBadge(row.status)}>{row.status.replace('_', ' ')}</span>
+                        {row.qrStatus ? <div className="evo-cell-muted">{row.qrStatus}</div> : null}
+                      </td>
+                      <td className="evo-cell-muted">
+                        <div>{timeAgo(row.updatedAt)}</div>
+                        {row.lastConnectedAt ? <div>Connected {timeAgo(row.lastConnectedAt)}</div> : null}
+                      </td>
                       <td>
                         <div className="evo-row-actions">
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'qr'); }}>QR</button>
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'reconnect'); }}>Reconnect</button>
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'disconnect'); }}>Disconnect</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'qr'); }}>Connect QR</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void openPairingModal(row.id); }}>Pairing Code</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void checkStatus(row.id); }}>Check Status</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'restart'); }}>Restart</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'logout'); }}>Logout</button>
                           <button type="button" className="evo-btn evo-btn-bad evo-btn-xs" onClick={(e) => { e.stopPropagation(); void remove(row.id, row.sessionName); }}>Delete</button>
                         </div>
                       </td>
@@ -1226,9 +1334,9 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
                 </select>
               </label>
               <label className="evo-label">
-                Instance
+                Gateway
                 <select className="evo-input" value={testInstanceId} onChange={(e) => setTestInstanceId(e.target.value)}>
-                  <option value="">All instances</option>
+                  <option value="">All gateways</option>
                   {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
                 </select>
               </label>
@@ -1238,11 +1346,11 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
               <div className="evo-summary-card evo-summary-card-muted">
                 <span className="evo-summary-label">Session</span>
                 <strong className="evo-summary-value">{selectedSession?.sessionName ?? 'Not selected'}</strong>
-                <span className="evo-summary-meta">{selectedInstance?.name ?? 'Choose an instance'}</span>
+                <span className="evo-summary-meta">{selectedInstance?.name ?? 'Choose a gateway'}</span>
               </div>
               <div className="evo-summary-card evo-summary-card-muted">
                 <span className="evo-summary-label">Paired Number</span>
-                <strong className="evo-summary-value evo-cell-mono">{selectedSession?.phoneNumber ?? '—'}</strong>
+                <strong className="evo-summary-value evo-cell-mono">{getSessionPhone(selectedSession) ?? '—'}</strong>
                 <span className="evo-summary-meta">Blocked as a test recipient</span>
               </div>
             </div>
@@ -1329,23 +1437,23 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
               <div className="evo-summary-card">
                 <span className="evo-summary-label">Session</span>
                 <strong className="evo-summary-value">{qrModal.sessionName}</strong>
-                <span className="evo-summary-meta">{selectedSession?.tenantId ?? 'System session'}</span>
+                <span className="evo-summary-meta">{qrModal.tenantLabel}</span>
               </div>
               <div className="evo-summary-card">
-                <span className="evo-summary-label">Provider</span>
-                <strong className="evo-summary-value">{qrModal.provider}</strong>
-                <span className="evo-summary-meta">Existing live Evolution backend</span>
-              </div>
-              <div className="evo-summary-card">
-                <span className="evo-summary-label">Instance</span>
+                <span className="evo-summary-label">Gateway</span>
                 <strong className="evo-summary-value">{qrModal.instanceName}</strong>
                 <span className="evo-summary-meta">{formatQrState(qrModal.state)}</span>
+              </div>
+              <div className="evo-summary-card">
+                <span className="evo-summary-label">Connect Method</span>
+                <strong className="evo-summary-value">{qrModal.activeTab === 'pairing' ? 'Pairing Code' : 'QR Code'}</strong>
+                <span className="evo-summary-meta">Switch tabs any time</span>
               </div>
             </div>
 
             <div className="evo-status-row">
-              <span className={statusBadge(qrModal.pollStatus === 'ready' ? 'connecting' : qrModal.pollStatus)}>
-                {qrModal.pollStatus === 'ready' ? 'QR Ready' : qrModal.pollStatus.replace('_', ' ')}
+              <span className={statusBadge(qrModal.pollStatus === 'ready' ? 'connecting' : qrModal.pollStatus === 'idle' ? 'pending' : qrModal.pollStatus)}>
+                {qrModal.pollStatus === 'ready' ? 'QR Ready' : qrModal.pollStatus === 'idle' ? 'Ready' : qrModal.pollStatus.replace('_', ' ')}
               </span>
               <span className="evo-status-meta">State: {formatQrState(qrModal.state)}</span>
               {qrCountdown != null ? <span className="evo-status-meta">Refreshes in {qrCountdown}s</span> : null}
@@ -1382,7 +1490,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
                   <div className="evo-field-note">If QR emission is delayed, keep this window open. The portal will retry state checks automatically.</div>
                   {qrModal.detail && qrModal.pollStatus === 'ready' ? <div className="evo-inline-feedback evo-inline-feedback-warn">{qrModal.detail}</div> : null}
                   <div className="evo-row-actions">
-                    <button className="evo-btn evo-btn-primary" type="button" onClick={() => { void action(qrModal.id, 'qr'); }} disabled={qrModal.pollStatus === 'connecting'}>Refresh QR</button>
+                    <button className="evo-btn evo-btn-primary" type="button" onClick={() => { void action(qrModal.id, 'qr'); }} disabled={qrModal.pollStatus === 'connecting'}>Request Fresh QR</button>
                     <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'pairing' } : current)}>Use Pairing Code</button>
                   </div>
                 </div>
@@ -1441,6 +1549,8 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 function WebhooksTab() {
   const [rows, setRows] = useState<Webhook[]>([]);
   const [allowedEvents, setAllowedEvents] = useState<string[]>([]);
+  const [tenants, setTenants] = useState<TenantBinding[]>([]);
+  const [defaultTenantId, setDefaultTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ label: '', url: '', tenantId: '', events: new Set<string>() });
   const [createdSecret, setCreatedSecret] = useState<{ id: string; secret: string } | null>(null);
@@ -1451,9 +1561,18 @@ function WebhooksTab() {
     setLoading(true);
     const r = await fetch('/api/admin/evolution/webhooks', { cache: 'no-store' });
     const j = await r.json();
-    setRows(j.webhooks ?? []); setAllowedEvents(j.allowedEvents ?? []); setLoading(false);
+    setRows(j.webhooks ?? []);
+    setAllowedEvents(j.allowedEvents ?? []);
+    setTenants(j.tenants ?? []);
+    setDefaultTenantId(j.defaultTenantId ?? '');
+    setLoading(false);
   }, []);
   useEffect(() => { void reload(); }, [reload]);
+
+  useEffect(() => {
+    if (!defaultTenantId) return;
+    setForm((current) => current.tenantId ? current : { ...current, tenantId: defaultTenantId });
+  }, [defaultTenantId]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setErr(null);
@@ -1469,7 +1588,7 @@ function WebhooksTab() {
       if (!r.ok) { setErr((await r.json()).error ?? 'failed'); return; }
       const j = await r.json();
       setCreatedSecret({ id: j.webhook.id, secret: j.secret });
-      setForm({ label: '', url: '', tenantId: '', events: new Set() });
+      setForm({ label: '', url: '', tenantId: defaultTenantId, events: new Set() });
       await reload();
     });
   }
@@ -1514,6 +1633,7 @@ function WebhooksTab() {
                   <td>
                     <div className="evo-cell-strong">{w.label ?? new URL(w.url).hostname}</div>
                     <div className="evo-cell-mono evo-cell-muted">{w.url}</div>
+                    <div className="evo-cell-muted">{getTenantDisplay(tenants.find((tenant) => tenant.tenantId === w.tenantId) ?? null)}</div>
                   </td>
                   <td>{w.events.map((e) => <span key={e} className="evo-pill evo-pill-info evo-pill-xs">{e}</span>)}</td>
                   <td><span className={statusBadge(w.status)}>{w.status}</span></td>
@@ -1534,6 +1654,7 @@ function WebhooksTab() {
 
       <section className="evo-panel">
         <h3 className="evo-panel-title">Create Webhook</h3>
+        <div className="evo-field-note">Webhook setup is optional. QR and pairing-code onboarding work without creating a webhook first.</div>
         <form className="evo-form-vert" onSubmit={submit}>
           <label className="evo-label">Label
             <input className="evo-input" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} />
@@ -1541,8 +1662,13 @@ function WebhooksTab() {
           <label className="evo-label">URL
             <input className="evo-input" type="url" required value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} />
           </label>
-          <label className="evo-label">Tenant ID (optional)
-            <input className="evo-input" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))} />
+          <label className="evo-label">Tenant
+            <select className="evo-input" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}>
+              <option value={defaultTenantId || ''}>GetTouch Internal (default)</option>
+              {tenants.filter((tenant) => tenant.tenantId !== defaultTenantId).map((tenant) => (
+                <option key={tenant.id} value={tenant.tenantId}>{getTenantDisplay(tenant)}</option>
+              ))}
+            </select>
           </label>
           <fieldset className="evo-fieldset">
             <legend>Events</legend>
