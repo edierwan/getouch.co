@@ -19,16 +19,18 @@ const FALLBACK_TIME_ZONE = 'Asia/Kuala_Lumpur';
 const BACKUP_RETENTION_DAYS = 4;
 
 const PGADMIN_URL = 'https://db.getouch.co';
+const QDRANT_UI_URL = 'https://qdrant.getouch.co/dashboard';
 const SUPABASE_SSO_STUDIO = 'https://st-sso.getouch.co';
 const SUPABASE_PREPROD_STUDIO = 'https://st-stg-serapod.getouch.co';
 
-type TabId = 'overview' | 'databases' | 'supabase' | 'storage' | 'backups';
+type TabId = 'overview' | 'databases' | 'supabase' | 'storage' | 'qdrant' | 'backups';
 
-const TABS: Array<{ id: TabId; label: string }> = [
+const TABS: Array<{ id: TabId; label: string; externalHref?: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'databases', label: 'Databases' },
   { id: 'supabase', label: 'Supabase' },
   { id: 'storage', label: 'Storage' },
+  { id: 'qdrant', label: 'Qdrant', externalHref: QDRANT_UI_URL },
   { id: 'backups', label: 'Backups' },
 ];
 
@@ -38,6 +40,7 @@ function isTabId(value: string | null | undefined): value is TabId {
     value === 'databases' ||
     value === 'supabase' ||
     value === 'storage' ||
+    value === 'qdrant' ||
     value === 'backups'
   );
 }
@@ -288,23 +291,39 @@ export function DatabasesClient({
       <Breadcrumb category="Infra & Persistence" page="Databases" />
       <PageIntro
         title="Database & Backup Control"
-        subtitle="Central view for PostgreSQL, Supabase stacks, object storage, and recent backup restore points."
+        subtitle="Central view for PostgreSQL, Supabase stacks, object storage, Qdrant, and recent backup restore points."
       />
 
       <SummaryGrid cards={summaryCards} />
 
       <div className="portal-db-tabs" role="tablist">
         {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={`portal-tab${tab === t.id ? ' portal-tab-active' : ''}`}
-            onClick={() => switchTab(t.id)}
-          >
-            {t.label}
-          </button>
+          t.externalHref ? (
+            <a
+              key={t.id}
+              href={t.externalHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`portal-tab${tab === t.id ? ' portal-tab-active' : ''}`}
+              onClick={() => switchTab(t.id)}
+            >
+              {t.label}
+              <span aria-hidden>↗</span>
+            </a>
+          ) : (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`portal-tab${tab === t.id ? ' portal-tab-active' : ''}`}
+              onClick={() => switchTab(t.id)}
+            >
+              {t.label}
+            </button>
+          )
         ))}
       </div>
 
@@ -337,6 +356,8 @@ export function DatabasesClient({
           <ObjectStorageConsole />
         </section>
       ) : null}
+
+          {tab === 'qdrant' ? <QdrantTab /> : null}
 
       {tab === 'backups' ? (
         <BackupsTab
@@ -751,6 +772,35 @@ function DatabasesTab({
             </div>
           </div>
         </section>
+
+        <section className="portal-panel">
+          <div className="portal-detail-head">
+            <h3 className="portal-detail-title">Qdrant</h3>
+            <span className="portal-status portal-status-active">ONLINE</span>
+          </div>
+          <div className="portal-info-table">
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">Type</span>
+              <span className="portal-info-table-value">Vector database</span>
+            </div>
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">Purpose</span>
+              <span className="portal-info-table-value">Collections, embeddings, semantic retrieval, and tenant-aware vector search</span>
+            </div>
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">UI</span>
+              <span className="portal-info-table-value">qdrant.getouch.co/dashboard</span>
+            </div>
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">Action</span>
+              <span className="portal-info-table-value">
+                <a className="portal-action-link" href={QDRANT_UI_URL} target="_blank" rel="noopener noreferrer">
+                  Open Qdrant UI ↗
+                </a>
+              </span>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   );
@@ -804,6 +854,47 @@ function SupabaseTab() {
             </div>
           </section>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function QdrantTab() {
+  return (
+    <section className="portal-panel">
+      <div className="portal-panel-head portal-panel-head-inline">
+        <div>
+          <h3 className="portal-panel-title">Qdrant Vector Database</h3>
+          <p className="portal-page-sub">
+            Standard Qdrant Web UI for collections, REST console, vectors, snapshots, and admin inspection.
+          </p>
+        </div>
+        <a className="portal-action-link" href={QDRANT_UI_URL} target="_blank" rel="noopener noreferrer">
+          Open Qdrant UI ↗
+        </a>
+      </div>
+
+      <div className="portal-detail-grid">
+        <section className="portal-panel">
+          <div className="portal-detail-head">
+            <h3 className="portal-detail-title">Qdrant Web UI</h3>
+            <span className="portal-status portal-status-active">EXTERNAL</span>
+          </div>
+          <div className="portal-info-table">
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">URL</span>
+              <span className="portal-info-table-value">{QDRANT_UI_URL}</span>
+            </div>
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">Purpose</span>
+              <span className="portal-info-table-value">Collections, vector inspection, REST console, snapshots, and admin operations</span>
+            </div>
+            <div className="portal-info-table-row">
+              <span className="portal-info-table-label">Note</span>
+              <span className="portal-info-table-value">Internal admin tool. Do not expose directly to tenants.</span>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   );
@@ -950,6 +1041,9 @@ function DatabasesPageStyles() {
         overflow-x: auto;
       }
       .portal-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         background: transparent;
         border: 0;
         border-bottom: 2px solid transparent;
@@ -957,6 +1051,7 @@ function DatabasesPageStyles() {
         cursor: pointer;
         font: inherit;
         padding: 10px 18px;
+        text-decoration: none;
         white-space: nowrap;
       }
       .portal-tab:hover {

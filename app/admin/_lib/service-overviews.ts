@@ -80,7 +80,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     },
   },
   qdrant: {
-    category: 'AI Engine & Data Flow',
+    category: 'Infra & Persistence',
     title: 'Qdrant',
     subtitle: 'Vector database for RAG, semantic search, AI memory retrieval, and tenant-aware vector collections.',
     probeKey: 'qdrant',
@@ -96,7 +96,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Use tenant-scoped collection names or payload filters from the start.',
       'Store tenant metadata with points to support retention and purge workflows.',
     ],
-    externalOpenUrl: 'https://qdrant.getouch.co',
+    externalOpenUrl: 'https://qdrant.getouch.co/dashboard',
     healthCheck: 'GET /healthz returns 200 on the public route.',
     securityStatus: 'GET /collections returns 401 without credentials; API auth remains enforced.',
     setupStatus: 'Tenant collection and namespace policy are still pending.',

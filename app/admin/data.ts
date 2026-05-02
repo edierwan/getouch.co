@@ -101,7 +101,6 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'LiteLLM Gateway', href: LITELLM_URL, icon: '◎', external: true },
       { label: 'Dify', href: '/admin/ai/dify', icon: '◍' },
       { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
-      { label: 'Qdrant', href: '/admin/ai/qdrant', icon: '◌' },
       { label: 'n8n Workflows', href: '/admin/automation/n8n', icon: '⇄' },
       { label: 'Webhooks', href: '/admin/automation/webhooks', icon: '↺' },
       { label: 'Airbyte', href: '/admin/automation/airbyte', icon: '⟷' },

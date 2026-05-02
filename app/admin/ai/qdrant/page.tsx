@@ -1,7 +1,7 @@
-import { ServiceOverviewPageByKey } from '../../_components/ServiceOverviewPage';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default function AiQdrantPage() {
-  return <ServiceOverviewPageByKey configKey="qdrant" />;
+  redirect('/admin/infra/databases?tab=qdrant');
 }

@@ -105,6 +105,7 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/ai-services/litellm': '/ai/litellm',
   '/ai-services/dify': '/ai/dify',
   '/ai-services/mcp': '/ai/mcp',
+  '/ai/qdrant': '/infra/databases?tab=qdrant',
   '/developer': '/security/api-keys',
   '/developer/api-keys': '/security/api-keys',
   '/developer/webhooks': '/automation/webhooks',
@@ -154,6 +155,10 @@ const getCanonicalAdminPath = (pathname: string) => {
 
   if (pathname === '/admin/infra/backups' || pathname === '/admin/infrastructure/backups') {
     return '/admin/infra/databases?tab=backups';
+  }
+
+  if (pathname === '/admin/ai/qdrant') {
+    return '/admin/infra/databases?tab=qdrant';
   }
 
   return pathname;
