@@ -1,16 +1,7 @@
-import ServersClient from './ServersClient';
-import { getInfrastructureNodeSnapshot, getInfrastructureStorageSnapshot } from '@/lib/infrastructure';
+import { permanentRedirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ServersPage() {
-  const [storage, node] = await Promise.all([
-    getInfrastructureStorageSnapshot(),
-    getInfrastructureNodeSnapshot(),
-  ]);
-  return (
-    <div className="portal-body">
-      <ServersClient storage={storage} node={node} />
-    </div>
-  );
+export default function ServersPage() {
+  permanentRedirect('/admin/infra/databases');
 }

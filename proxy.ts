@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose';
 
 const getPortalAdminUrl = () => {
   const baseUrl = process.env.PORTAL_ADMIN_URL || 'https://portal.getouch.co';
-  return new URL('/infra/servers', baseUrl).toString();
+  return new URL('/infra/databases', baseUrl).toString();
 };
 const getMcpPublicBaseUrl = () => process.env.MCP_PUBLIC_BASE_URL || 'https://mcp.getouch.co';
 const getRequestHost = (request: NextRequest) => {
@@ -19,7 +19,7 @@ const getMcpPublicHost = () => {
   const mcpUrl = new URL(getMcpPublicBaseUrl());
   return mcpUrl.host;
 };
-const getPortalRootUrl = (request: NextRequest) => new URL('/infra/servers', `https://${getPortalAdminHost()}`);
+const getPortalRootUrl = (request: NextRequest) => new URL('/infra/databases', `https://${getPortalAdminHost()}`);
 const isPortalHost = (request: NextRequest) => {
   return getRequestHost(request) === getPortalAdminHost().toLowerCase();
 };
@@ -72,9 +72,10 @@ const isLiteLlmLegacyPath = (pathname: string) => {
     || pathname === '/admin/service-endpoints/litellm';
 };
 const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
-  '/dashboard': '/infra/servers',
-  '/system/dashboard': '/infra/servers',
-  '/system/servers': '/infra/servers',
+  '/dashboard': '/infra/databases',
+  '/infra/servers': '/infra/databases',
+  '/system/dashboard': '/infra/databases',
+  '/system/servers': '/infra/databases',
   '/service-endpoints/vllm': '/ai/vllm',
   '/service-endpoints/litellm': '/ai/litellm',
   '/service-endpoints/dify': '/ai/dify',
@@ -85,7 +86,7 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/service-endpoints/open-webui': '/communications/open-webui',
   '/service-endpoints/chatwoot': '/communications/chatwoot',
   '/service-endpoints/voice': '/communications/voice',
-  '/servers': '/infra/servers',
+  '/servers': '/infra/databases',
   '/databases': '/infra/databases',
   '/api-keys': '/security/api-keys',
   '/quick-links': '/security/quick-links',
@@ -103,8 +104,8 @@ const LEGACY_PORTAL_PUBLIC_PATHS: Record<string, string> = {
   '/developer/docs': '/security/docs',
   '/access': '/security/quick-links',
   '/access/quick-links': '/security/quick-links',
-  '/infrastructure': '/infra/servers',
-  '/infrastructure/servers': '/infra/servers',
+  '/infrastructure': '/infra/databases',
+  '/infrastructure/servers': '/infra/databases',
   '/infrastructure/databases': '/infra/databases',
   '/infrastructure/object-storage': '/infra/object-storage',
   '/infrastructure/backups': '/infra/backups',
@@ -113,8 +114,15 @@ const getCanonicalPortalPublicPath = (pathname: string) => {
   return LEGACY_PORTAL_PUBLIC_PATHS[pathname] || pathname;
 };
 const getCanonicalAdminPath = (pathname: string) => {
-  if (pathname === '/admin/system/servers' || pathname === '/admin/system/dashboard') {
-    return '/admin/infra/servers';
+  if (
+    pathname === '/admin/dashboard'
+    || pathname === '/admin/servers'
+    || pathname === '/admin/infra/servers'
+    || pathname === '/admin/infrastructure/servers'
+    || pathname === '/admin/system/servers'
+    || pathname === '/admin/system/dashboard'
+  ) {
+    return '/admin/infra/databases';
   }
 
   return pathname;

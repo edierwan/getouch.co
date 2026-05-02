@@ -181,11 +181,11 @@ export default function ServersClient({
 
   return (
     <div className="servers-shell">
-      <Breadcrumb category="Infra & Persistence" page="Servers & Nodes" />
+      <Breadcrumb category="Infra & Persistence" page="Platform Overview" />
 
       <header className="servers-page-head">
         <div>
-          <h1 className="servers-title">Servers &amp; Nodes</h1>
+          <h1 className="servers-title">Platform Overview</h1>
           <p className="servers-sub">
             Primary VPS capacity, node health, runtime observability, ingress topology, and host resource monitoring.
           </p>

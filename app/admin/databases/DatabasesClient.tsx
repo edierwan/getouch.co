@@ -195,7 +195,7 @@ export function DatabasesClient({
           <div className="portal-panel-head">
             <div>
               <h3 className="portal-panel-title">AI Observability Data Stores</h3>
-              <p className="portal-page-sub">ClickHouse and Redis are represented here as internal platform dependencies, while Langfuse stays under Observability & Tracing.</p>
+              <p className="portal-page-sub">ClickHouse and Redis are represented here as internal platform dependencies, while Langfuse remains a direct external Infra & Persistence link.</p>
             </div>
           </div>
 
@@ -360,7 +360,7 @@ export function DatabasesClient({
           </div>
         </div>
         <div className="portal-activity-list">
-          <div className="portal-activity-item">Langfuse remains under Observability & Tracing because it is an observability UI, not a database surface.</div>
+          <div className="portal-activity-item">Langfuse opens as a direct external Infra & Persistence link, while ClickHouse and Redis stay internal dependencies here.</div>
           <div className="portal-activity-item">ClickHouse and Redis are monitored here as internal dependencies, not public apps.</div>
           <div className="portal-activity-item">A preprod restore is destructive and should be treated as a preprod-only operation.</div>
           {(overview?.backupLogTail || []).map((line) => (

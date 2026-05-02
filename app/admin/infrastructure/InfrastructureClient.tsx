@@ -191,7 +191,7 @@ export default function InfrastructureClient({ storage }: { storage: Infrastruct
 
       <AnchorSection
         id="servers"
-        title="SERVERS & NODES"
+        title="PLATFORM OVERVIEW"
         subtitle="Primary VPS capacity, ingress topology, and runtime health for the main production node."
         focused={activeSection === 'servers'}
       >

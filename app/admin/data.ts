@@ -75,20 +75,21 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const DATABASES_ADMIN_PATH = '/admin/infra/databases';
 const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
-const SERVERS_ADMIN_PATH = '/admin/infra/servers';
 
 export const ADMIN_NAV: NavSection[] = [
   {
     label: 'INFRA & PERSISTENCE',
     accentRgb: '104, 187, 255',
     items: [
-      { label: 'Servers & Nodes', href: SERVERS_ADMIN_PATH, icon: '▣' },
+      { label: 'Grafana', href: GRAFANA_URL, icon: '◔', external: true },
+      { label: 'Langfuse', href: LANGFUSE_URL, icon: '◎', external: true },
       { label: 'Coolify', href: '/admin/infra/coolify', icon: '◈' },
-      { label: 'Databases', href: '/admin/infra/databases', icon: '▤' },
+      { label: 'Databases', href: DATABASES_ADMIN_PATH, icon: '▤' },
       { label: 'Object Storage', href: '/admin/infra/object-storage', icon: '▦' },
       { label: 'Backups', href: '/admin/infra/backups', icon: '⟲' },
     ],
@@ -122,14 +123,6 @@ export const ADMIN_NAV: NavSection[] = [
       { label: 'Open WebUI', href: '/admin/communications/open-webui', icon: '◎' },
       { label: 'Chatwoot', href: '/admin/communications/chatwoot', icon: '◐' },
       { label: 'FusionPBX / Voice', href: '/admin/communications/voice', icon: '◍' },
-    ],
-  },
-  {
-    label: 'OBSERVABILITY & TRACING',
-    accentRgb: '155, 167, 255',
-    items: [
-      { label: 'Grafana', href: GRAFANA_URL, icon: '◔', external: true },
-      { label: 'Langfuse', href: LANGFUSE_URL, icon: '◎', external: true },
     ],
   },
   {
@@ -168,15 +161,14 @@ export const QUICK_ACTIONS = [
   { label: 'Getouch News', href: 'https://news.getouch.co', external: true },
   { label: 'News CMS', href: '/news-cms' },
   { label: 'Portal Users', href: '/admin/users' },
-  { label: 'Servers & Nodes', href: SERVERS_ADMIN_PATH },
   { label: 'Authentik', href: AUTHENTIK_URL, external: true },
+  { label: 'Grafana Overview', href: GRAFANA_URL, external: true },
   { label: 'Langfuse', href: LANGFUSE_URL, external: true },
   { label: 'API Keys', href: '/admin/security/api-keys' },
   { label: 'Webhooks', href: '/admin/automation/webhooks' },
   { label: 'Open WebUI', href: '/admin/communications/open-webui' },
   { label: 'Quick Links', href: '/admin/security/quick-links' },
   { label: 'Coolify Overview', href: '/admin/infra/coolify' },
-  { label: 'Grafana Overview', href: GRAFANA_URL, external: true },
 ];
 
 export const DASHBOARD_SERVICES: ResourceRow[] = [
@@ -364,9 +356,9 @@ export const INFRASTRUCTURE_SUMMARY: SummaryCard[] = [
 export const INFRASTRUCTURE_SECTION_LINKS: InfrastructureSectionLink[] = [
   {
     id: 'servers',
-    label: 'Servers & Nodes',
+    label: 'Platform Overview',
     icon: '▣',
-    description: 'Primary VPS, ingress path, runtime health',
+    description: 'Primary VPS, ingress path, and runtime health',
   },
   {
     id: 'databases',

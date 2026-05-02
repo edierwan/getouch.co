@@ -186,7 +186,7 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
     },
   },
   grafana: {
-    category: 'Observability & Tracing',
+    category: 'Infra & Persistence',
     title: 'Grafana',
     subtitle: 'Platform monitoring dashboards for infrastructure and service health.',
     probeKey: 'grafana',
