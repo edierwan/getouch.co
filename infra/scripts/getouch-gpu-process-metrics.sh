@@ -85,6 +85,7 @@ write_failure() {
   printf 'getouch_gpu_process_scrape_success 0\n' >>"$TMP_FILE"
   printf 'getouch_gpu_process_collected_at_seconds %s\n' "$(date +%s)" >>"$TMP_FILE"
   printf 'getouch_gpu_process_info{gpu="",gpu_uuid="",pid="",process_name="",process_basename="",owner_kind="collector",owner_name="collector",owner_service="",runtime_hint="%s"} 0\n' "$(escape_label "$reason")" >>"$TMP_FILE"
+  chmod 0644 "$TMP_FILE"
   mv "$TMP_FILE" "$OUTPUT_FILE"
   exit 0
 }
@@ -256,4 +257,5 @@ for gpu_uuid in "${!GPU_INDEX[@]}"; do
     "${GPU_PROCESS_COUNT[$gpu_uuid]:-0}" >>"$TMP_FILE"
 done
 
+chmod 0644 "$TMP_FILE"
 mv "$TMP_FILE" "$OUTPUT_FILE"
