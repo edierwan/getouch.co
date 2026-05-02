@@ -13,10 +13,16 @@
   - `auth.getouch.co`
   - `mcp.getouch.co` (with `/api/mcp` rewrites)
   - `openclaw.getouch.co` (with `/connect`, `/reset`, `/chat` paths)
+- Additional service hostnames such as `sso.getouch.co`, `infisical.getouch.co`,
+  `langfuse.getouch.co`, `litellm.getouch.co`, and `qdrant.getouch.co` are also
+  defined in `infra/Caddyfile`, but they are service routes, not a compose-hosted
+  portal fallback.
 - **Coolify proxy is disabled** (`proxy_type=none`); Caddy continues to terminate
   via Cloudflare → `127.0.0.1:80` only.
 - The old compose-hosted portal runtime has been removed from `compose.yaml`.
   There is no compose fallback path for the Next.js portal.
+- The retired names `getouch-web` and `getouch-web-prod` are forbidden in active
+  containers, network aliases, Caddy routes, and deploy scripts.
 
 ## Env source of truth
 
@@ -66,6 +72,9 @@ If a portal rollback is required, do one of these instead:
 ## Verification commands
 
 ```bash
+# Guard against any legacy compose-served portal path.
+bash scripts/verify-no-legacy-web.sh
+
 # Coolify env keys for the app
 docker exec coolify php artisan tinker --execute='
 use App\Models\Application;

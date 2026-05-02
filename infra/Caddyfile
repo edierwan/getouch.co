@@ -63,6 +63,7 @@ http://ai.getouch.co {
 }
 
 # Protected vLLM API gateway. Implemented inside portal app at /v1/*, /health, /ready.
+# litellm.getouch.co is the dedicated LiteLLM gateway hostname.
 http://vllm.getouch.co {
   import common_headers
 
@@ -76,9 +77,37 @@ http://vllm.getouch.co {
   }
 }
 
+http://sso.getouch.co {
+  import common_headers
+  reverse_proxy authentik-server:9000 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
+http://qdrant.getouch.co {
+  import common_headers
+  reverse_proxy qdrant:6333 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
+http://infisical.getouch.co {
+  import common_headers
+  reverse_proxy backend:8080 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
 http://litellm.getouch.co {
   import common_headers
   reverse_proxy litellm:4000 {
+    header_up X-Forwarded-Proto https
+  }
+}
+
+http://langfuse.getouch.co {
+  import common_headers
+  reverse_proxy langfuse:3000 {
     header_up X-Forwarded-Proto https
   }
 }
