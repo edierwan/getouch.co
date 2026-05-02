@@ -75,6 +75,7 @@ export interface CanonicalRouteRow {
 }
 
 const AUTHENTIK_URL = 'https://sso.getouch.co';
+const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
 const SERVERS_ADMIN_PATH = '/admin/infra/servers';
@@ -136,7 +137,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'Authentik', href: AUTHENTIK_URL, icon: '⚲', external: true },
       { label: 'API Keys', href: '/admin/security/api-keys', icon: '⚿' },
-      { label: 'Infisical', href: '/admin/security/infisical', icon: '◫' },
+      { label: 'Infisical', href: INFISICAL_URL, icon: '◫', external: true },
       { label: 'SDK & Docs', href: '/admin/security/docs', icon: '⌥' },
       { label: 'Quick Links', href: '/admin/security/quick-links', icon: '⊞' },
     ],

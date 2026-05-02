@@ -11,6 +11,7 @@ Updated: 2026-05-02
 - Root `https://portal.getouch.co/` remains usable and resolves to `Servers & Nodes` at `/infra/servers`.
 - Legacy `/system/dashboard` and `/admin/system/dashboard` paths redirect to `Servers & Nodes` and are not canonical.
 - Authentik is a direct external link and no longer uses a portal status page as a canonical destination.
+- Infisical is a direct external link and no longer uses a portal status page as a canonical destination.
 - Langfuse is a direct external link and no longer uses a portal status page as a canonical destination.
 
 ## Sidebar IA
@@ -84,9 +85,14 @@ Updated: 2026-05-02
 | Observability & Tracing | Langfuse | `https://langfuse.getouch.co` | `https://langfuse.getouch.co` |
 | Access & Security | Authentik | `https://sso.getouch.co` | `https://sso.getouch.co` |
 | Access & Security | API Keys | `/security/api-keys` | `/admin/security/api-keys` |
-| Access & Security | Infisical | `/security/infisical` | `/admin/security/infisical` |
+| Access & Security | Infisical | `https://infisical.getouch.co` | `https://infisical.getouch.co` |
 | Access & Security | SDK & Docs | `/security/docs` | `/admin/security/docs` |
 | Access & Security | Quick Links | `/security/quick-links` | `/admin/security/quick-links` |
+
+## Legacy Route Note
+
+- `/admin/security/infisical` and `/security/infisical` are legacy aliases and now redirect directly to `https://infisical.getouch.co`.
+- `API Keys` remains the internal portal page for tenant and client key management.
 
 ## Source Files
 

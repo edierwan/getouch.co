@@ -21,6 +21,7 @@ Updated: 2026-05-01
 
 - Intended for internal service secrets, bootstrap credentials, provider keys, and non-public runtime secrets.
 - Now installed in production on `infisical.getouch.co`.
+- The portal sidebar opens the real Infisical UI directly; the old portal status page is no longer the primary navigation path.
 - Initial admin onboarding and access policy setup are still pending before it should become the managed source of truth.
 
 ### Coolify Environment Variables
