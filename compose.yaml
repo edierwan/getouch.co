@@ -295,6 +295,7 @@ services:
         --served-model-name Qwen/Qwen3-14B-FP8
         --max-model-len 8192
         --cpu-offload-gb 4
+        --enforce-eager
         --gpu-memory-utilization 0.92
         $${VLLM_API_KEY:+--api-key "$$VLLM_API_KEY"}
     healthcheck:
