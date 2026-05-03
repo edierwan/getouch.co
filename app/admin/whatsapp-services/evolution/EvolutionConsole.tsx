@@ -34,6 +34,7 @@ interface Session {
   status: 'pending_connection' | 'connected' | 'connecting' | 'disconnected' | 'expired' | 'error' | 'qr_pending';
   qrStatus: string | null; qrExpiresAt?: string | null; lastQrAt?: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
   isDefault: boolean; botEnabled: boolean; humanHandoffEnabled: boolean;
+  metadata?: Record<string, unknown> | null;
   createdAt: string; updatedAt: string;
 }
 interface SessionQrResponse {
@@ -229,8 +230,24 @@ function getSessionPhone(session: Session | null | undefined): string | null {
   return session?.pairedNumber ?? session?.phoneNumber ?? null;
 }
 
+function getSessionProfileName(session: Session | null | undefined): string | null {
+  const value = session?.metadata?.remoteProfileName;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function getSessionDisplayLabel(session: Session | null | undefined): string {
   return session?.displayLabel ?? session?.sessionName ?? 'Unknown session';
+}
+
+function getSessionIdentity(session: Session | null | undefined): string {
+  const displayLabel = getSessionDisplayLabel(session);
+  const profileName = getSessionProfileName(session);
+  const phone = getSessionPhone(session);
+  return [
+    displayLabel,
+    profileName && profileName !== displayLabel ? profileName : null,
+    phone,
+  ].filter(Boolean).join(' · ');
 }
 
 function isSystemSession(session: Session | null | undefined) {
@@ -399,7 +416,7 @@ function OverviewTab({
           label="SYSTEM NUMBER"
           value={systemNumberConnected ? 'Connected' : 'Not connected'}
           sub={systemNumberConnected
-            ? `${getSessionDisplayLabel(systemSession)}${getSessionPhone(systemSession) ? ` · ${getSessionPhone(systemSession)}` : ''}`
+            ? getSessionIdentity(systemSession)
             : `Gateway active does not mean WhatsApp connected.${preferredGateway ? ` Using ${preferredGateway.name} for onboarding.` : ''}`}
           icon="☎"
           tone={systemNumberConnected ? 'good' : 'bad'}
@@ -1701,7 +1718,7 @@ function SessionsTab({
               <div className="evo-summary-card evo-summary-card-muted">
                 <span className="evo-summary-label">Paired Number</span>
                 <strong className="evo-summary-value evo-cell-mono">{getSessionPhone(selectedSession) ?? '—'}</strong>
-                <span className="evo-summary-meta">Blocked as a test recipient</span>
+                <span className="evo-summary-meta">{getSessionProfileName(selectedSession) ?? 'Used as the sender number for outbound tests'}</span>
               </div>
             </div>
 

@@ -10,6 +10,7 @@
 import crypto from 'node:crypto';
 import { and, count, desc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from './db';
+import { normalizeMyPhone } from './phone';
 import {
   evolutionEvents,
   evolutionInstances,
@@ -300,6 +301,179 @@ export interface OverviewStats {
   uptimePercent: number | null;
 }
 
+interface EvolutionRemoteInstanceSummary {
+  name?: string | null;
+  connectionStatus?: string | null;
+  number?: unknown;
+  ownerJid?: unknown;
+  profileName?: string | null;
+  profilePicUrl?: string | null;
+  instance?: {
+    instanceName?: string | null;
+    state?: string | null;
+    number?: unknown;
+    ownerJid?: unknown;
+    profileName?: string | null;
+    profilePicUrl?: string | null;
+  } | null;
+}
+
+function normalizeRemotePhoneCandidate(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeMyPhone(value.split('@')[0]?.replace(/[^0-9+]/g, '') ?? '');
+  return normalized || null;
+}
+
+function extractPairedNumberFromRemote(data: unknown): string | null {
+  const queue: unknown[] = [data];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+
+    if (typeof current !== 'object') continue;
+    const record = current as Record<string, unknown>;
+
+    for (const key of ['phone', 'phoneNumber', 'number', 'owner', 'ownerJid', 'remoteJid', 'wid']) {
+      const normalized = normalizeRemotePhoneCandidate(record[key]);
+      if (normalized) return normalized;
+    }
+
+    for (const value of Object.values(record)) {
+      if (Array.isArray(value) || (value && typeof value === 'object')) {
+        queue.push(value);
+      }
+    }
+  }
+
+  return null;
+}
+
+function mapRemoteStateToSessionStatus(state: string | null): typeof evolutionSessions.$inferInsert.status {
+  switch (state) {
+    case 'open':
+      return 'connected';
+    case 'connecting':
+    case 'qr':
+      return 'connecting';
+    case 'close':
+    case 'disconnected':
+      return 'disconnected';
+    case 'failed':
+    case 'refused':
+      return 'error';
+    default:
+      return 'pending_connection';
+  }
+}
+
+function getRemoteIdCandidates(row: typeof evolutionSessions.$inferSelect) {
+  return Array.from(new Set([
+    row.evolutionRemoteId,
+    row.sessionName,
+  ].filter((value): value is string => Boolean(value?.trim()))));
+}
+
+function findRemoteSessionSnapshot(
+  row: typeof evolutionSessions.$inferSelect,
+  instances: EvolutionRemoteInstanceSummary[],
+) {
+  const remoteIdCandidates = getRemoteIdCandidates(row).map((value) => value.toLowerCase());
+  const match = instances.find((instance) => {
+    const remoteId = instance.name ?? instance.instance?.instanceName;
+    return Boolean(remoteId && remoteIdCandidates.includes(remoteId.toLowerCase()));
+  });
+  if (!match) return null;
+
+  return {
+    remoteId: match.name ?? match.instance?.instanceName ?? row.evolutionRemoteId ?? row.sessionName,
+    state: match.connectionStatus ?? match.instance?.state ?? null,
+    pairedNumber: extractPairedNumberFromRemote(match),
+    profileName: match.profileName ?? match.instance?.profileName ?? null,
+    profilePicUrl: match.profilePicUrl ?? match.instance?.profilePicUrl ?? null,
+    ownerJid: typeof match.ownerJid === 'string'
+      ? match.ownerJid
+      : typeof match.instance?.ownerJid === 'string'
+        ? match.instance.ownerJid
+        : null,
+  };
+}
+
+function sameTimestamp(a: Date | string | null | undefined, b: Date | string | null | undefined) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
+export async function syncSessionsFromEvolution(rows: typeof evolutionSessions.$inferSelect[]) {
+  if (rows.length === 0) return rows;
+
+  const remote = await evolutionFetch<EvolutionRemoteInstanceSummary[]>('/instance/fetchInstances', {
+    method: 'GET',
+    timeoutMs: 5000,
+  });
+  if (!remote.ok || !Array.isArray(remote.data)) return rows;
+  const remoteInstances = remote.data;
+
+  const now = new Date();
+  return Promise.all(rows.map(async (row) => {
+    const snapshot = findRemoteSessionSnapshot(row, remoteInstances);
+    if (!snapshot) return row;
+
+    const nextStatus = snapshot.state ? mapRemoteStateToSessionStatus(snapshot.state) : row.status;
+    const nextQrStatus = snapshot.state === 'open'
+      ? 'connected'
+      : nextStatus === 'connecting'
+        ? 'pending'
+        : null;
+    const nextQrExpiresAt = snapshot.state === 'open' ? null : row.qrExpiresAt;
+    const nextPairedNumber = snapshot.pairedNumber
+      ?? (snapshot.state === 'open' ? row.pairedNumber ?? row.phoneNumber : row.pairedNumber);
+    const nextLastConnectedAt = snapshot.state === 'open' ? row.lastConnectedAt ?? now : row.lastConnectedAt;
+    const nextLastDisconnectedAt = snapshot.state === 'close' || snapshot.state === 'disconnected'
+      ? now
+      : row.lastDisconnectedAt;
+
+    const currentMetadata = (row.metadata ?? {}) as Record<string, unknown>;
+    const nextMetadata: Record<string, unknown> = {
+      ...currentMetadata,
+      ...(snapshot.profileName ? { remoteProfileName: snapshot.profileName } : {}),
+      ...(snapshot.profilePicUrl ? { remoteProfilePicUrl: snapshot.profilePicUrl } : {}),
+      ...(snapshot.ownerJid ? { remoteOwnerJid: snapshot.ownerJid } : {}),
+    };
+
+    const changed = (row.evolutionRemoteId ?? null) !== snapshot.remoteId
+      || row.status !== nextStatus
+      || row.qrStatus !== nextQrStatus
+      || !sameTimestamp(row.qrExpiresAt, nextQrExpiresAt)
+      || (row.pairedNumber ?? null) !== (nextPairedNumber ?? null)
+      || !sameTimestamp(row.lastConnectedAt, nextLastConnectedAt)
+      || !sameTimestamp(row.lastDisconnectedAt, nextLastDisconnectedAt)
+      || JSON.stringify(currentMetadata) !== JSON.stringify(nextMetadata);
+
+    if (!changed) return row;
+
+    const [updated] = await db.update(evolutionSessions).set({
+      evolutionRemoteId: snapshot.remoteId,
+      status: nextStatus,
+      qrStatus: nextQrStatus,
+      qrExpiresAt: nextQrExpiresAt,
+      pairedNumber: nextPairedNumber,
+      lastConnectedAt: nextLastConnectedAt,
+      lastDisconnectedAt: nextLastDisconnectedAt,
+      metadata: nextMetadata,
+      updatedAt: now,
+    }).where(eq(evolutionSessions.id, row.id)).returning();
+
+    return updated ?? row;
+  }));
+}
+
 export async function getOverviewStats(): Promise<OverviewStats> {
   await ensureDefaultEvolutionTenant();
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -382,9 +556,10 @@ export async function listSessions(opts: { tenantId?: string; instanceId?: strin
   if (opts.instanceId) conds.push(eq(evolutionSessions.instanceId, opts.instanceId));
   if (opts.status) conds.push(eq(evolutionSessions.status, opts.status as 'connected'));
   const where = conds.length ? and(...conds) : undefined;
-  return where
+  const rows = where
     ? db.select().from(evolutionSessions).where(where).orderBy(desc(evolutionSessions.updatedAt)).limit(500)
     : db.select().from(evolutionSessions).orderBy(desc(evolutionSessions.updatedAt)).limit(500);
+  return syncSessionsFromEvolution(await rows);
 }
 
 export async function getPrimarySystemSession() {
@@ -396,7 +571,8 @@ export async function getPrimarySystemSession() {
     .orderBy(desc(evolutionSessions.updatedAt))
     .limit(20);
 
-  return rows.find((row) => row.isDefault) ?? rows[0] ?? null;
+  const syncedRows = await syncSessionsFromEvolution(rows);
+  return syncedRows.find((row) => row.isDefault) ?? syncedRows[0] ?? null;
 }
 
 export async function listTenantBindings() {
