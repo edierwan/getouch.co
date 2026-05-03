@@ -4239,6 +4239,20 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
   word-break: break-all;
 }
 
+.portal-aac-env-block {
+  margin: 0.9rem 0 0;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(121, 210, 208, 0.14);
+  background: rgba(9, 17, 20, 0.78);
+  color: #dff8f4;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .portal-aac-flash {
   position: fixed;
   top: clamp(1rem, 3vw, 1.75rem);

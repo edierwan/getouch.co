@@ -16,9 +16,8 @@ import {
   getServiceDisplayName,
   titleCaseFromSlug,
 } from '@/lib/platform-app-access-config';
-import { ApiKeyManagerConsole } from './ApiKeyManagerConsole';
 
-type Tab = 'apps' | 'platformBroker' | 'apiKeys' | 'tenantBindings' | 'serviceLinks' | 'secretRefs';
+type Tab = 'apps' | 'platformBroker' | 'tenantBindings' | 'serviceLinks' | 'secretRefs';
 type FlashTone = 'success' | 'error';
 type FlashMessage = { tone: FlashTone; text: string } | null;
 type RevealedPlatformKeyAuthState = 'idle' | 'testing' | 'success' | 'error';
@@ -57,11 +56,12 @@ type ModalState =
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'apps', label: 'Apps' },
   { id: 'platformBroker', label: 'Platform Broker' },
-  { id: 'apiKeys', label: 'API Keys' },
   { id: 'tenantBindings', label: 'Tenant Bindings' },
   { id: 'serviceLinks', label: 'Service Links' },
   { id: 'secretRefs', label: 'Secret References' },
 ];
+
+const PLATFORM_RUNTIME_API_URL = 'https://getouch.co/api/platform';
 
 const APP_ENVIRONMENT_OPTIONS = [
   { value: 'production', label: 'Production' },
@@ -131,11 +131,11 @@ function formatStatusLabel(value: string): string {
     case 'missing':
       return 'Missing';
     case 'not_checked':
-      return 'Not Checked';
+      return 'Not tested yet';
     case 'not_configured':
-      return 'Not Configured';
+      return 'Not configured';
     case 'not_linked':
-      return 'Not Linked';
+      return 'Not linked';
     case 'linked':
       return 'Linked';
     case 'available':
@@ -143,7 +143,9 @@ function formatStatusLabel(value: string): string {
     case 'disabled':
       return 'Disabled';
     case 'error':
-      return 'Error';
+      return 'Failed';
+    case 'testing':
+      return 'Testing…';
     default:
       return titleCase(value);
   }
@@ -161,6 +163,7 @@ function toneForStatus(status: string): string {
     case 'not_linked':
     case 'planned':
     case 'sandbox':
+    case 'testing':
       return 'portal-status-warning';
     case 'disabled':
     case 'error':
@@ -239,6 +242,26 @@ function platformKeyActionLabel(app: PlatformAppItem): string {
   return app.platformKeyStatus === 'configured'
     ? 'Regenerate Platform App Key'
     : 'Generate Platform App Key';
+}
+
+function visibleRevealedPlatformKey(
+  appId: string,
+  value: RevealedPlatformKey | null,
+): RevealedPlatformKey | null {
+  return value?.appId === appId ? value : null;
+}
+
+function buildPlatformRuntimeEnvBlock(input: {
+  appCode: string;
+  rawKey: string | null;
+  maskedKey?: string | null;
+}): string {
+  const appKeyValue = input.rawKey || input.maskedKey || '<raw key unavailable>';
+  return [
+    `PLATFORM_API_URL=${PLATFORM_RUNTIME_API_URL}`,
+    `PLATFORM_APP_CODE=${input.appCode}`,
+    `PLATFORM_APP_KEY=${appKeyValue}`,
+  ].join('\n');
 }
 
 function stripDescriptionMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
@@ -404,12 +427,14 @@ function RevealedPlatformKeyPanel({
   value,
   busy,
   onCopy,
+  onCopyEnv,
   onTest,
   onDismiss,
 }: {
   value: RevealedPlatformKey | null;
   busy: boolean;
   onCopy: () => void;
+  onCopyEnv: () => void;
   onTest: () => void;
   onDismiss: () => void;
 }) {
@@ -420,7 +445,7 @@ function RevealedPlatformKeyPanel({
     : value.authState === 'error'
       ? 'error'
       : value.authState === 'testing'
-        ? 'planned'
+        ? 'testing'
         : 'not_checked';
 
   return (
@@ -455,11 +480,55 @@ function RevealedPlatformKeyPanel({
       </div>
       <div className="portal-aac-action-row">
         <button type="button" className="portal-aac-primary-button" onClick={onCopy} disabled={busy}>Copy Key</button>
+        {value.appCode === 'wapi' ? (
+          <button type="button" className="portal-aac-secondary-button" onClick={onCopyEnv} disabled={busy}>Copy WAPI Env</button>
+        ) : null}
         <button type="button" className="portal-aac-secondary-button" onClick={onTest} disabled={busy}>
           {value.authState === 'testing' ? 'Testing…' : 'Test App Key'}
         </button>
         <button type="button" className="portal-aac-secondary-button" onClick={onDismiss} disabled={busy}>Dismiss</button>
       </div>
+    </section>
+  );
+}
+
+function WapiRuntimeSetupCard({
+  app,
+  revealedKey,
+  onCopyEnv,
+}: {
+  app: PlatformAppItem;
+  revealedKey: RevealedPlatformKey | null;
+  onCopyEnv: () => void;
+}) {
+  const envBlock = buildPlatformRuntimeEnvBlock({
+    appCode: app.appCode,
+    rawKey: revealedKey?.plaintext ?? null,
+    maskedKey: app.platformKeyMask || null,
+  });
+
+  return (
+    <section className="portal-aac-panel">
+      <div className="portal-aac-panel-head">
+        <div>
+          <div className="portal-aac-eyebrow">Runtime Setup</div>
+          <h3>WAPI Runtime Setup</h3>
+        </div>
+        <StatusBadge value={revealedKey ? 'configured' : 'not_checked'} />
+      </div>
+      <p className="portal-aac-panel-copy">
+        Copy these values into the WAPI Coolify environment variables, redeploy WAPI, then run the broker auth test from WAPI Settings.
+      </p>
+      <pre className="portal-aac-env-block"><code>{envBlock}</code></pre>
+      {revealedKey ? (
+        <div className="portal-aac-action-row">
+          <button type="button" className="portal-aac-primary-button" onClick={onCopyEnv}>Copy WAPI Env</button>
+        </div>
+      ) : (
+        <p className="portal-aac-helper-note">
+          Raw key was shown once only. Regenerate Platform App Key if you need a new value.
+        </p>
+      )}
     </section>
   );
 }
@@ -1723,6 +1792,38 @@ export function AppAccessControlConsole() {
     }
   }
 
+  async function copyRevealedPlatformEnv() {
+    if (!revealedPlatformKey) return;
+
+    try {
+      await navigator.clipboard.writeText(buildPlatformRuntimeEnvBlock({
+        appCode: revealedPlatformKey.appCode,
+        rawKey: revealedPlatformKey.plaintext,
+      }));
+      setFlash({ tone: 'success', text: `Copied ${revealedPlatformKey.appCode.toUpperCase()} runtime setup env.` });
+    } catch {
+      setFlash({ tone: 'error', text: 'Could not copy the runtime env block.' });
+    }
+  }
+
+  async function copySelectedAppRuntimeEnv(app: PlatformAppItem) {
+    const revealedKey = visibleRevealedPlatformKey(app.id, revealedPlatformKey);
+    if (!revealedKey) {
+      setFlash({ tone: 'error', text: 'Raw key is no longer available. Regenerate Platform App Key to copy the WAPI env block.' });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(buildPlatformRuntimeEnvBlock({
+        appCode: app.appCode,
+        rawKey: revealedKey.plaintext,
+      }));
+      setFlash({ tone: 'success', text: `Copied ${app.appCode.toUpperCase()} runtime setup env.` });
+    } catch {
+      setFlash({ tone: 'error', text: 'Could not copy the runtime env block.' });
+    }
+  }
+
   async function testRevealedPlatformKey() {
     if (!revealedPlatformKey) return;
 
@@ -1777,6 +1878,7 @@ export function AppAccessControlConsole() {
         value={revealedPlatformKey}
         busy={mutating || revealedPlatformKey?.authState === 'testing'}
         onCopy={() => void copyRevealedPlatformKey()}
+        onCopyEnv={() => void copyRevealedPlatformEnv()}
         onTest={() => void testRevealedPlatformKey()}
         onDismiss={() => setRevealedPlatformKey(null)}
       />
@@ -1911,77 +2013,21 @@ export function AppAccessControlConsole() {
                         <button type="button" className="portal-aac-danger-button" onClick={() => openModal({ kind: 'deleteApp', app: selectedApp })}>
                           Delete App
                         </button>
-                        <button type="button" className="portal-aac-primary-button" onClick={() => openModal({ kind: 'createTenantBinding', app: selectedApp })}>
-                          Add Tenant Binding
-                        </button>
-                        <button type="button" className="portal-aac-primary-button" onClick={() => openModal({ kind: 'createSecretRef', app: selectedApp, tenantBindingId: data.selectedTenantBindingId, targetLabel: selectedTargetLabel })}>
-                          Add Secret Reference
-                        </button>
                       </div>
                     </div>
+
+                    {selectedApp.appCode === 'wapi' ? (
+                      <WapiRuntimeSetupCard
+                        app={selectedApp}
+                        revealedKey={visibleRevealedPlatformKey(selectedApp.id, revealedPlatformKey)}
+                        onCopyEnv={() => void copySelectedAppRuntimeEnv(selectedApp)}
+                      />
+                    ) : null}
 
                     <div className="portal-aac-overview-grid">
                       <AppOverviewCard app={selectedApp} />
                       <CapabilityGrid rows={data.appCapabilities} />
                     </div>
-
-                    <div className="portal-aac-panel-grid">
-                      <section className="portal-aac-panel">
-                        <div className="portal-aac-panel-head">
-                          <div>
-                            <div className="portal-aac-eyebrow">Tenant Bindings</div>
-                            <h3>Isolation islands inside the app</h3>
-                          </div>
-                          <span className="portal-aac-count-chip">{data.tenantBindings.length}</span>
-                        </div>
-                        <TenantBindingsTable
-                          rows={data.tenantBindings}
-                          selectedId={data.selectedTenantBindingId}
-                          onSelect={(bindingId) => void loadSnapshot(data.selectedAppCode, bindingId)}
-                          onEdit={(binding) => openModal({ kind: 'editTenantBinding', app: selectedApp, binding })}
-                          onDisable={(binding) => void disableRecord(`/api/admin/platform-app-access/tenant-bindings/${binding.id}`, `${binding.displayName || binding.appTenantKey} tenant`, data.selectedAppCode, binding.id)}
-                          onDelete={(binding) => openModal({ kind: 'deleteTenantBinding', binding })}
-                        />
-                      </section>
-
-                      <TenantSummaryCard
-                        tenant={selectedTenantBinding}
-                        serviceStatuses={data.selectedTenantServiceStatuses}
-                        secretRefCount={data.selectedTenantSecretRefs.length}
-                      />
-                    </div>
-
-                    <section className="portal-aac-panel">
-                      <div className="portal-aac-panel-head">
-                        <div>
-                          <div className="portal-aac-eyebrow">Tenant Service Links</div>
-                          <h3>{selectedTenantBinding ? `${selectedTargetLabel} service status` : 'Select a tenant to link actual resources'}</h3>
-                        </div>
-                        {selectedTenantBinding ? <span className="portal-aac-count-chip">{data.selectedTenantServiceStatuses.length}</span> : null}
-                      </div>
-                      <p className="portal-aac-panel-copy">
-                        Available means the app can use the shared service. Not Linked means no actual resource is mapped yet. Linked means a registry link exists to a real downstream resource.
-                      </p>
-                      {selectedTenantBinding ? (
-                        <TenantServiceStatusTable
-                          rows={data.selectedTenantServiceStatuses}
-                          tenantSelected={Boolean(selectedTenantBinding)}
-                          onCreateLink={openCreateServiceLink}
-                          onEditLink={openEditServiceLinkById}
-                          onDisableLink={(integrationId) => {
-                            const integration = integrationMap.get(integrationId);
-                            if (!integration) return;
-                            void disableRecord(`/api/admin/platform-app-access/service-integrations/${integration.id}`, `${integration.resourceId} service link`, data.selectedAppCode, data.selectedTenantBindingId);
-                          }}
-                          onDeleteLink={openDeleteServiceLinkById}
-                        />
-                      ) : (
-                        <EmptyState
-                          title="No tenant selected"
-                          body="Select a tenant binding to view each ecosystem service as Available, Not Linked, Linked, Disabled, or Error."
-                        />
-                      )}
-                    </section>
                   </>
                 ) : (
                   <section className="portal-aac-panel">
@@ -1999,8 +2045,6 @@ export function AppAccessControlConsole() {
               </section>
             </div>
           ) : null}
-
-          {tab === 'apiKeys' ? <ApiKeyManagerConsole /> : null}
 
           {tab === 'platformBroker' ? (
             <PlatformBrokerPanel
