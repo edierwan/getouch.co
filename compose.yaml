@@ -269,6 +269,48 @@ services:
     networks:
       - edge
 
+  vllm-qwen3-14b-fp8:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-qwen3-14b-fp8
+    restart: unless-stopped
+    runtime: nvidia
+    shm_size: 8gb
+    entrypoint:
+      - /bin/sh
+      - -lc
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      HF_HOME: /root/.cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /root/.cache/huggingface/hub
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+    volumes:
+      - /srv/apps/ai/huggingface:/root/.cache/huggingface
+    command:
+      - >-
+        exec vllm serve Qwen/Qwen3-14B-FP8
+        --host 0.0.0.0
+        --port 8000
+        --served-model-name Qwen/Qwen3-14B-FP8
+        --max-model-len 8192
+        --cpu-offload-gb 4
+        --gpu-memory-utilization 0.92
+        $${VLLM_API_KEY:+--api-key "$$VLLM_API_KEY"}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks:
+      edge:
+        aliases:
+          - vllm-qwen3-14b-fp8
+      coolify:
+        aliases:
+          - vllm-qwen3-14b-fp8
+
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.9.2
     container_name: open-webui
@@ -304,8 +346,8 @@ services:
       RAG_PDF_EXTRACT_IMAGES: "true"
 
       # ── Pipelines connection ──
-      OPENAI_API_BASE_URLS: "http://pipelines:9099;https://api.openai.com/v1"
-      OPENAI_API_KEYS: "0p3n-w3bu!;${OPENAI_API_KEY:-sk-placeholder}"
+      OPENAI_API_BASE_URLS: "http://pipelines:9099;https://litellm.getouch.co/v1;https://api.openai.com/v1"
+      OPENAI_API_KEYS: "0p3n-w3bu!;${LITELLM_MASTER_KEY:-litellm-placeholder};${OPENAI_API_KEY:-sk-placeholder}"
 
       # ── Features ──
       ENABLE_ADMIN_EXPORT: "true"
@@ -382,6 +424,7 @@ services:
       retries: 5
     networks:
       - edge
+      - coolify
 
   # ────────────────────────────────────────────────────────
   # SearXNG — privacy-respecting meta search engine

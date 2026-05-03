@@ -25,7 +25,7 @@ const PLATFORM_BROKER_AI_CHAT_URL = 'https://getouch.co/api/platform/ai/chat';
 const OPEN_WEBUI_URL = 'https://ai.getouch.co';
 const GPU_METRICS_SOURCE = 'Server-side NVIDIA runtime probe via SSH; Grafana GPU dashboard remains secondary diagnostics.';
 
-type ModelCatalogStatus = 'active' | 'available' | 'not_downloaded' | 'incompatible';
+type ModelCatalogStatus = 'active' | 'ready' | 'not_downloaded' | 'incompatible';
 type SwitchMode = 'manual' | 'automated';
 
 type ApprovedModel = {
@@ -103,10 +103,19 @@ export type ModelRuntimeManagerStatus = {
     modelId: string;
     publicAlias: string;
     estimatedVram: string;
+    cacheDir: string;
     status: ModelCatalogStatus;
     notes: string;
     manualSteps: string[];
   }>;
+  controls: {
+    canStart: boolean;
+    canStop: boolean;
+    canRestart: boolean;
+    startDisabledReason: string | null;
+    stopDisabledReason: string | null;
+    restartDisabledReason: string | null;
+  };
   diagnostics: {
     legacyGateway: {
       status: string;
@@ -458,7 +467,7 @@ function buildSwitchModeDetail(runtime: Awaited<ReturnType<typeof getAiRuntimeSt
     reasons.push('No server-side LiteLLM API key is configured for route verification or broker forwarding.');
   }
 
-  reasons.push('The portal does not yet have a safe host-side mechanism to rewrite LiteLLM model routing for arbitrary model switches.');
+  reasons.push('The portal can control the fixed primary Qwen3 14B runtime, but arbitrary model switching remains gated until LiteLLM and the host compose path are parameterized per model.');
 
   return reasons.join(' ');
 }
@@ -490,6 +499,16 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
   const activeModelDisplayName = APPROVED_MODELS.find((model) => model.modelId === activeModelId)?.displayName || activeModelId;
   const openWebUi = deriveOpenWebUiStatus(runtime.openWebUi.providerBaseUrls, config.liteLlmBaseUrl, liteLlmProbe.status === 'ready' ? 'Ready' : liteLlmProbe.status === 'route_missing' ? 'Alias missing' : liteLlmProbe.status === 'not_configured' ? 'Not configured' : liteLlmProbe.status === 'manual_action_required' ? 'Manual action required' : 'Degraded', runtime);
   const totalVramMiB = runtime.gpu.totalVramMiB;
+  const controls = {
+    canStart: runtime.actions.canStartVllmTrial,
+    canStop: runtime.actions.canStopVllm,
+    canRestart: runtime.vllm.configuredInCompose,
+    startDisabledReason: runtime.actions.startBlockedReason,
+    stopDisabledReason: runtime.actions.canStopVllm ? null : 'vLLM is not running.',
+    restartDisabledReason: runtime.vllm.configuredInCompose
+      ? null
+      : runtime.vllm.blockedReason || 'No host-side vLLM service is configured yet.',
+  };
 
   const modelCatalog = APPROVED_MODELS.map((model) => {
     const downloaded = Boolean(remote.downloaded[model.modelId]);
@@ -500,7 +519,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
       : incompatible
         ? 'incompatible'
         : downloaded
-          ? 'available'
+          ? 'ready'
           : 'not_downloaded';
 
     const notes = [model.notes];
@@ -519,6 +538,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
       modelId: model.modelId,
       publicAlias: model.publicAlias,
       estimatedVram: formatMiB(model.estimatedVramMiB),
+      cacheDir: modelCacheDir(model.modelId),
       status,
       notes: notes.join(' '),
       manualSteps: buildManualSteps(model, {
@@ -587,6 +607,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
         },
         metrics: buildMetrics(runtime),
         modelCatalog: [],
+        controls,
         diagnostics: {
           legacyGateway: {
             status: gateway?.status || 'Unavailable',
@@ -666,6 +687,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
     },
     metrics: buildMetrics(runtime),
     modelCatalog,
+    controls,
     diagnostics: {
       legacyGateway: {
         status: gateway?.status || 'Unavailable',

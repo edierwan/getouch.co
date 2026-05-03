@@ -238,6 +238,21 @@ def parse_mem(token):
         return None
     return token
 
+def detect_ollama_gpu_holder():
+  rc, out, _ = run("nvidia-smi --query-compute-apps=process_name,used_gpu_memory --format=csv,noheader,nounits")
+  if rc != 0 or not out:
+    return None
+  for line in out.splitlines():
+    parts = [part.strip() for part in line.split(',', 1)]
+    if not parts:
+      continue
+    process_name = parts[0]
+    memory_token = parts[1] if len(parts) > 1 else ''
+    memory_mib = int(memory_token) if memory_token.isdigit() else None
+    if process_name.endswith('ollama') and memory_mib and memory_mib > 1024:
+      return memory_mib
+  return None
+
 status = {
     'checkedAt': datetime.now(timezone.utc).isoformat(),
     'runtime': {
@@ -444,6 +459,12 @@ if rc == 0 and ollama_ps:
             status['ollama']['residentContext'] = first[-2]
             status['ollama']['residentUntil'] = first[-1]
 
+    ollama_gpu_holder_mib = detect_ollama_gpu_holder()
+    if not status['ollama']['residentModel'] and ollama_gpu_holder_mib is not None:
+      status['ollama']['residentModel'] = '[resident model not reported]'
+      status['ollama']['residentSize'] = f'{ollama_gpu_holder_mib} MiB'
+      status['ollama']['residentUntil'] = 'Unknown'
+
 rc, ollama_list, _ = run("docker exec ollama ollama list")
 if rc == 0 and ollama_list:
     model_names = []
@@ -455,7 +476,9 @@ if rc == 0 and ollama_list:
     status['ollama']['installedModels'] = model_names[:8]
     status['ollama']['installedCount'] = len(model_names)
 
-status['actions']['canUnloadOllama'] = bool(status['ollama']['residentModel']) and status['ollama']['containerStatus'] == 'running'
+status['actions']['canUnloadOllama'] = status['ollama']['containerStatus'] == 'running' and (
+  bool(status['ollama']['residentModel']) or ollama_gpu_holder_mib is not None
+)
 
 # Open WebUI status
 rc, webui_health, webui_err = run("docker exec open-webui sh -lc 'curl -sf http://127.0.0.1:8080/ >/dev/null'")
@@ -643,6 +666,15 @@ case "$ACTION" in
   ollama-unload-current)
     current_model="$(docker exec ollama ollama ps | awk 'NR==2 {print $1}')"
     if [ -z "$current_model" ]; then
+      current_model="$(docker exec ollama sh -lc 'curl -fsS http://127.0.0.1:11434/api/ps 2>/dev/null | python3 -c "import json, sys; payload = json.load(sys.stdin) if not sys.stdin.isatty() else {\"models\": []}; models = payload.get(\"models\") or []; print(models[0].get(\"name\", \"\") if models else \"\")"' 2>/dev/null || true)"
+    fi
+    if [ -z "$current_model" ]; then
+      ollama_gpu_mib="$(nvidia-smi --query-compute-apps=process_name,used_gpu_memory --format=csv,noheader,nounits | awk -F',' '/ollama/{gsub(/ /, "", $2); if ($2+0 > 1024) {print $2; exit}}')"
+      if [ -n "$ollama_gpu_mib" ]; then
+        docker restart ollama >/dev/null 2>&1 || true
+        emit_result true ollama-unload-current "Restarted Ollama to clear hidden resident GPU allocation."
+        exit 0
+      fi
       emit_result true ollama-unload-current "No resident Ollama model was loaded."
       exit 0
     fi
@@ -652,19 +684,39 @@ case "$ACTION" in
   vllm-start)
     require_compose_vllm
     mkdir -p "$HF_CACHE_DIR"
-    if [ -z "\${VLLM_API_KEY:-}" ]; then
-      emit_result false vllm-start "VLLM_API_KEY is not configured on host."
-      exit 0
+    current_model="$(docker exec ollama ollama ps | awk 'NR==2 {print $1}')"
+    if [ -n "$current_model" ]; then
+      docker exec ollama ollama stop "$current_model" >/dev/null 2>&1 || true
+    else
+      ollama_gpu_mib="$(nvidia-smi --query-compute-apps=process_name,used_gpu_memory --format=csv,noheader,nounits | awk -F',' '/ollama/{gsub(/ /, "", $2); if ($2+0 > 1024) {print $2; exit}}')"
+      if [ -n "$ollama_gpu_mib" ]; then
+        docker restart ollama >/dev/null 2>&1 || true
+      fi
     fi
     docker compose -f "$COMPOSE_FILE" up -d "$VLLM_SERVICE" >/dev/null 2>&1 || true
-    sleep 5
+    ready=0
+    for _ in $(seq 1 24); do
+      if docker exec "$VLLM_SERVICE" python3 -c "import json, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8); payload = json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/models', timeout=8)); ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]; raise SystemExit(0 if '$VLLM_MODEL' in ids else 1)" >/dev/null 2>&1; then
+        ready=1
+        break
+      fi
+      restart_count="$(docker inspect "$VLLM_SERVICE" --format '{{.RestartCount}}' 2>/dev/null || echo 0)"
+      if [ "$restart_count" != "0" ]; then
+        break
+      fi
+      sleep 5
+    done
     restart_count="$(docker inspect "$VLLM_SERVICE" --format '{{.RestartCount}}' 2>/dev/null || echo 0)"
-    if [ "$restart_count" != "0" ]; then
-      logs="$(docker logs --tail=40 "$VLLM_SERVICE" 2>&1 | tail -n 5 | tr '\n' ' ' | sed 's/"//g')"
-      emit_result false vllm-start "vLLM started with restart activity: $logs"
+    if [ "$ready" != "1" ]; then
+      logs="$(docker logs --tail=80 "$VLLM_SERVICE" 2>&1 | tail -n 8 | tr '\n' ' ' | sed 's/"//g')"
+      if [ "$restart_count" != "0" ]; then
+        emit_result false vllm-start "vLLM restart activity detected during startup: $logs"
+        exit 0
+      fi
+      emit_result false vllm-start "vLLM did not reach health and model readiness in time: $logs"
       exit 0
     fi
-    emit_result true vllm-start "vLLM trial start requested."
+    emit_result true vllm-start "vLLM is running and responded to the internal health and model probes."
     ;;
   vllm-stop)
     require_compose_vllm

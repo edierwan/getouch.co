@@ -21,6 +21,13 @@ type DiagnosticLogResult = {
   message: string;
 };
 
+type RuntimeControlAction = 'start' | 'stop';
+
+type RuntimeControlResult = {
+  ok: boolean;
+  message: string;
+};
+
 function formatDateTime(value: string | null) {
   if (!value) return 'Not recorded';
   const parsed = new Date(value);
@@ -37,7 +44,7 @@ function statusClass(tone: 'healthy' | 'active' | 'warning') {
 }
 
 function toneForStatus(value: string) {
-  if (['Ready', 'Healthy', 'Working', 'Active', 'available', 'active'].includes(value)) return 'active' as const;
+  if (['Ready', 'Healthy', 'Working', 'Active', 'ready', 'active'].includes(value)) return 'active' as const;
   if (['Configured'].includes(value)) return 'healthy' as const;
   return 'warning' as const;
 }
@@ -85,6 +92,14 @@ async function requestSwitchPlan(modelId: string) {
   }
 
   return payload;
+}
+
+async function requestRuntimeAction(action: RuntimeControlAction) {
+  const route = action === 'start'
+    ? '/api/admin/ai-runtime/vllm/start'
+    : '/api/admin/ai-runtime/vllm/stop';
+
+  return requestJson<RuntimeControlResult>(route, { method: 'POST' });
 }
 
 export function VllmServiceEndpointConsole() {
@@ -226,6 +241,32 @@ export function VllmServiceEndpointConsole() {
     });
   }
 
+  function handleRuntimeControl(action: 'start' | 'stop' | 'restart') {
+    const currentData = data;
+    if (!currentData) return;
+
+    startTransition(async () => {
+      try {
+        let result: RuntimeControlResult | null = null;
+
+        if (action === 'restart') {
+          if (currentData.controls.canStop) {
+            await requestRuntimeAction('stop');
+          }
+          result = await requestRuntimeAction('start');
+        } else {
+          result = await requestRuntimeAction(action);
+        }
+
+        await refreshStatus();
+        setMessage(action === 'restart' ? 'vLLM runtime restarted.' : result.message);
+        setError('');
+      } catch (runtimeError) {
+        setError(runtimeError instanceof Error ? runtimeError.message : `Unable to ${action} the vLLM runtime.`);
+      }
+    });
+  }
+
   if (loading) {
     return <section className="portal-panel">Loading Model Runtime Manager…</section>;
   }
@@ -245,11 +286,8 @@ export function VllmServiceEndpointConsole() {
         <section className="portal-panel portal-panel-fill">
           <div className="portal-panel-head portal-panel-head-inline">
             <div>
-              <h3 className="portal-panel-title">vLLM Model Runtime Manager</h3>
-              <p className="portal-page-sub">
-                Operator view for the active model runtime, LiteLLM route readiness, OpenWebUI test wiring,
-                and GPU pressure. Product apps should use only Platform Broker env keys.
-              </p>
+              <h3 className="portal-panel-title">vLLM Runtime</h3>
+              <p className="portal-page-sub">Operator view for the live runtime, LiteLLM route, OpenWebUI provider state, and GPU pressure.</p>
             </div>
             <div className="portal-action-row">
               <button type="button" className="portal-action-link" onClick={handleRefresh}>
@@ -267,22 +305,46 @@ export function VllmServiceEndpointConsole() {
             <div className="portal-panel-head">
               <div>
                 <h3 className="portal-panel-title">Runtime Overview</h3>
-                <p className="portal-page-sub">Primary operator state for the production model runtime path.</p>
+                <p className="portal-page-sub">Primary operator state for the active production runtime path.</p>
               </div>
             </div>
             <div className="portal-info-table">
               <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime Status</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(data.runtime.status))}>{data.runtime.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Active Model</span><span className="portal-info-table-value">{data.runtime.activeModelDisplayName || 'None active'}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Public Model Alias</span><span className="portal-info-table-value">{data.runtime.publicAlias}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Backend Health</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(data.backendHealth.status))}>{data.backendHealth.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">LiteLLM Route Status</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(data.liteLlm.status))}>{data.liteLlm.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">OpenWebUI Provider</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(data.openWebUi.status))}>{data.openWebUi.status}</span></span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama GPU State</span><span className="portal-info-table-value"><span className={statusClass(data.ollama.gpuConflict ? 'warning' : 'healthy')}>{data.ollama.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Last Health Check</span><span className="portal-info-table-value">{formatDateTime(data.runtime.lastHealthCheckAt)}</span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Last Model Switch</span><span className="portal-info-table-value">{formatDateTime(data.runtime.lastModelSwitchAt)}</span></div>
             </div>
-            <p className="portal-page-sub" style={{ marginTop: '0.85rem' }}>{data.runtime.detail}</p>
           </section>
 
+          <section className="portal-panel">
+            <div className="portal-panel-head">
+              <div>
+                <h3 className="portal-panel-title">Runtime Controls</h3>
+                <p className="portal-page-sub">Start, stop, or restart the fixed primary vLLM runtime safely.</p>
+              </div>
+            </div>
+            <div className="portal-action-row">
+              <button type="button" className="portal-admin-btn portal-admin-btn-primary" disabled={!data.controls.canStart || isPending} onClick={() => handleRuntimeControl('start')}>
+                {isPending ? 'Working…' : 'Start'}
+              </button>
+              <button type="button" className="portal-admin-btn portal-admin-btn-secondary" disabled={!data.controls.canStop || isPending} onClick={() => handleRuntimeControl('stop')}>
+                {isPending ? 'Working…' : 'Stop'}
+              </button>
+              <button type="button" className="portal-admin-btn portal-admin-btn-secondary" disabled={!data.controls.canRestart || isPending} onClick={() => handleRuntimeControl('restart')}>
+                {isPending ? 'Working…' : 'Restart'}
+              </button>
+            </div>
+            <div className="portal-vllm-note-list" style={{ marginTop: '1rem' }}>
+              <div>{data.runtime.detail}</div>
+              <div>Last model switch: {formatDateTime(data.runtime.lastModelSwitchAt)}</div>
+            </div>
+          </section>
+        </div>
+
+        <div className="portal-vllm-grid">
           <section className="portal-panel">
             <div className="portal-panel-head">
               <div>
@@ -309,14 +371,12 @@ export function VllmServiceEndpointConsole() {
             </div>
             <p className="portal-page-sub">Last checked {formatDateTime(data.metrics.lastCheckedAt)}.</p>
           </section>
-        </div>
 
-        <div className="portal-vllm-grid">
           <section className="portal-panel portal-panel-fill">
             <div className="portal-panel-head">
               <div>
                 <h3 className="portal-panel-title">Approved Model Catalog</h3>
-                <p className="portal-page-sub">Approved runtime targets only. Free-text model switching is intentionally blocked.</p>
+                <p className="portal-page-sub">Approved runtime targets only. Unsupported model switches stay gated until the host path is parameterized.</p>
               </div>
             </div>
 
@@ -326,68 +386,23 @@ export function VllmServiceEndpointConsole() {
                   <div className="portal-runtime-model-head">
                     <div>
                       <div className="portal-runtime-model-name">{model.displayName}</div>
-                      <div className="portal-runtime-model-id">{model.modelId}</div>
                     </div>
                     <span className={statusClass(toneForStatus(model.status))}>{model.status.replace(/_/g, ' ')}</span>
                   </div>
                   <dl className="portal-runtime-model-meta">
-                    <div><dt>Alias</dt><dd>{model.publicAlias}</dd></div>
+                    <div><dt>Status</dt><dd>{model.status.replace(/_/g, ' ')}</dd></div>
                     <div><dt>Estimated VRAM</dt><dd>{model.estimatedVram}</dd></div>
                   </dl>
-                  <p className="portal-page-sub">{model.notes}</p>
                   <div className="portal-action-row">
                     <button type="button" className="portal-action-link" onClick={() => handleReview(model.modelId)}>
-                      {model.status === 'active' ? 'Review Runtime' : 'Review Switch'}
+                      {data.runtime.switchMode === 'automated' && model.status !== 'active' ? 'Switch' : 'Review'}
                     </button>
                   </div>
                 </article>
               ))}
             </div>
           </section>
-
-          <section className="portal-panel">
-            <div className="portal-panel-head">
-              <div>
-                <h3 className="portal-panel-title">App Integration</h3>
-                <p className="portal-page-sub">Product apps should not know LiteLLM, vLLM, or provider keys.</p>
-              </div>
-            </div>
-            <div className="portal-runtime-env-list">
-              <div><strong>PLATFORM_API_URL</strong><span>{data.sourceOfTruth.brokerUrl.replace(/\/ai\/chat$/, '')}</span></div>
-              <div><strong>PLATFORM_APP_CODE</strong><span>App-specific value from App Access Control</span></div>
-              <div><strong>PLATFORM_APP_KEY</strong><span>Platform App Key only. No LiteLLM or vLLM key in product apps.</span></div>
-            </div>
-            <p className="portal-page-sub" style={{ marginTop: '0.85rem' }}>
-              Broker endpoint: <span className="portal-runtime-inline-code">{data.sourceOfTruth.brokerUrl}</span>
-            </p>
-          </section>
         </div>
-
-        {data.runtime.switchMode === 'manual' ? (
-          <div className="portal-warning-box">
-            <div className="portal-warning-title">Manual action required</div>
-            <ul className="portal-warning-list">
-              <li>{data.runtime.switchModeDetail}</li>
-              <li>Current live host check confirms LiteLLM is running, OpenWebUI is not yet pointed at LiteLLM, and no deployed vLLM service exists.</li>
-            </ul>
-          </div>
-        ) : null}
-
-        {switchResult && switchResult.manualSteps.length > 0 ? (
-          <section className="portal-panel portal-panel-fill">
-            <div className="portal-panel-head">
-              <div>
-                <h3 className="portal-panel-title">Manual Switch Plan</h3>
-                <p className="portal-page-sub">Generated from the current runtime state. No fake success is shown.</p>
-              </div>
-            </div>
-            <ol className="portal-runtime-step-list">
-              {switchResult.manualSteps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
 
         <details className="portal-runtime-details">
           <summary>Advanced Diagnostics</summary>
@@ -414,6 +429,11 @@ export function VllmServiceEndpointConsole() {
                 <button type="button" className="portal-action-link" onClick={() => startTransition(() => void openLogs('gateway'))}>View Legacy Gateway Logs</button>
                 <a href={data.sourceOfTruth.liteLlmPublicBaseUrl.replace(/\/v1$/, '')} target="_blank" rel="noopener noreferrer" className="portal-action-link">Open LiteLLM</a>
               </div>
+              <div className="portal-runtime-env-list" style={{ marginTop: '1rem' }}>
+                <div><strong>PLATFORM_API_URL</strong><span>{data.sourceOfTruth.brokerUrl.replace(/\/ai\/chat$/, '')}</span></div>
+                <div><strong>PLATFORM_APP_CODE</strong><span>App-specific value from App Access Control</span></div>
+                <div><strong>PLATFORM_APP_KEY</strong><span>Platform App Key only. No LiteLLM or vLLM key in product apps.</span></div>
+              </div>
             </section>
 
             <section className="portal-panel">
@@ -427,11 +447,44 @@ export function VllmServiceEndpointConsole() {
                 <div>{data.liteLlm.detail}</div>
                 <div>{data.openWebUi.detail}</div>
                 <div>{data.backendHealth.detail}</div>
+                <div>{data.runtime.switchModeDetail}</div>
                 {data.diagnostics.runtimeWarnings.map((note) => (
                   <div key={note}>{note}</div>
                 ))}
               </div>
             </section>
+
+            <section className="portal-panel portal-panel-fill">
+              <div className="portal-panel-head">
+                <div>
+                  <h3 className="portal-panel-title">Model Catalog Details</h3>
+                  <p className="portal-page-sub">Cache paths, compatibility notes, and manual requirements stay here.</p>
+                </div>
+              </div>
+              <div className="portal-vllm-note-list">
+                {data.modelCatalog.map((model) => (
+                  <div key={model.modelId}>
+                    <strong>{model.displayName}</strong>: {model.notes} Cache path: {model.cacheDir}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {switchResult && switchResult.manualSteps.length > 0 ? (
+              <section className="portal-panel portal-panel-fill">
+                <div className="portal-panel-head">
+                  <div>
+                    <h3 className="portal-panel-title">Manual Switch Plan</h3>
+                    <p className="portal-page-sub">Generated from the current runtime state. No fake success is shown.</p>
+                  </div>
+                </div>
+                <ol className="portal-runtime-step-list">
+                  {switchResult.manualSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
           </div>
         </details>
       </div>
@@ -448,16 +501,15 @@ export function VllmServiceEndpointConsole() {
             </div>
             <div className="portal-modal-body">
               <p className="portal-page-sub">
-                This will stop the current vLLM backend, free GPU memory, start the selected model, test health,
-                and update LiteLLM routing.
+                Review the current runtime requirements before switching this catalog target.
               </p>
               <p className="portal-page-sub" style={{ marginTop: '0.8rem' }}>
-                Current environment is manual-gated, so the server will return the exact manual action plan instead of pretending the switch was executed.
+                Unsupported catalog switches remain gated, so the server returns the exact manual action plan instead of pretending the switch was executed.
               </p>
               <div className="portal-modal-actions">
                 <button type="button" className="portal-admin-btn portal-admin-btn-secondary" onClick={() => setReviewModelId(null)}>Cancel</button>
                 <button type="button" className="portal-admin-btn portal-admin-btn-primary" onClick={handleConfirmSwitch} disabled={isPending}>
-                  {isPending ? 'Reviewing…' : 'Review Switch'}
+                  {isPending ? 'Reviewing…' : 'Review'}
                 </button>
               </div>
             </div>
