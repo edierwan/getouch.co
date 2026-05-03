@@ -177,6 +177,32 @@ function toneForStatus(status: string): string {
   }
 }
 
+function platformBrokerAuthStatus(app: PlatformAppItem): string {
+  if (app.platformKeyConnected) {
+    return 'connected';
+  }
+  if (app.platformKeyStatus === 'configured') {
+    return 'not_checked';
+  }
+  return 'not_configured';
+}
+
+function runtimeSetupStatus(app: PlatformAppItem, revealedKey: RevealedPlatformKey | null): string {
+  const currentReveal = revealedKey?.appId === app.id ? revealedKey : null;
+
+  if (currentReveal?.authState === 'testing') {
+    return 'testing';
+  }
+  if (currentReveal?.authState === 'success') {
+    return 'connected';
+  }
+  if (currentReveal?.authState === 'error') {
+    return 'error';
+  }
+
+  return platformBrokerAuthStatus(app);
+}
+
 function metadataText(metadata: Record<string, unknown>): string {
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata, null, 2) : '';
 }
@@ -401,7 +427,7 @@ function AppOverviewCard({ app }: { app: PlatformAppItem }) {
         </div>
         <div>
           <dt>Broker Auth</dt>
-          <dd><StatusBadge value={app.platformKeyConnected ? 'connected' : 'not_checked'} /></dd>
+          <dd><StatusBadge value={platformBrokerAuthStatus(app)} /></dd>
         </div>
         <div>
           <dt>Masked Key</dt>
@@ -506,6 +532,7 @@ function WapiRuntimeSetupCard({
     rawKey: revealedKey?.plaintext ?? null,
     maskedKey: app.platformKeyMask || null,
   });
+  const status = runtimeSetupStatus(app, revealedKey);
 
   return (
     <section className="portal-aac-panel">
@@ -514,7 +541,7 @@ function WapiRuntimeSetupCard({
           <div className="portal-aac-eyebrow">Runtime Setup</div>
           <h3>WAPI Runtime Setup</h3>
         </div>
-        <StatusBadge value={revealedKey ? 'configured' : 'not_checked'} />
+        <StatusBadge value={status} />
       </div>
       <p className="portal-aac-panel-copy">
         Copy these values into the WAPI Coolify environment variables, redeploy WAPI, then run the broker auth test from WAPI Settings.
@@ -564,7 +591,7 @@ function PlatformBrokerPanel({
             <div className="portal-aac-eyebrow">Platform Broker</div>
             <h3>{app.name} broker access</h3>
           </div>
-          <StatusBadge value={broker.status} />
+          <StatusBadge value={platformBrokerAuthStatus(app)} />
         </div>
         <p className="portal-aac-panel-copy">
           The broker exposes one app-scoped entry point for shared services. WAPI should use this instead of carrying raw downstream service keys.
@@ -580,7 +607,7 @@ function PlatformBrokerPanel({
           </div>
           <div>
             <dt>Auth Status</dt>
-            <dd><StatusBadge value={broker.appKeyConnected ? 'connected' : 'not_checked'} /></dd>
+            <dd><StatusBadge value={platformBrokerAuthStatus(app)} /></dd>
           </div>
           <div>
             <dt>Masked Key</dt>
@@ -767,7 +794,6 @@ function AppFormModal({
   const [environment, setEnvironment] = useState(initial?.environment ?? 'production');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [status, setStatus] = useState(initial?.status ?? 'active');
-  const [metadataRaw, setMetadataRaw] = useState(metadataText(initial?.metadata ?? {}));
   const [localError, setLocalError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -784,7 +810,7 @@ function AppFormModal({
         name,
         environment,
         description,
-        metadata: parseMetadataInput(metadataRaw),
+        metadata: initial?.metadata ?? {},
       };
       if (mode === 'edit') payload.status = status;
       await onSubmit(payload);
@@ -838,13 +864,6 @@ function AppFormModal({
         <p className="portal-aac-helper-note">
           App Code is generated automatically. The app receives default ecosystem capability access without creating downstream Dify, Chatwoot, Evolution, LiteLLM, vLLM, Qdrant, Langfuse, or webhook resources.
         </p>
-
-        <AdvancedMetadataField
-          label="Advanced Metadata JSON"
-          value={metadataRaw}
-          onChange={setMetadataRaw}
-          help="Optional registry metadata only. Do not place secrets or raw credentials here."
-        />
 
         {localError || error ? <div className="portal-aac-form-error">{localError || error}</div> : null}
 
@@ -1862,16 +1881,6 @@ export function AppAccessControlConsole() {
 
   return (
     <div className="portal-aac-shell">
-      <section className="portal-aac-banner">
-        <div>
-          <div className="portal-aac-eyebrow">Control Plane</div>
-          <h2>Create the app once, enable the shared ecosystem by default, and link actual resources later.</h2>
-        </div>
-        <p>
-          Apps are product containers. Tenants are isolation islands inside each app. Ecosystem Services show what the app can use. Service Links and Secret References stay registry-only and never touch external tool databases in this phase.
-        </p>
-      </section>
-
       <FlashBanner flash={flash} />
 
       <RevealedPlatformKeyPanel
