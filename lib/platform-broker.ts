@@ -18,7 +18,7 @@ export const PLATFORM_BROKER_SYSTEM_SESSION_NAME = 'wapi-evo-system';
 export const PLATFORM_BROKER_PROVIDER = 'evolution';
 export const PLATFORM_BROKER_DEPENDENCY_FAILURE_STATUS = 424;
 
-type PlatformBrokerScope = 'platform:auth' | 'platform:whatsapp';
+type PlatformBrokerScope = 'platform:auth' | 'platform:whatsapp' | 'platform:ai';
 
 interface EvolutionSendTextPayload {
   key?: { id?: string };

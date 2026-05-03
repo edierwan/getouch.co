@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch WAPI development container events and keep the Caddy wapi-dev upstream current
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/deploy/apps/getouch.co
+ExecStart=/bin/bash /home/deploy/apps/getouch.co/scripts/watch-wapi-dev-caddy-upstream.sh
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

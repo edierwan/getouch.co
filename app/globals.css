@@ -4908,6 +4908,136 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
   gap: 0.45rem;
 }
 
+.portal-runtime-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.9rem;
+  margin-top: 0.85rem;
+}
+
+.portal-runtime-model-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.portal-runtime-model-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.portal-runtime-model-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #edf1ff;
+}
+
+.portal-runtime-model-id {
+  margin-top: 0.22rem;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 0.76rem;
+  word-break: break-word;
+}
+
+.portal-runtime-model-meta {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.portal-runtime-model-meta > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.portal-runtime-model-meta dt {
+  font-size: 0.73rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.portal-runtime-model-meta dd {
+  margin: 0;
+  font-size: 0.84rem;
+  color: rgba(255, 255, 255, 0.84);
+  text-align: right;
+}
+
+.portal-runtime-env-list {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.35rem;
+}
+
+.portal-runtime-env-list > div {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.portal-runtime-env-list strong {
+  font-size: 0.73rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.portal-runtime-env-list span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.portal-runtime-inline-code {
+  display: inline-block;
+  padding: 0.16rem 0.45rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', monospace;
+  font-size: 0.78rem;
+  color: #dbe2fb;
+}
+
+.portal-runtime-step-list {
+  margin: 0.2rem 0 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.55rem;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.45;
+}
+
+.portal-runtime-details {
+  padding: 0.95rem 1rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.portal-runtime-details > summary {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.portal-runtime-details > summary::marker {
+  color: rgba(255, 255, 255, 0.56);
+}
+
 @media (max-width: 720px) {
   .portal-vllm-action-row {
     grid-template-columns: 1fr;
@@ -4915,6 +5045,14 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
   .portal-vllm-shell .portal-panel-head-inline {
     flex-direction: column;
     align-items: stretch;
+  }
+  .portal-runtime-model-head,
+  .portal-runtime-model-meta > div {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .portal-runtime-model-meta dd {
+    text-align: left;
   }
 }
 
