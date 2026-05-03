@@ -31,6 +31,10 @@
 - Coolify `EnvironmentVariable` rows for Application id 2 are kept in sync via
   [`scripts/migrate-coolify-env.php`](../../scripts/migrate-coolify-env.php),
   run inside the `coolify` container.
+- One-off Coolify app env changes should go through
+  [`scripts/set-coolify-app-env.php`](../../scripts/set-coolify-app-env.php),
+  also run inside the `coolify` container so Coolify encrypts values through its
+  own model path.
 - `AUTH_SECRET` is force-overwritten to the compose value (preserves sessions).
 - Coolify-managed keys (`NODE_ENV`, `NIXPACKS_NODE_VERSION`) and pure-infra
   keys (admin/pgadmin/cloudflared/searxng) are not authoritative for the portal
@@ -38,6 +42,28 @@
   container; harmless if unused.
 - Current portal naming must stay aligned with the Coolify application resource
   and the `getouch.co` hostnames.
+
+### Safe single-key updates
+
+```bash
+# Copy the helper into the running Coolify container.
+docker cp scripts/set-coolify-app-env.php coolify:/tmp/set-coolify-app-env.php
+
+# Non-secret example.
+docker exec coolify php /tmp/set-coolify-app-env.php \
+  --app-id 2 \
+  --key GETOUCH_LITELLM_MODEL_ALIAS \
+  --value getouch-qwen3-14b
+
+# Secret example: prefer stdin or a file over --value.
+printf '%s' "$GETOUCH_LITELLM_API_KEY" | docker exec -i coolify php /tmp/set-coolify-app-env.php \
+  --app-id 2 \
+  --key GETOUCH_LITELLM_API_KEY \
+  --stdin
+```
+
+The helper prints only metadata about the updated row. It does not echo the env
+value.
 
 ## Deploy workflow
 
