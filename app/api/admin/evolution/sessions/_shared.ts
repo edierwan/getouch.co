@@ -1,6 +1,15 @@
-import { evolutionFetch, type EvolutionResult } from '@/lib/evolution';
+import { and, eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import {
+  buildDefaultEvolutionSessionLabel,
+  buildDefaultEvolutionSessionName,
+  evolutionFetch,
+  normalizeEvolutionSessionPurpose,
+  type EvolutionResult,
+  type EvolutionSessionPurpose,
+} from '@/lib/evolution';
 import { normalizeMyPhone } from '@/lib/phone';
-import { evolutionSessions } from '@/lib/schema';
+import { evolutionInstances, evolutionSessions, evolutionTenantBindings } from '@/lib/schema';
 
 export const EVOLUTION_DEPENDENCY_FAILURE_STATUS = 424;
 
@@ -122,7 +131,7 @@ export function mapBackendStateToSessionStatus(state: string | null): typeof evo
       return 'connected';
     case 'connecting':
     case 'qr':
-      return 'qr_pending';
+      return 'connecting';
     case 'close':
     case 'disconnected':
       return 'disconnected';
@@ -130,7 +139,7 @@ export function mapBackendStateToSessionStatus(state: string | null): typeof evo
     case 'refused':
       return 'error';
     default:
-      return 'qr_pending';
+      return 'pending_connection';
   }
 }
 
@@ -249,6 +258,164 @@ export async function ensureRemoteSession(sessionName: string): Promise<EnsureRe
     created: false,
     error: created.error,
     data: created.data,
+  };
+}
+
+function getSystemSessionCandidates(instanceSlug: string | null | undefined) {
+  return Array.from(new Set([
+    buildDefaultEvolutionSessionName({ purpose: 'system', instanceSlug }),
+    'system-main',
+  ]));
+}
+
+export interface EnsureControlPlaneSessionInput {
+  instance: typeof evolutionInstances.$inferSelect;
+  tenant: typeof evolutionTenantBindings.$inferSelect;
+  sessionName?: string | null;
+  displayLabel?: string | null;
+  purpose?: EvolutionSessionPurpose;
+  phoneNumber?: string | null;
+  reuseExisting?: boolean;
+  isDefault?: boolean;
+  botEnabled?: boolean;
+  humanHandoffEnabled?: boolean;
+  sourceApp?: string | null;
+}
+
+export type EnsureControlPlaneSessionSuccess = {
+  ok: true;
+  session: typeof evolutionSessions.$inferSelect;
+  created: boolean;
+  reused: boolean;
+  remoteCreated: boolean;
+  remoteStatus: number;
+};
+
+export type EnsureControlPlaneSessionFailure = {
+  ok: false;
+  status: number;
+  remoteId: string;
+  error?: string;
+  data?: unknown;
+  conflict?: boolean;
+  existingSession?: typeof evolutionSessions.$inferSelect;
+};
+
+export type EnsureControlPlaneSessionResult = EnsureControlPlaneSessionSuccess | EnsureControlPlaneSessionFailure;
+
+export async function ensureControlPlaneSession(input: EnsureControlPlaneSessionInput): Promise<EnsureControlPlaneSessionResult> {
+  const purpose = normalizeEvolutionSessionPurpose(input.purpose);
+  const desiredSessionName = (input.sessionName?.trim() || buildDefaultEvolutionSessionName({
+    purpose,
+    tenantKey: input.tenant.tenantKey,
+    instanceSlug: input.instance.slug,
+  })).slice(0, 120);
+  const desiredDisplayLabel = (input.displayLabel?.trim() || buildDefaultEvolutionSessionLabel(purpose)).slice(0, 160);
+  const desiredIsDefault = input.isDefault ?? purpose === 'system';
+  const desiredBotEnabled = input.botEnabled ?? true;
+  const desiredHumanHandoffEnabled = input.humanHandoffEnabled ?? true;
+
+  const [exactExisting] = await db
+    .select()
+    .from(evolutionSessions)
+    .where(and(
+      eq(evolutionSessions.instanceId, input.instance.id),
+      eq(evolutionSessions.sessionName, desiredSessionName),
+    ))
+    .limit(1);
+
+  let reusable: typeof evolutionSessions.$inferSelect | null = exactExisting ?? null;
+  if (!reusable && input.reuseExisting && purpose === 'system') {
+    const candidates = await db
+      .select()
+      .from(evolutionSessions)
+      .where(and(
+        eq(evolutionSessions.instanceId, input.instance.id),
+        eq(evolutionSessions.tenantId, input.tenant.tenantId),
+      ))
+      .limit(50);
+
+    reusable = candidates.find((row) => {
+      const systemNames = getSystemSessionCandidates(input.instance.slug);
+      return (row.purpose === 'system' && row.isDefault) || systemNames.includes(row.sessionName);
+    }) ?? null;
+  }
+
+  if (exactExisting && !input.reuseExisting) {
+    return {
+      ok: false,
+      status: 409,
+      remoteId: exactExisting.evolutionRemoteId ?? exactExisting.sessionName,
+      conflict: true,
+      existingSession: exactExisting,
+    };
+  }
+
+  const remoteSessionName = reusable?.sessionName ?? desiredSessionName;
+  const remote = await ensureRemoteSession(remoteSessionName);
+  if (!remote.ok) {
+    return {
+      ok: false,
+      status: remote.status,
+      remoteId: remoteSessionName,
+      error: remote.error,
+      data: remote.data,
+      existingSession: reusable ?? undefined,
+    };
+  }
+
+  const now = new Date();
+  const sessionStatus = remote.state ? mapBackendStateToSessionStatus(remote.state) : 'pending_connection';
+  const pairedNumber = extractPairedNumber(remote.data)
+    ?? (sessionStatus === 'connected' ? input.phoneNumber ?? reusable?.pairedNumber ?? reusable?.phoneNumber ?? null : reusable?.pairedNumber ?? null);
+
+  const values = {
+    instanceId: input.instance.id,
+    tenantId: input.tenant.tenantId,
+    sessionName: remoteSessionName,
+    displayLabel: desiredDisplayLabel,
+    purpose,
+    phoneNumber: input.phoneNumber ?? reusable?.phoneNumber ?? null,
+    pairedNumber,
+    status: sessionStatus,
+    qrStatus: sessionStatus === 'connected' ? 'connected' : reusable?.qrStatus ?? null,
+    evolutionRemoteId: remote.remoteId,
+    isDefault: desiredIsDefault,
+    botEnabled: desiredBotEnabled,
+    humanHandoffEnabled: desiredHumanHandoffEnabled,
+    metadata: {
+      ...(reusable?.metadata ?? {}),
+      sourceApp: input.sourceApp ?? input.tenant.sourceApp ?? 'portal',
+      provisionedPurpose: purpose,
+      remoteCreated: remote.created,
+    },
+    lastConnectedAt: sessionStatus === 'connected' ? reusable?.lastConnectedAt ?? now : reusable?.lastConnectedAt ?? null,
+    lastDisconnectedAt: reusable?.lastDisconnectedAt ?? null,
+    lastMessageAt: reusable?.lastMessageAt ?? null,
+    updatedAt: now,
+  } satisfies Partial<typeof evolutionSessions.$inferInsert>;
+
+  const [session] = reusable
+    ? await db.update(evolutionSessions).set(values).where(eq(evolutionSessions.id, reusable.id)).returning()
+    : await db.insert(evolutionSessions).values({
+        ...values,
+        createdAt: now,
+      }).returning();
+
+  if (desiredIsDefault && input.tenant.defaultSessionId !== session.id) {
+    await db.update(evolutionTenantBindings).set({
+      defaultSessionId: session.id,
+      updatedAt: now,
+    }).where(eq(evolutionTenantBindings.id, input.tenant.id));
+  }
+
+  return {
+    ok: true,
+    session,
+    created: !reusable,
+    reused: Boolean(reusable),
+    remoteCreated: remote.created,
+    remoteStatus: remote.status,
   };
 }
 

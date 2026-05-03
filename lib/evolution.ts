@@ -32,6 +32,11 @@ export const EVOLUTION_DEFAULT_WEBHOOK_EVENTS = [
 
 export const DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY = 'getouch-internal';
 export const DEFAULT_INTERNAL_EVOLUTION_TENANT_NAME = 'GetTouch Internal';
+export const DEFAULT_SYSTEM_SESSION_NAME = 'system-main';
+export const DEFAULT_SYSTEM_SESSION_LABEL = 'System Notification Number';
+
+export const EVOLUTION_SESSION_PURPOSES = ['system', 'customer_chat', 'support', 'sales'] as const;
+export type EvolutionSessionPurpose = (typeof EVOLUTION_SESSION_PURPOSES)[number];
 
 export type EvolutionEvent = (typeof EVOLUTION_DEFAULT_WEBHOOK_EVENTS)[number];
 
@@ -150,6 +155,44 @@ export function generateWebhookSecret(): { plaintext: string; prefix: string; ha
   return { plaintext, prefix: plaintext.slice(0, 12), hash };
 }
 
+export function normalizeEvolutionSessionPurpose(value: unknown): EvolutionSessionPurpose {
+  return EVOLUTION_SESSION_PURPOSES.includes(value as EvolutionSessionPurpose)
+    ? value as EvolutionSessionPurpose
+    : 'customer_chat';
+}
+
+export function buildDefaultEvolutionSessionName(input: {
+  purpose: EvolutionSessionPurpose;
+  tenantKey?: string | null;
+  instanceSlug?: string | null;
+}) {
+  switch (input.purpose) {
+    case 'system':
+      return input.instanceSlug ? `${slugify(input.instanceSlug)}-system` : DEFAULT_SYSTEM_SESSION_NAME;
+    case 'support':
+      return `${slugify(input.tenantKey || 'tenant')}-support`;
+    case 'sales':
+      return `${slugify(input.tenantKey || 'tenant')}-sales`;
+    case 'customer_chat':
+    default:
+      return `${slugify(input.tenantKey || 'tenant')}-main`;
+  }
+}
+
+export function buildDefaultEvolutionSessionLabel(purpose: EvolutionSessionPurpose) {
+  switch (purpose) {
+    case 'system':
+      return DEFAULT_SYSTEM_SESSION_LABEL;
+    case 'support':
+      return 'Support WhatsApp Number';
+    case 'sales':
+      return 'Sales WhatsApp Number';
+    case 'customer_chat':
+    default:
+      return 'Main WhatsApp Number';
+  }
+}
+
 export async function buildUniqueEvolutionTenantKey(input: string) {
   const base = slugify(input || 'tenant').slice(0, 120) || 'tenant';
   const rows = await db
@@ -180,6 +223,7 @@ export async function ensureDefaultEvolutionTenant() {
     tenantKey: DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY,
     tenantName: DEFAULT_INTERNAL_EVOLUTION_TENANT_NAME,
     tenantDomain: null,
+    sourceApp: 'system',
     instanceId: null,
     defaultSessionId: null,
     plan: 'trial',
@@ -241,6 +285,8 @@ export interface OverviewStats {
   totalInstances: number;
   activeInstances: number;
   stoppedInstances: number;
+  connectedSystemSessions: number;
+  connectedTenantSessions: number;
   activeSessions: number;
   connectingSessions: number;
   disconnectedSessions: number;
@@ -268,8 +314,10 @@ export async function getOverviewStats(): Promise<OverviewStats> {
     }).from(evolutionInstances),
     db.select({
       total: count(),
+      connectedSystem: dsql<number>`count(*) filter (where purpose = 'system' and status = 'connected')`,
+      connectedTenant: dsql<number>`count(*) filter (where purpose <> 'system' and status = 'connected')`,
       connected: dsql<number>`count(*) filter (where status = 'connected')`,
-      connecting: dsql<number>`count(*) filter (where status = 'connecting')`,
+      connecting: dsql<number>`count(*) filter (where status in ('pending_connection', 'connecting', 'qr_pending'))`,
       disconnected: dsql<number>`count(*) filter (where status = 'disconnected')`,
       expired: dsql<number>`count(*) filter (where status = 'expired')`,
     }).from(evolutionSessions),
@@ -288,7 +336,15 @@ export async function getOverviewStats(): Promise<OverviewStats> {
   ]);
 
   const i = instances[0] ?? { total: 0, active: 0, stopped: 0 };
-  const s = sessions[0] ?? { total: 0, connected: 0, connecting: 0, disconnected: 0, expired: 0 };
+  const s = sessions[0] ?? {
+    total: 0,
+    connectedSystem: 0,
+    connectedTenant: 0,
+    connected: 0,
+    connecting: 0,
+    disconnected: 0,
+    expired: 0,
+  };
   const t = tenants[0] ?? { total: 0, newWeek: 0 };
   const h = healthRows[0] ?? { ok: 0, total: 0 };
   const prev24 = Number(msgs48[0]?.c ?? 0);
@@ -299,6 +355,8 @@ export async function getOverviewStats(): Promise<OverviewStats> {
     totalInstances: Number(i.total),
     activeInstances: Number(i.active),
     stoppedInstances: Number(i.stopped),
+    connectedSystemSessions: Number(s.connectedSystem),
+    connectedTenantSessions: Number(s.connectedTenant),
     activeSessions: Number(s.connected),
     connectingSessions: Number(s.connecting),
     disconnectedSessions: Number(s.disconnected),
@@ -327,6 +385,18 @@ export async function listSessions(opts: { tenantId?: string; instanceId?: strin
   return where
     ? db.select().from(evolutionSessions).where(where).orderBy(desc(evolutionSessions.updatedAt)).limit(500)
     : db.select().from(evolutionSessions).orderBy(desc(evolutionSessions.updatedAt)).limit(500);
+}
+
+export async function getPrimarySystemSession() {
+  const tenant = await ensureDefaultEvolutionTenant();
+  const rows = await db
+    .select()
+    .from(evolutionSessions)
+    .where(and(eq(evolutionSessions.tenantId, tenant.tenantId), eq(evolutionSessions.purpose, 'system')))
+    .orderBy(desc(evolutionSessions.updatedAt))
+    .limit(20);
+
+  return rows.find((row) => row.isDefault) ?? rows[0] ?? null;
 }
 
 export async function listTenantBindings() {

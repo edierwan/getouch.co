@@ -274,7 +274,11 @@ export const evolutionInstanceStatus = pgEnum('evolution_instance_status', [
 ]);
 
 export const evolutionSessionStatus = pgEnum('evolution_session_status', [
-  'connected', 'connecting', 'disconnected', 'expired', 'error', 'qr_pending',
+  'pending_connection', 'connected', 'connecting', 'disconnected', 'expired', 'error', 'qr_pending',
+]);
+
+export const evolutionSessionPurpose = pgEnum('evolution_session_purpose', [
+  'system', 'customer_chat', 'support', 'sales',
 ]);
 
 export const evolutionWebhookStatus = pgEnum('evolution_webhook_status', [
@@ -333,6 +337,7 @@ export const evolutionTenantBindings = pgTable(
     tenantKey: varchar('tenant_key', { length: 160 }).notNull(),
     tenantName: varchar('tenant_name', { length: 160 }),
     tenantDomain: varchar('tenant_domain', { length: 255 }),
+    sourceApp: varchar('source_app', { length: 40 }),
     instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
     defaultSessionId: uuid('default_session_id'),
     plan: evolutionTenantPlan('plan').default('trial').notNull(),
@@ -355,13 +360,18 @@ export const evolutionSessions = pgTable(
     instanceId: uuid('instance_id').references(() => evolutionInstances.id, { onDelete: 'set null' }),
     tenantId: uuid('tenant_id'),
     sessionName: varchar('session_name', { length: 120 }).notNull(),
+    displayLabel: varchar('display_label', { length: 160 }),
+    purpose: evolutionSessionPurpose('purpose').default('customer_chat').notNull(),
     phoneNumber: varchar('phone_number', { length: 40 }),
     pairedNumber: varchar('paired_number', { length: 40 }),
-    status: evolutionSessionStatus('status').default('disconnected').notNull(),
+    status: evolutionSessionStatus('status').default('pending_connection').notNull(),
     qrStatus: varchar('qr_status', { length: 40 }),
     qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
     lastQrAt: timestamp('last_qr_at', { withTimezone: true }),
     evolutionRemoteId: varchar('evolution_remote_id', { length: 160 }),
+    isDefault: boolean('is_default').default(false).notNull(),
+    botEnabled: boolean('bot_enabled').default(true).notNull(),
+    humanHandoffEnabled: boolean('human_handoff_enabled').default(true).notNull(),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
     lastConnectedAt: timestamp('last_connected_at', { withTimezone: true }),
     lastDisconnectedAt: timestamp('last_disconnected_at', { withTimezone: true }),
@@ -373,6 +383,7 @@ export const evolutionSessions = pgTable(
     uniqueIndex('evolution_sessions_instance_name_unique').on(table.instanceId, table.sessionName),
     index('evolution_sessions_tenant_idx').on(table.tenantId),
     index('evolution_sessions_status_idx').on(table.status),
+    index('evolution_sessions_purpose_idx').on(table.purpose),
     index('evolution_sessions_phone_idx').on(table.phoneNumber),
   ],
 );

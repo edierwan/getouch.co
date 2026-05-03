@@ -26,6 +26,21 @@ type EvolutionSendTextPayload = {
   message?: { key?: { id?: string } };
 };
 
+function sanitizeProviderPayload(input: unknown): unknown {
+  if (input == null) return null;
+  if (typeof input === 'string') return input.slice(0, 500);
+  if (typeof input !== 'object') return input;
+  if (Array.isArray(input)) return input.slice(0, 10).map((item) => sanitizeProviderPayload(item));
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    out[key] = /secret|token|key|password|apikey/i.test(key)
+      ? '***'
+      : sanitizeProviderPayload(value);
+  }
+  return out;
+}
+
 function isPortalTestLog(value: Record<string, unknown> | null | undefined) {
   return value?.source === 'portal_test';
 }
@@ -131,7 +146,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       preview: text.slice(0, 280),
       metadata: {
         source: 'portal_test',
+        purpose: row.purpose,
+        body: text,
         remoteId: resolvedRemoteId,
+        providerResponse: sanitizeProviderPayload(response.data),
       },
       createdAt: sentAt,
     }).returning();
@@ -185,8 +203,11 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     errorMessage: detail,
     metadata: {
       source: 'portal_test',
+      purpose: row.purpose,
+      body: text,
       remoteId: resolvedRemoteId,
       backendStatus: response.status,
+      providerResponse: sanitizeProviderPayload(response.data),
     },
     createdAt: sentAt,
   }).returning();

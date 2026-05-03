@@ -117,17 +117,22 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     if (r.ok) {
       const qr = normalizeQrPayload(r.data);
       const state = qr.state ?? await fetchConnectionState(resolvedRemoteId);
-      const sessionStatus = mapBackendStateToSessionStatus(state);
+      const hasConnectArtifact = Boolean(qr.qr || qr.qrCode || qr.pairingCode);
+      const sessionStatus = state === 'open'
+        ? 'connected'
+        : hasConnectArtifact || state === 'connecting' || state === 'qr'
+          ? 'connecting'
+          : mapBackendStateToSessionStatus(state);
       const now = new Date();
       const pairedNumber = extractPairedNumber(r.data) ?? row.pairedNumber ?? row.phoneNumber;
       const detail = [detailPrefix, getDetailForState({ ...qr, state })].filter(Boolean).join(' ') || null;
       await db.update(evolutionSessions).set({
         evolutionRemoteId: resolvedRemoteId,
         status: sessionStatus,
-        qrStatus: state === 'open' ? 'connected' : qr.qr || qr.qrCode || qr.pairingCode ? 'pending' : null,
+        qrStatus: state === 'open' ? 'connected' : hasConnectArtifact ? 'pending' : null,
         updatedAt: now,
-        qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(now.getTime() + 60 * 1000) : null,
-        lastQrAt: qr.qr || qr.qrCode ? now : row.lastQrAt,
+        qrExpiresAt: sessionStatus === 'connecting' ? new Date(now.getTime() + 60 * 1000) : null,
+        lastQrAt: hasConnectArtifact ? now : row.lastQrAt,
         lastConnectedAt: state === 'open' ? now : row.lastConnectedAt,
         pairedNumber: state === 'open' ? pairedNumber : row.pairedNumber,
       }).where(eq(evolutionSessions.id, id));

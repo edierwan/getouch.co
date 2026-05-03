@@ -6,6 +6,7 @@ import { evolutionInstances, evolutionTenantBindings } from '@/lib/schema';
 import {
   buildUniqueEvolutionTenantKey,
   DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY,
+  DEFAULT_INTERNAL_EVOLUTION_TENANT_NAME,
   listTenantBindings,
   recordEvent,
 } from '@/lib/evolution';
@@ -43,6 +44,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'tenant_name_required' }, { status: 400 });
   }
 
+  if (tenantName.toLowerCase() === DEFAULT_INTERNAL_EVOLUTION_TENANT_NAME.toLowerCase()) {
+    const tenants = await listTenantBindings();
+    const existingInternal = tenants.find((tenant) => tenant.tenantKey === DEFAULT_INTERNAL_EVOLUTION_TENANT_KEY) ?? null;
+    if (existingInternal) {
+      return NextResponse.json({ tenant: existingInternal, reused: true });
+    }
+  }
+
   const tenantDomain = typeof body.tenantDomain === 'string'
     ? body.tenantDomain.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase().slice(0, 255) || null
     : null;
@@ -50,6 +59,7 @@ export async function POST(req: NextRequest) {
   const plan = PLAN_VALUES.has(String(body.plan)) ? (body.plan as 'trial') : 'trial';
   const status = STATUS_VALUES.has(String(body.status)) ? (body.status as 'active') : 'active';
   const requestedTenantKey = typeof body.tenantKey === 'string' ? body.tenantKey.trim() : '';
+  const sourceApp = typeof body.sourceApp === 'string' && body.sourceApp ? body.sourceApp.slice(0, 40) : 'portal';
 
   if (instanceId) {
     const [instance] = await db.select({ id: evolutionInstances.id }).from(evolutionInstances).where(eq(evolutionInstances.id, instanceId)).limit(1);
@@ -62,6 +72,7 @@ export async function POST(req: NextRequest) {
     tenantKey,
     tenantName,
     tenantDomain,
+    sourceApp,
     instanceId,
     plan,
     status,
@@ -74,7 +85,7 @@ export async function POST(req: NextRequest) {
     actorEmail: auth.session?.email ?? null,
     tenantId: row.tenantId,
     instanceId,
-    payload: { tenantKey, plan, status },
+    payload: { tenantKey, plan, status, sourceApp },
   });
 
   return NextResponse.json({ tenant: row });

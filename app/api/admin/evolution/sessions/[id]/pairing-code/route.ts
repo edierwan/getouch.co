@@ -123,7 +123,12 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   const qr = normalizeQrPayload(result.data);
   const state = qr.state ?? await fetchConnectionState(resolvedRemoteId);
-  const sessionStatus = mapBackendStateToSessionStatus(state);
+  const hasConnectArtifact = Boolean(qr.qr || qr.qrCode || qr.pairingCode);
+  const sessionStatus = state === 'open'
+    ? 'connected'
+    : hasConnectArtifact || state === 'connecting' || state === 'qr'
+      ? 'connecting'
+      : mapBackendStateToSessionStatus(state);
   const now = new Date();
   const pairedNumber = extractPairedNumber(result.data) ?? (state === 'open' ? normalizedPhone : row.pairedNumber);
   const detail = [detailPrefix, getDetailForState({ ...qr, state })].filter(Boolean).join(' ') || null;
@@ -133,9 +138,9 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     phoneNumber: normalizedPhone,
     pairedNumber,
     status: sessionStatus,
-    qrStatus: state === 'open' ? 'connected' : qr.qr || qr.qrCode || qr.pairingCode ? 'pending' : row.qrStatus,
-    qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(now.getTime() + 60 * 1000) : row.qrExpiresAt,
-    lastQrAt: qr.qr || qr.qrCode ? now : row.lastQrAt,
+    qrStatus: state === 'open' ? 'connected' : hasConnectArtifact ? 'pending' : row.qrStatus,
+    qrExpiresAt: sessionStatus === 'connecting' ? new Date(now.getTime() + 60 * 1000) : row.qrExpiresAt,
+    lastQrAt: hasConnectArtifact ? now : row.lastQrAt,
     updatedAt: now,
     lastConnectedAt: state === 'open' ? now : row.lastConnectedAt,
   }).where(eq(evolutionSessions.id, id));
@@ -160,7 +165,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     connected: state === 'open',
     waitRecommended: !qr.pairingCode && !qr.qr && !qr.qrCode && (state === 'connecting' || state === 'qr' || state === null),
     detail: qr.pairingCode ? detail : detail ?? 'Evolution did not return a pairing code yet. Try again or use QR Code.',
-    qrExpiresAt: sessionStatus === 'qr_pending' ? new Date(now.getTime() + 60 * 1000).toISOString() : row.qrExpiresAt?.toISOString() ?? null,
+    qrExpiresAt: sessionStatus === 'connecting' ? new Date(now.getTime() + 60 * 1000).toISOString() : row.qrExpiresAt?.toISOString() ?? null,
     lastCheckedAt: now.toISOString(),
   });
 }

@@ -18,6 +18,7 @@ interface Ctx { params: Promise<{ id: string }> }
 function deriveDetailState(status: typeof evolutionSessions.$inferSelect.status, state: string | null) {
   if (state) return state;
   if (status === 'connected') return 'open';
+  if (status === 'pending_connection') return null;
   if (status === 'qr_pending' || status === 'connecting') return 'connecting';
   if (status === 'disconnected') return 'disconnected';
   if (status === 'error') return 'failed';
@@ -44,7 +45,11 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     }
   }
 
-  const sessionStatus = state ? mapBackendStateToSessionStatus(state) : row.status;
+  const sessionStatus = state
+    ? mapBackendStateToSessionStatus(state)
+    : row.status === 'qr_pending'
+      ? 'pending_connection'
+      : row.status;
   const detailState = deriveDetailState(row.status, state);
   const detail = getDetailForState({
     state: detailState,
@@ -58,7 +63,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   await db.update(evolutionSessions).set({
     evolutionRemoteId: resolvedRemoteId,
     status: sessionStatus,
-    qrStatus: state === 'open' ? 'connected' : sessionStatus === 'qr_pending' ? 'pending' : null,
+    qrStatus: state === 'open' ? 'connected' : sessionStatus === 'connecting' ? 'pending' : null,
     qrExpiresAt: state === 'open' ? null : row.qrExpiresAt,
     pairedNumber: state === 'open' ? row.pairedNumber ?? row.phoneNumber : row.pairedNumber,
     lastConnectedAt: state === 'open' ? row.lastConnectedAt ?? now : row.lastConnectedAt,
@@ -70,7 +75,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     ok: true,
     state,
     connected: state === 'open' || sessionStatus === 'connected',
-    waitRecommended: state === 'connecting' || state === 'qr' || (!state && row.status === 'qr_pending'),
+    waitRecommended: state === 'connecting' || state === 'qr' || (!state && (row.status === 'connecting' || row.status === 'qr_pending')),
     detail,
     qrExpiresAt: row.qrExpiresAt?.toISOString() ?? null,
     lastCheckedAt: now.toISOString(),
@@ -78,7 +83,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
       ...row,
       evolutionRemoteId: resolvedRemoteId,
       status: sessionStatus,
-      qrStatus: state === 'open' ? 'connected' : sessionStatus === 'qr_pending' ? 'pending' : null,
+      qrStatus: state === 'open' ? 'connected' : sessionStatus === 'connecting' ? 'pending' : null,
       updatedAt: now,
     },
   });

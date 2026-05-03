@@ -5,6 +5,7 @@ import { evolutionInstances } from '@/lib/schema';
 import {
   getEvolutionConfig,
   getOverviewStats,
+  getPrimarySystemSession,
   getSystemHealth,
   listTenantBindings,
   listRecentEvents,
@@ -19,10 +20,11 @@ export async function GET() {
   if (auth.error) return auth.error;
 
   try {
-    const [stats, instances, tenants, events, health] = await Promise.all([
+    const [stats, instances, tenants, systemSession, events, health] = await Promise.all([
       getOverviewStats(),
       db.select().from(evolutionInstances).orderBy(desc(evolutionInstances.createdAt)).limit(10),
       listTenantBindings(),
+      getPrimarySystemSession(),
       listRecentEvents(8),
       getSystemHealth(),
     ]);
@@ -32,6 +34,7 @@ export async function GET() {
       stats,
       instances: instances.map(sanitizeInstance),
       tenants: tenants.slice(0, 10),
+      systemSession,
       events,
       systemHealth: health,
     });

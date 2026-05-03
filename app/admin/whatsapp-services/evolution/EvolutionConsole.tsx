@@ -13,6 +13,7 @@ interface EvolutionConfig {
 }
 interface OverviewStats {
   totalInstances: number; activeInstances: number; stoppedInstances: number;
+  connectedSystemSessions: number; connectedTenantSessions: number;
   activeSessions: number; connectingSessions: number; disconnectedSessions: number;
   expiredSessions: number; totalSessions: number;
   totalTenants: number; newTenantsThisWeek: number;
@@ -28,9 +29,11 @@ interface Instance {
 }
 interface Session {
   id: string; instanceId: string | null; tenantId: string | null;
-  sessionName: string; phoneNumber: string | null; pairedNumber?: string | null;
-  status: 'connected' | 'connecting' | 'disconnected' | 'expired' | 'error' | 'qr_pending';
+  sessionName: string; displayLabel?: string | null; purpose: 'system' | 'customer_chat' | 'support' | 'sales';
+  phoneNumber: string | null; pairedNumber?: string | null;
+  status: 'pending_connection' | 'connected' | 'connecting' | 'disconnected' | 'expired' | 'error' | 'qr_pending';
   qrStatus: string | null; qrExpiresAt?: string | null; lastQrAt?: string | null; lastConnectedAt: string | null; lastMessageAt: string | null;
+  isDefault: boolean; botEnabled: boolean; humanHandoffEnabled: boolean;
   createdAt: string; updatedAt: string;
 }
 interface SessionQrResponse {
@@ -50,6 +53,7 @@ interface SessionQrResponse {
 }
 interface TenantBinding {
   id: string; tenantId: string; tenantKey: string; tenantName: string | null; tenantDomain: string | null;
+  sourceApp?: string | null;
   instanceId: string | null;
   plan: 'trial' | 'starter' | 'pro' | 'business' | 'enterprise';
   status: 'active' | 'suspended' | 'pending';
@@ -87,6 +91,7 @@ interface SystemHealthItem { label: string; status: 'healthy' | 'degraded' | 'un
 interface OverviewResponse {
   config: EvolutionConfig; stats: OverviewStats;
   instances: Instance[]; tenants: TenantBinding[]; events: EventLog[];
+  systemSession: Session | null;
   systemHealth: SystemHealthItem[];
 }
 
@@ -102,6 +107,34 @@ interface SessionTestResult {
   providerMessageId?: string | null;
   errorMessage?: string | null;
   createdAt: string;
+}
+
+interface QrModalState {
+  id: string;
+  displayLabel: string;
+  sessionName: string;
+  purpose: Session['purpose'];
+  tenantLabel: string;
+  instanceName: string;
+  qr: string | null;
+  qrCodeText: string | null;
+  pairing: string | null;
+  detail: string | null;
+  state: string | null;
+  qrExpiresAt: string | null;
+  lastCheckedAt: string;
+  pollAttempt: number;
+  pollStatus: 'idle' | 'connecting' | 'waiting_qr' | 'ready' | 'connected' | 'timeout' | 'failed';
+  activeTab: 'qr' | 'pairing';
+  pairingPhone: string;
+  pairingBusy: boolean;
+  pairingError: string | null;
+}
+
+interface SystemConnectIntent {
+  instanceId: string;
+  instanceName: string;
+  nonce: number;
 }
 
 const DEFAULT_INTERNAL_TENANT_KEY = 'getouch-internal';
@@ -135,7 +168,7 @@ function fmtNumber(n: number | null | undefined): string {
 function statusBadge(status: string): string {
   const s = status.toLowerCase();
   if (['active', 'connected', 'healthy', 'approved', 'sent', 'delivered', 'read'].includes(s)) return 'evo-pill evo-pill-good';
-  if (['connecting', 'qr_pending', 'pending', 'queued', 'rotating'].includes(s)) return 'evo-pill evo-pill-info';
+  if (['connecting', 'qr_pending', 'pending_connection', 'pending', 'queued', 'rotating'].includes(s)) return 'evo-pill evo-pill-info';
   if (['stopped', 'disconnected', 'paused', 'archived', 'received', 'draft'].includes(s)) return 'evo-pill evo-pill-muted';
   if (['error', 'failed', 'failing', 'rejected', 'expired', 'degraded'].includes(s)) return 'evo-pill evo-pill-bad';
   return 'evo-pill evo-pill-muted';
@@ -156,7 +189,7 @@ function formatQrState(state: string | null | undefined): string {
   return state.charAt(0).toUpperCase() + state.slice(1);
 }
 
-const QR_POLL_INTERVAL_MS = 2500;
+const QR_POLL_INTERVAL_MS = 4000;
 const QR_POLL_MAX_ATTEMPTS = 20;
 
 function getQrPollStatus(
@@ -196,12 +229,48 @@ function getSessionPhone(session: Session | null | undefined): string | null {
   return session?.pairedNumber ?? session?.phoneNumber ?? null;
 }
 
+function getSessionDisplayLabel(session: Session | null | undefined): string {
+  return session?.displayLabel ?? session?.sessionName ?? 'Unknown session';
+}
+
+function isSystemSession(session: Session | null | undefined) {
+  return session?.purpose === 'system';
+}
+
+function getSessionPurposeLabel(purpose: Session['purpose'] | string | null | undefined) {
+  switch (purpose) {
+    case 'system':
+      return 'System';
+    case 'support':
+      return 'Support';
+    case 'sales':
+      return 'Sales';
+    case 'customer_chat':
+    default:
+      return 'Customer Chat';
+  }
+}
+
+function formatSessionStatusLabel(status: Session['status'] | string | null | undefined) {
+  if (!status) return 'unknown';
+  if (status === 'pending_connection' || status === 'qr_pending') return 'pending connection';
+  return status.replace(/_/g, ' ');
+}
+
+function getPreferredGateway(instances: Instance[]) {
+  return instances.find((instance) => instance.status === 'active')
+    ?? instances.find((instance) => instance.status === 'unknown')
+    ?? instances[0]
+    ?? null;
+}
+
 /* ─── Top-level component ─────────────────────────────── */
 export function EvolutionConsole() {
   const [tab, setTab] = useState<Tab>('overview');
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [systemConnectIntent, setSystemConnectIntent] = useState<SystemConnectIntent | null>(null);
 
   const reloadOverview = useCallback(async () => {
     setLoading(true);
@@ -216,6 +285,11 @@ export function EvolutionConsole() {
   }, []);
 
   useEffect(() => { void reloadOverview(); }, [reloadOverview]);
+
+  const queueSystemConnect = useCallback((instanceId: string, instanceName: string) => {
+    setSystemConnectIntent({ instanceId, instanceName, nonce: Date.now() });
+    setTab('sessions');
+  }, []);
 
   return (
     <div className="evo-shell">
@@ -237,10 +311,10 @@ export function EvolutionConsole() {
       {error && tab === 'overview' ? <div className="evo-error">⚠ {error}</div> : null}
 
       <div className="evo-tabpanel">
-        {tab === 'overview' && <OverviewTab data={overview} loading={loading} onRefresh={reloadOverview} />}
-        {tab === 'instances' && <InstancesTab onChange={reloadOverview} />}
+        {tab === 'overview' && <OverviewTab data={overview} loading={loading} onRefresh={reloadOverview} onConnectSystemNumber={queueSystemConnect} />}
+        {tab === 'instances' && <InstancesTab onChange={reloadOverview} onConnectSystemNumber={queueSystemConnect} />}
         {tab === 'tenants' && <TenantsTab onChange={reloadOverview} />}
-        {tab === 'sessions' && <SessionsTab onChange={reloadOverview} />}
+        {tab === 'sessions' && <SessionsTab onChange={reloadOverview} connectIntent={systemConnectIntent} onConnectIntentHandled={() => setSystemConnectIntent(null)} />}
         {tab === 'webhooks' && <WebhooksTab />}
         {tab === 'templates' && <TemplatesTab />}
         {tab === 'messages' && <MessagesTab />}
@@ -290,11 +364,24 @@ function EvolutionHeader({ config, onCreateInstance }: { config: EvolutionConfig
 }
 
 /* ─── OVERVIEW TAB ────────────────────────────────────── */
-function OverviewTab({ data, loading, onRefresh }: { data: OverviewResponse | null; loading: boolean; onRefresh: () => void }) {
+function OverviewTab({
+  data,
+  loading,
+  onRefresh,
+  onConnectSystemNumber,
+}: {
+  data: OverviewResponse | null;
+  loading: boolean;
+  onRefresh: () => void;
+  onConnectSystemNumber: (instanceId: string, instanceName: string) => void;
+}) {
   if (loading && !data) return <div className="evo-empty">Loading…</div>;
   if (!data) return <div className="evo-empty">No data.</div>;
 
-  const { stats, instances, tenants, events, systemHealth } = data;
+  const { stats, instances, tenants, systemSession, events, systemHealth } = data;
+  const preferredGateway = getPreferredGateway(instances);
+  const webhookHealth = systemHealth.find((item) => item.label === 'Webhook Queue') ?? null;
+  const systemNumberConnected = systemSession?.status === 'connected';
 
   const sessionTotal = stats.totalSessions;
   const segs = [
@@ -307,11 +394,28 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewResponse | nu
   return (
     <div className="evo-overview">
       <div className="evo-stat-grid">
-        <StatCard label="TOTAL GATEWAYS" value={fmtNumber(stats.totalInstances)} sub={`${stats.activeInstances} Active · ${stats.stoppedInstances} Stopped`} icon="◫" />
-        <StatCard label="ACTIVE SESSIONS" value={fmtNumber(stats.activeSessions)} sub={stats.totalSessions > 0 ? `${stats.totalSessions} total` : 'No sessions yet'} icon="▤" tone="good" />
-        <StatCard label="TOTAL TENANTS" value={fmtNumber(stats.totalTenants)} sub={stats.newTenantsThisWeek > 0 ? `+${stats.newTenantsThisWeek} this week` : 'No new this week'} icon="⌬" />
+        <StatCard label="GATEWAYS" value={fmtNumber(stats.activeInstances)} sub={stats.totalInstances > 0 ? `${stats.totalInstances} registered backend${stats.totalInstances === 1 ? '' : 's'}` : 'No gateways configured'} icon="◫" />
+        <StatCard
+          label="SYSTEM NUMBER"
+          value={systemNumberConnected ? 'Connected' : 'Not connected'}
+          sub={systemNumberConnected
+            ? `${getSessionDisplayLabel(systemSession)}${getSessionPhone(systemSession) ? ` · ${getSessionPhone(systemSession)}` : ''}`
+            : `Gateway active does not mean WhatsApp connected.${preferredGateway ? ` Using ${preferredGateway.name} for onboarding.` : ''}`}
+          icon="☎"
+          tone={systemNumberConnected ? 'good' : 'bad'}
+          actionLabel="Connect System Number"
+          onAction={preferredGateway ? () => onConnectSystemNumber(preferredGateway.id, preferredGateway.name) : undefined}
+          actionDisabled={!preferredGateway}
+        />
+        <StatCard label="TENANT SESSIONS" value={fmtNumber(stats.connectedTenantSessions)} sub={stats.totalSessions > 0 ? `${stats.totalSessions - stats.connectedSystemSessions} non-system session${stats.totalSessions - stats.connectedSystemSessions === 1 ? '' : 's'}` : 'No tenant sessions yet'} icon="▤" tone="good" />
         <StatCard label="MESSAGES (24h)" value={fmtNumber(stats.messages24h)} sub={stats.messages24hDelta != null ? `${stats.messages24hDelta >= 0 ? '+' : ''}${stats.messages24hDelta}% vs prev` : 'No prior data'} icon="✉" tone="amber" />
-        <StatCard label="UPTIME (ALL)" value={stats.uptimePercent != null ? `${(stats.uptimePercent * 100).toFixed(2)}%` : '—'} sub={stats.uptimePercent != null ? (stats.uptimePercent >= 0.99 ? 'Excellent' : stats.uptimePercent >= 0.95 ? 'Good' : 'Degraded') : 'No probes yet'} icon="◐" tone="good" />
+        <StatCard
+          label="WEBHOOK HEALTH"
+          value={webhookHealth ? (webhookHealth.status === 'healthy' ? 'Healthy' : webhookHealth.status === 'degraded' ? 'Degraded' : 'Unknown') : 'Unknown'}
+          sub={webhookHealth?.detail ?? 'Webhook setup is optional for QR onboarding.'}
+          icon="◐"
+          tone={webhookHealth?.status === 'healthy' ? 'good' : webhookHealth?.status === 'degraded' ? 'bad' : undefined}
+        />
       </div>
 
       <div className="evo-grid-2">
@@ -410,7 +514,25 @@ function OverviewTab({ data, loading, onRefresh }: { data: OverviewResponse | nu
   );
 }
 
-function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: string; tone?: 'good' | 'amber' | 'bad' }) {
+function StatCard({
+  label,
+  value,
+  sub,
+  icon,
+  tone,
+  actionLabel,
+  onAction,
+  actionDisabled,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: string;
+  tone?: 'good' | 'amber' | 'bad';
+  actionLabel?: string;
+  onAction?: () => void;
+  actionDisabled?: boolean;
+}) {
   return (
     <section className="evo-stat">
       <div className="evo-stat-head">
@@ -419,6 +541,7 @@ function StatCard({ label, value, sub, icon, tone }: { label: string; value: str
       </div>
       <div className={`evo-stat-value${tone ? ` evo-stat-value-${tone}` : ''}`}>{value}</div>
       {sub ? <div className="evo-stat-sub">{sub}</div> : null}
+      {actionLabel && onAction ? <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={onAction} disabled={actionDisabled}>{actionLabel}</button> : null}
     </section>
   );
 }
@@ -457,7 +580,7 @@ function SessionDonut({ total, segments }: { total: number; segments: Array<{ ke
 }
 
 /* ─── INSTANCES TAB ────────────────────────────────────── */
-function InstancesTab({ onChange }: { onChange: () => void }) {
+function InstancesTab({ onChange, onConnectSystemNumber }: { onChange: () => void; onConnectSystemNumber: (instanceId: string, instanceName: string) => void }) {
   const [rows, setRows] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, startTransition] = useTransition();
@@ -490,7 +613,7 @@ function InstancesTab({ onChange }: { onChange: () => void }) {
   }
 
   async function action(id: string, a: 'health' | 'start' | 'stop' | 'restart') {
-    if ((a === 'stop' || a === 'restart') && !confirm(`Confirm ${a} for this instance?`)) return;
+    if ((a === 'stop' || a === 'restart') && !confirm(`Confirm ${a} for this gateway?`)) return;
     await fetch(`/api/admin/evolution/instances/${id}/actions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: a }),
@@ -499,7 +622,7 @@ function InstancesTab({ onChange }: { onChange: () => void }) {
   }
 
   async function remove(id: string, name: string) {
-    if (!confirm(`Delete instance "${name}"? This is irreversible.`)) return;
+    if (!confirm(`Delete gateway "${name}"? This is irreversible.`)) return;
     await fetch(`/api/admin/evolution/instances/${id}`, { method: 'DELETE' });
     await reload(); onChange();
   }
@@ -544,6 +667,7 @@ function InstancesTab({ onChange }: { onChange: () => void }) {
                 <td className="evo-cell-muted">{timeAgo(i.updatedAt)}</td>
                 <td>
                   <div className="evo-row-actions">
+                    <button className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => onConnectSystemNumber(i.id, i.name)} disabled={i.status !== 'active'}>Connect System Number</button>
                     <button className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => action(i.id, 'health')}>↻ Probe</button>
                     <button className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => action(i.id, i.status === 'stopped' ? 'start' : 'stop')}>{i.status === 'stopped' ? 'Start' : 'Stop'}</button>
                     <button className="evo-btn evo-btn-bad evo-btn-xs" onClick={() => remove(i.id, i.name)}>Delete</button>
@@ -665,7 +789,15 @@ function TenantsTab({ onChange }: { onChange: () => void }) {
 }
 
 /* ─── SESSIONS TAB ─────────────────────────────────────── */
-function SessionsTab({ onChange }: { onChange: () => void }) {
+function SessionsTab({
+  onChange,
+  connectIntent,
+  onConnectIntentHandled,
+}: {
+  onChange: () => void;
+  connectIntent: SystemConnectIntent | null;
+  onConnectIntentHandled: () => void;
+}) {
   const [rows, setRows] = useState<Session[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [tenants, setTenants] = useState<TenantBinding[]>([]);
@@ -673,7 +805,19 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ instanceId: '', status: '', tenantId: '', query: '' });
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ sessionName: '', instanceId: '', tenantId: '', connectMethod: 'qr' as 'qr' | 'pairing', phoneNumber: '' });
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [form, setForm] = useState({
+    sessionName: '',
+    displayLabel: 'System Notification Number',
+    instanceId: '',
+    tenantId: '',
+    purpose: 'system' as Session['purpose'],
+    connectMethod: 'qr' as 'qr' | 'pairing',
+    phoneNumber: '',
+    isDefault: true,
+    botEnabled: true,
+    humanHandoffEnabled: true,
+  });
   const [busy, startTransition] = useTransition();
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [testInstanceId, setTestInstanceId] = useState('');
@@ -682,25 +826,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
   const [testResultsLoading, setTestResultsLoading] = useState(false);
   const [testSending, setTestSending] = useState(false);
   const [testResults, setTestResults] = useState<SessionTestResult[]>([]);
-  const [qrModal, setQrModal] = useState<{
-    id: string;
-    sessionName: string;
-    tenantLabel: string;
-    instanceName: string;
-    qr: string | null;
-    qrCodeText: string | null;
-    pairing: string | null;
-    detail: string | null;
-    state: string | null;
-    qrExpiresAt: string | null;
-    lastCheckedAt: string;
-    pollAttempt: number;
-    pollStatus: 'idle' | 'connecting' | 'waiting_qr' | 'ready' | 'connected' | 'timeout' | 'failed';
-    activeTab: 'qr' | 'pairing';
-    pairingPhone: string;
-    pairingBusy: boolean;
-    pairingError: string | null;
-  } | null>(null);
+  const [qrModal, setQrModal] = useState<QrModalState | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -734,92 +860,148 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
   useEffect(() => { void reload(); }, [reload]);
 
-  useEffect(() => {
-    if (!defaultTenantId) return;
-    setForm((current) => current.tenantId ? current : { ...current, tenantId: defaultTenantId });
-  }, [defaultTenantId]);
-
+  const preferredGateway = useMemo(() => getPreferredGateway(instances), [instances]);
   const instanceMap = useMemo(() => new Map(instances.map((instance) => [instance.id, instance])), [instances]);
   const tenantMap = useMemo(() => new Map(tenants.map((tenant) => [tenant.tenantId, tenant])), [tenants]);
+  const defaultTenant = useMemo(() => tenants.find((tenant) => tenant.tenantId === defaultTenantId) ?? null, [defaultTenantId, tenants]);
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      instanceId: current.instanceId || preferredGateway?.id || '',
+      tenantId: current.tenantId || defaultTenantId,
+    }));
+  }, [defaultTenantId, preferredGateway?.id]);
+
   const visibleRows = useMemo(() => {
     const query = filter.query.trim().toLowerCase();
-    const filteredRows = filter.tenantId ? rows.filter((row) => row.tenantId === filter.tenantId) : rows;
+    let filteredRows = rows;
+    if (filter.tenantId) filteredRows = filteredRows.filter((row) => row.tenantId === filter.tenantId);
+    if (filter.instanceId) filteredRows = filteredRows.filter((row) => row.instanceId === filter.instanceId);
+    if (filter.status) {
+      filteredRows = filteredRows.filter((row) => {
+        const normalizedStatus = row.status === 'qr_pending' ? 'pending_connection' : row.status;
+        return normalizedStatus === filter.status;
+      });
+    }
     if (!query) return filteredRows;
+
     return filteredRows.filter((row) => {
       const instanceName = row.instanceId ? instanceMap.get(row.instanceId)?.name ?? '' : '';
       const tenant = row.tenantId ? tenantMap.get(row.tenantId) ?? null : null;
       return [
+        getSessionDisplayLabel(row),
         row.sessionName,
         getSessionPhone(row) ?? '',
         getTenantDisplay(tenant),
         tenant?.tenantKey ?? '',
         instanceName,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(query);
+        row.purpose,
+      ].join(' ').toLowerCase().includes(query);
     });
-  }, [filter.query, filter.tenantId, instanceMap, rows, tenantMap]);
+  }, [filter.instanceId, filter.query, filter.status, filter.tenantId, instanceMap, rows, tenantMap]);
 
+  const systemSessions = useMemo(() => rows.filter((row) => isSystemSession(row)), [rows]);
+  const connectedSystemSession = useMemo(
+    () => systemSessions.find((row) => row.status === 'connected' && row.isDefault)
+      ?? systemSessions.find((row) => row.status === 'connected')
+      ?? null,
+    [systemSessions],
+  );
   const sessionOptions = useMemo(() => {
-    if (!testInstanceId) return rows;
-    return rows.filter((row) => row.instanceId === testInstanceId);
-  }, [rows, testInstanceId]);
+    const candidates = !testInstanceId ? systemSessions : systemSessions.filter((row) => row.instanceId === testInstanceId);
+    return candidates;
+  }, [systemSessions, testInstanceId]);
 
   useEffect(() => {
-    if (!rows.length) {
+    const preferredSystemSession = connectedSystemSession
+      ?? systemSessions.find((row) => row.isDefault)
+      ?? systemSessions[0]
+      ?? null;
+
+    if (!preferredSystemSession) {
       setSelectedSessionId('');
+      setTestInstanceId('');
       setTestResults([]);
       return;
     }
 
-    if (!selectedSessionId) {
-      const preferred = rows.find((row) => row.status === 'connected') ?? rows[0];
-      setSelectedSessionId(preferred.id);
-      setTestInstanceId(preferred.instanceId ?? '');
+    if (!selectedSessionId || !systemSessions.some((row) => row.id === selectedSessionId)) {
+      setSelectedSessionId(preferredSystemSession.id);
+      setTestInstanceId(preferredSystemSession.instanceId ?? '');
       return;
     }
 
-    const current = rows.find((row) => row.id === selectedSessionId);
+    const current = systemSessions.find((row) => row.id === selectedSessionId) ?? null;
     if (!current) {
-      const preferred = rows.find((row) => row.status === 'connected') ?? rows[0];
-      setSelectedSessionId(preferred.id);
-      setTestInstanceId(preferred.instanceId ?? '');
+      setSelectedSessionId(preferredSystemSession.id);
+      setTestInstanceId(preferredSystemSession.instanceId ?? '');
     }
-  }, [rows, selectedSessionId]);
-
-  useEffect(() => {
-    if (!selectedSessionId || !testInstanceId) return;
-    const current = rows.find((row) => row.id === selectedSessionId);
-    if (current?.instanceId === testInstanceId) return;
-
-    const fallback = rows.find((row) => row.instanceId === testInstanceId && row.status === 'connected')
-      ?? rows.find((row) => row.instanceId === testInstanceId)
-      ?? null;
-    setSelectedSessionId(fallback?.id ?? '');
-  }, [rows, selectedSessionId, testInstanceId]);
+  }, [connectedSystemSession, selectedSessionId, systemSessions]);
 
   const selectedSession = useMemo(
-    () => rows.find((row) => row.id === selectedSessionId) ?? null,
-    [rows, selectedSessionId],
+    () => systemSessions.find((row) => row.id === selectedSessionId) ?? null,
+    [selectedSessionId, systemSessions],
   );
+
+  useEffect(() => {
+    if (!testInstanceId) return;
+    if (selectedSession?.instanceId === testInstanceId) return;
+
+    const fallback = systemSessions.find((row) => row.instanceId === testInstanceId && row.status === 'connected')
+      ?? systemSessions.find((row) => row.instanceId === testInstanceId)
+      ?? null;
+
+    setSelectedSessionId(fallback?.id ?? '');
+  }, [selectedSession?.instanceId, systemSessions, testInstanceId]);
+
   const selectedInstance = selectedSession?.instanceId ? instanceMap.get(selectedSession.instanceId) ?? null : null;
-  const selectedTenant = selectedSession?.tenantId ? tenantMap.get(selectedSession.tenantId) ?? null : null;
-  const normalizedRecipient = useMemo(
-    () => normalizeMyPhone(testForm.recipientPhone),
-    [testForm.recipientPhone],
-  );
+  const normalizedRecipient = useMemo(() => normalizeMyPhone(testForm.recipientPhone), [testForm.recipientPhone]);
   const pairingPhoneNormalized = qrModal ? normalizeMyPhone(qrModal.pairingPhone) : null;
   const recipientMatchesSession = samePhone(testForm.recipientPhone, getSessionPhone(selectedSession));
 
   const sendDisabledReason = useMemo(() => {
-    if (!selectedSession) return 'Choose a session before sending a test message.';
-    if (selectedSession.status !== 'connected') return 'Connect this session before sending messages.';
+    if (!connectedSystemSession) return 'Connect the System WhatsApp Number first.';
+    if (!selectedSession || !isSystemSession(selectedSession) || selectedSession.status !== 'connected') {
+      return 'Connect the System WhatsApp Number first.';
+    }
     if (!normalizedRecipient) return 'Enter a valid Malaysian phone number.';
     if (!testForm.text.trim()) return 'Enter a message before sending.';
     if (recipientMatchesSession) return 'Choose a recipient different from the paired WhatsApp number.';
     return null;
-  }, [normalizedRecipient, recipientMatchesSession, selectedSession, testForm.text]);
+  }, [connectedSystemSession, normalizedRecipient, recipientMatchesSession, selectedSession, testForm.text]);
+
+  const generatedSessionName = useMemo(() => {
+    if (form.sessionName.trim()) return form.sessionName.trim();
+    const selectedGateway = instanceMap.get(form.instanceId) ?? preferredGateway;
+    const selectedTenant = tenantMap.get(form.tenantId) ?? defaultTenant;
+    switch (form.purpose) {
+      case 'system':
+        return `${selectedGateway?.slug ?? 'gateway'}-system`;
+      case 'support':
+        return `${selectedTenant?.tenantKey ?? 'tenant'}-support`;
+      case 'sales':
+        return `${selectedTenant?.tenantKey ?? 'tenant'}-sales`;
+      case 'customer_chat':
+      default:
+        return `${selectedTenant?.tenantKey ?? 'tenant'}-main`;
+    }
+  }, [defaultTenant, form.instanceId, form.purpose, form.sessionName, form.tenantId, instanceMap, preferredGateway, tenantMap]);
+
+  const resetForm = useCallback(() => {
+    setForm({
+      sessionName: '',
+      displayLabel: 'System Notification Number',
+      instanceId: preferredGateway?.id ?? '',
+      tenantId: defaultTenantId,
+      purpose: 'system',
+      connectMethod: 'qr',
+      phoneNumber: '',
+      isDefault: true,
+      botEnabled: true,
+      humanHandoffEnabled: true,
+    });
+  }, [defaultTenantId, preferredGateway?.id]);
 
   const loadTestResults = useCallback(async (sessionId: string) => {
     if (!sessionId) {
@@ -845,7 +1027,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     void loadTestResults(selectedSessionId);
   }, [loadTestResults, selectedSessionId]);
 
-  async function requestQr(id: string, actionName: 'connect' | 'reconnect' | 'qr' | 'restart'): Promise<SessionQrResponse> {
+  async function requestQr(id: string, actionName: 'connect' | 'reconnect' | 'qr'): Promise<SessionQrResponse> {
     const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -879,16 +1061,146 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     return json as SessionStatusResponse;
   }
 
+  async function createSession(payload: Record<string, unknown>) {
+    const response = await fetch('/api/admin/evolution/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        typeof json?.detail === 'string'
+          ? json.detail
+          : typeof json?.error === 'string'
+            ? json.error
+            : `Failed (${response.status})`,
+      );
+    }
+    return json as { session: Session; nextAction: 'connect_qr' | 'pairing_code'; created: boolean; reused: boolean };
+  }
+
+  function buildModal(session: Session, activeTab: 'qr' | 'pairing', detail?: string): QrModalState {
+    const gateway = session.instanceId ? instanceMap.get(session.instanceId) ?? null : null;
+    const tenant = session.tenantId ? tenantMap.get(session.tenantId) ?? null : null;
+
+    return {
+      id: session.id,
+      displayLabel: getSessionDisplayLabel(session),
+      sessionName: session.sessionName,
+      purpose: session.purpose,
+      tenantLabel: getTenantDisplay(tenant),
+      instanceName: gateway?.name ?? 'Unknown gateway',
+      qr: null,
+      qrCodeText: null,
+      pairing: null,
+      detail: detail ?? null,
+      state: null,
+      qrExpiresAt: session.qrExpiresAt ?? null,
+      lastCheckedAt: new Date().toISOString(),
+      pollAttempt: 0,
+      pollStatus: activeTab === 'pairing' ? 'idle' : 'connecting',
+      activeTab,
+      pairingPhone: getSessionPhone(session) ?? '',
+      pairingBusy: false,
+      pairingError: null,
+    };
+  }
+
+  function applyModalResult(sessionId: string, result: SessionQrResponse | SessionStatusResponse) {
+    setQrModal((current) => {
+      if (!current || current.id !== sessionId) return current;
+      return {
+        ...current,
+        qr: result.qr ?? current.qr,
+        qrCodeText: result.qrCode ?? current.qrCodeText,
+        pairing: formatPairingCode(result.pairingCodeFormatted ?? result.pairingCode) ?? current.pairing,
+        detail: result.detail ?? current.detail,
+        state: result.state ?? current.state,
+        qrExpiresAt: result.qrExpiresAt ?? current.qrExpiresAt,
+        lastCheckedAt: result.lastCheckedAt ?? new Date().toISOString(),
+        pollAttempt: 0,
+        pollStatus: getQrPollStatus(result, current),
+      };
+    });
+  }
+
+  async function startQrFlow(session: Session, detail?: string) {
+    setSelectedSessionId(session.id);
+    setTestInstanceId(session.instanceId ?? '');
+    setQrModal(buildModal(session, 'qr', detail ?? 'Requesting a fresh QR from Evolution…'));
+
+    try {
+      const result = await requestQr(session.id, 'qr');
+      applyModalResult(session.id, result);
+      await reload();
+      onChange();
+    } catch (actionError) {
+      setQrModal((current) => current && current.id === session.id ? {
+        ...current,
+        pollStatus: 'failed',
+        detail: actionError instanceof Error ? actionError.message : 'Failed to request QR.',
+        lastCheckedAt: new Date().toISOString(),
+      } : current);
+    }
+  }
+
+  function openPairingModal(session: Session) {
+    setSelectedSessionId(session.id);
+    setTestInstanceId(session.instanceId ?? '');
+    setQrModal(buildModal(session, 'pairing', 'Use a phone number only if you want a pairing code instead of scanning a QR.'));
+  }
+
+  useEffect(() => {
+    if (!connectIntent) return;
+
+    let cancelled = false;
+    (async () => {
+      setErr(null);
+      try {
+        const created = await createSession({
+          instanceId: connectIntent.instanceId,
+          tenantId: defaultTenantId || null,
+          purpose: 'system',
+          displayLabel: 'System Notification Number',
+          sessionName: null,
+          connectMethod: 'qr',
+          phoneNumber: null,
+          reuseExisting: true,
+          isDefault: true,
+          botEnabled: true,
+          humanHandoffEnabled: true,
+          sourceApp: 'portal',
+        });
+        if (cancelled) return;
+        await reload();
+        onChange();
+        if (cancelled) return;
+        await startQrFlow(created.session, 'Preparing the default system session and requesting a QR code…');
+      } catch (intentError) {
+        if (!cancelled) {
+          setErr(intentError instanceof Error ? intentError.message : 'Failed to connect the system number.');
+        }
+      } finally {
+        if (!cancelled) onConnectIntentHandled();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectIntent, defaultTenantId, onChange, onConnectIntentHandled, reload]);
+
   useEffect(() => {
     if (!qrModal) return;
-    if (!['waiting_qr', 'ready'].includes(qrModal.pollStatus)) return;
+    if (!['connecting', 'waiting_qr', 'ready'].includes(qrModal.pollStatus)) return;
 
     if (qrModal.pollAttempt >= QR_POLL_MAX_ATTEMPTS) {
       setQrModal((current) => current && current.id === qrModal.id ? {
         ...current,
         pollStatus: 'timeout',
         detail: current.qr || current.pairing || current.qrCodeText
-          ? 'Timed out waiting for the session to finish connecting. Retry to request a fresh QR.'
+          ? 'Timed out waiting for the WhatsApp number to finish connecting. Retry to request a fresh QR.'
           : 'Timed out waiting for Evolution to emit a QR code.',
       } : current);
       return;
@@ -934,7 +1246,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     if (!qrModal || qrModal.pollStatus !== 'connected') return;
     const timeout = window.setTimeout(() => {
       setQrModal((current) => current && current.id === qrModal.id ? null : current);
-    }, 1500);
+    }, 2200);
     return () => window.clearTimeout(timeout);
   }, [qrModal]);
 
@@ -959,22 +1271,8 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         );
       }
 
-      const result = json as SessionQrResponse;
-      setQrModal((current) => current && current.id === qrModal.id ? {
-        ...current,
-        activeTab: 'pairing',
-        pairingBusy: false,
-        pairingError: null,
-        qr: result.qr ?? current.qr,
-        qrCodeText: result.qrCode ?? current.qrCodeText,
-        pairing: formatPairingCode(result.pairingCodeFormatted ?? result.pairingCode) ?? current.pairing,
-        detail: result.detail ?? current.detail,
-        state: result.state ?? current.state,
-        qrExpiresAt: result.qrExpiresAt ?? current.qrExpiresAt,
-        lastCheckedAt: result.lastCheckedAt ?? new Date().toISOString(),
-        pollAttempt: 0,
-        pollStatus: getQrPollStatus(result, current),
-      } : current);
+      applyModalResult(qrModal.id, json as SessionQrResponse);
+      setQrModal((current) => current && current.id === qrModal.id ? { ...current, pairingBusy: false, pairingError: null, activeTab: 'pairing' } : current);
       await reload();
       onChange();
     } catch (pairingError) {
@@ -987,127 +1285,82 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
     }
   }
 
+  async function handleModalStatusCheck() {
+    if (!qrModal) return;
+    try {
+      const result = await requestSessionStatus(qrModal.id);
+      applyModalResult(qrModal.id, result);
+      await reload();
+      onChange();
+    } catch (statusError) {
+      setQrModal((current) => current && current.id === qrModal.id ? {
+        ...current,
+        detail: statusError instanceof Error ? statusError.message : 'Failed to refresh the session status.',
+        pollStatus: 'failed',
+        lastCheckedAt: new Date().toISOString(),
+      } : current);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
 
     startTransition(async () => {
-      const response = await fetch('/api/admin/evolution/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          tenantId: form.tenantId || null,
-          phoneNumber: form.phoneNumber || null,
-        }),
-      });
-      if (!response.ok) {
-        setErr((await response.json().catch(() => ({ error: 'failed' }))).error ?? 'failed');
-        return;
-      }
+      try {
+        const purpose = showAdvancedOptions ? form.purpose : 'system';
+        const gatewayId = (showAdvancedOptions ? form.instanceId : preferredGateway?.id) || form.instanceId;
+        if (!gatewayId) throw new Error('Create or activate a gateway first.');
 
-      setForm({ sessionName: '', instanceId: '', tenantId: defaultTenantId, connectMethod: 'qr', phoneNumber: '' });
-      setShowCreate(false);
-      await reload();
-      onChange();
+        const created = await createSession({
+          instanceId: gatewayId,
+          tenantId: (showAdvancedOptions ? form.tenantId : defaultTenantId) || null,
+          purpose,
+          displayLabel: showAdvancedOptions ? (form.displayLabel || null) : 'System Notification Number',
+          sessionName: showAdvancedOptions ? (form.sessionName || null) : null,
+          connectMethod: form.connectMethod,
+          phoneNumber: form.phoneNumber || null,
+          reuseExisting: !showAdvancedOptions || purpose === 'system',
+          isDefault: showAdvancedOptions ? form.isDefault : true,
+          botEnabled: form.botEnabled,
+          humanHandoffEnabled: form.humanHandoffEnabled,
+          sourceApp: 'portal',
+        });
+
+        resetForm();
+        setShowCreate(false);
+        setShowAdvancedOptions(false);
+        await reload();
+        onChange();
+
+        if (created.nextAction === 'pairing_code') {
+          openPairingModal(created.session);
+        } else {
+          await startQrFlow(created.session, created.reused ? 'Reusing the existing session and requesting a QR code…' : 'Session created. Requesting a QR code…');
+        }
+      } catch (submitError) {
+        setErr(submitError instanceof Error ? submitError.message : 'Failed to create the session.');
+      }
     });
   }
 
-  async function action(id: string, a: 'connect' | 'reconnect' | 'disconnect' | 'logout' | 'qr' | 'restart') {
+  async function logoutSession(id: string) {
     setErr(null);
-
-    if ((a === 'disconnect' || a === 'logout') && !window.confirm('Log out this session from WhatsApp?')) return;
-    if (a === 'connect' || a === 'reconnect' || a === 'qr' || a === 'restart') {
-      const session = rows.find((row) => row.id === id);
-      const instance = instances.find((row) => row.id === session?.instanceId);
-      const tenant = session?.tenantId ? tenantMap.get(session.tenantId) ?? null : null;
-      setQrModal({
-        id,
-        sessionName: session?.sessionName ?? 'Unknown session',
-        tenantLabel: getTenantDisplay(tenant),
-        instanceName: instance?.name ?? 'Unknown instance',
-        qr: null,
-        qrCodeText: null,
-        pairing: null,
-        detail: 'Connecting to Evolution…',
-        state: 'connecting',
-        qrExpiresAt: session?.qrExpiresAt ?? null,
-        lastCheckedAt: new Date().toISOString(),
-        pollAttempt: 0,
-        pollStatus: 'connecting',
-        activeTab: 'qr',
-        pairingPhone: getSessionPhone(session) ?? '',
-        pairingBusy: false,
-        pairingError: null,
-      });
-
-      try {
-        const result = await requestQr(id, a);
-        setQrModal((current) => current && current.id === id ? {
-          ...current,
-          qr: result.qr ?? current.qr,
-          qrCodeText: result.qrCode ?? current.qrCodeText,
-          pairing: formatPairingCode(result.pairingCodeFormatted ?? result.pairingCode) ?? current.pairing,
-          detail: result.detail ?? (result.waitRecommended ? 'Waiting for Evolution to emit QR…' : current.detail),
-          state: result.state ?? current.state,
-          qrExpiresAt: result.qrExpiresAt ?? current.qrExpiresAt,
-          lastCheckedAt: result.lastCheckedAt ?? new Date().toISOString(),
-          pollAttempt: 0,
-          pollStatus: getQrPollStatus(result, current),
-        } : current);
-      } catch (actionError) {
-        setQrModal((current) => current && current.id === id ? {
-          ...current,
-          pollStatus: 'failed',
-          detail: actionError instanceof Error ? actionError.message : 'Failed to request QR.',
-          lastCheckedAt: new Date().toISOString(),
-        } : current);
-      }
-
-      await reload();
-      onChange();
-      return;
-    }
+    if (!window.confirm('Log out this WhatsApp session?')) return;
 
     const response = await fetch(`/api/admin/evolution/sessions/${id}/actions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: a }),
+      body: JSON.stringify({ action: 'logout' }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      setErr(typeof payload?.detail === 'string' ? payload.detail : typeof payload?.error === 'string' ? payload.error : 'Action failed');
+      setErr(typeof payload?.detail === 'string' ? payload.detail : typeof payload?.error === 'string' ? payload.error : 'Logout failed');
       return;
     }
 
     await reload();
     onChange();
-  }
-
-  async function openPairingModal(id: string) {
-    const session = rows.find((row) => row.id === id);
-    const instance = instances.find((row) => row.id === session?.instanceId);
-    const tenant = session?.tenantId ? tenantMap.get(session.tenantId) ?? null : null;
-    setErr(null);
-    setQrModal({
-      id,
-      sessionName: session?.sessionName ?? 'Unknown session',
-      tenantLabel: getTenantDisplay(tenant),
-      instanceName: instance?.name ?? 'Unknown gateway',
-      qr: null,
-      qrCodeText: null,
-      pairing: null,
-      detail: 'Enter the WhatsApp phone number and request a pairing code.',
-      state: null,
-      qrExpiresAt: session?.qrExpiresAt ?? null,
-      lastCheckedAt: new Date().toISOString(),
-      pollAttempt: 0,
-      pollStatus: 'idle',
-      activeTab: 'pairing',
-      pairingPhone: getSessionPhone(session) ?? '',
-      pairingBusy: false,
-      pairingError: null,
-    });
   }
 
   async function checkStatus(id: string) {
@@ -1131,12 +1384,8 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
   async function sendTestMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedSessionId) {
-      setTestFeedback({ tone: 'bad', text: 'Choose a session before sending a test message.' });
-      return;
-    }
-    if (sendDisabledReason) {
-      setTestFeedback({ tone: 'bad', text: sendDisabledReason });
+    if (!selectedSessionId || sendDisabledReason) {
+      setTestFeedback({ tone: 'bad', text: sendDisabledReason ?? 'Connect the System WhatsApp Number first.' });
       return;
     }
 
@@ -1170,10 +1419,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
       await loadTestResults(selectedSessionId);
       onChange();
     } catch (sendError) {
-      setTestFeedback({
-        tone: 'bad',
-        text: sendError instanceof Error ? sendError.message : 'Failed to send the test message.',
-      });
+      setTestFeedback({ tone: 'bad', text: sendError instanceof Error ? sendError.message : 'Failed to send the test message.' });
     } finally {
       setTestSending(false);
     }
@@ -1187,7 +1433,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
         <div className="evo-panel-head">
           <div>
             <h3 className="evo-panel-title">WhatsApp Sessions</h3>
-            <div className="evo-cell-muted">Create the WhatsApp session first, then connect it by QR code or pairing code from the row actions below.</div>
+            <div className="evo-cell-muted">Use the default system flow for GetTouch first, then open Advanced Options only when you need tenant/customer numbers.</div>
           </div>
           <div className="evo-row-actions evo-session-toolbar">
             <input
@@ -1206,34 +1452,141 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
             </select>
             <select className="evo-input evo-input-sm" value={filter.status} onChange={(e) => setFilter((current) => ({ ...current, status: e.target.value }))}>
               <option value="">All statuses</option>
-              {['connected', 'connecting', 'qr_pending', 'disconnected', 'expired', 'error'].map((status) => <option key={status} value={status}>{status}</option>)}
+              {['pending_connection', 'connecting', 'connected', 'disconnected', 'expired', 'error'].map((status) => (
+                <option key={status} value={status}>{formatSessionStatusLabel(status)}</option>
+              ))}
             </select>
             <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={() => { void reload(); }}>Refresh</button>
-            <button type="button" className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => setShowCreate((value) => !value)}>＋ New Session</button>
+            <button type="button" className="evo-btn evo-btn-primary evo-btn-xs" onClick={() => setShowCreate((value) => !value)}>＋ Connect WhatsApp Number</button>
           </div>
         </div>
 
         {showCreate && (
-          <form className="evo-form-inline" onSubmit={submit}>
-            <input className="evo-input" required placeholder="Session name (e.g. getouch-main)" value={form.sessionName} onChange={(e) => setForm((current) => ({ ...current, sessionName: e.target.value }))} />
-            <select className="evo-input" required value={form.instanceId} onChange={(e) => setForm((current) => ({ ...current, instanceId: e.target.value }))}>
-              <option value="">Choose gateway…</option>
-              {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}</option>)}
-            </select>
-            <select className="evo-input" value={form.tenantId} onChange={(e) => setForm((current) => ({ ...current, tenantId: e.target.value }))}>
-              <option value={defaultTenantId || ''}>GetTouch Internal (default)</option>
-              {tenants.filter((tenant) => tenant.tenantId !== defaultTenantId).map((tenant) => (
-                <option key={tenant.id} value={tenant.tenantId}>{getTenantDisplay(tenant)}</option>
-              ))}
-            </select>
-            <select className="evo-input" value={form.connectMethod} onChange={(e) => setForm((current) => ({ ...current, connectMethod: e.target.value as 'qr' | 'pairing' }))}>
-              <option value="qr">QR Code</option>
-              <option value="pairing">Pairing Code</option>
-            </select>
-            <input className="evo-input" placeholder={form.connectMethod === 'pairing' ? 'Phone number required for pairing' : 'Phone number optional for QR'} value={form.phoneNumber} onChange={(e) => setForm((current) => ({ ...current, phoneNumber: e.target.value }))} />
-            <button className="evo-btn evo-btn-primary evo-btn-xs" type="submit" disabled={busy}>Create Session</button>
-            <button className="evo-btn evo-btn-ghost evo-btn-xs" type="button" onClick={() => setShowCreate(false)}>Cancel</button>
-            <div className="evo-field-note">Gateway is required. Tenant defaults to GetTouch Internal. Pairing code requires a valid Malaysian phone number.</div>
+          <form className="evo-form-vert" onSubmit={submit}>
+            <div className="evo-session-note-grid">
+              <div className="evo-summary-card evo-summary-card-muted">
+                <span className="evo-summary-label">Default Flow</span>
+                <strong className="evo-summary-value">System Notification Number</strong>
+                <span className="evo-summary-meta">{preferredGateway ? `${preferredGateway.name} · ${defaultTenant?.tenantName ?? 'GetTouch Internal'}` : 'Create an active gateway first'}</span>
+              </div>
+              <div className="evo-summary-card evo-summary-card-muted">
+                <span className="evo-summary-label">Purpose</span>
+                <strong className="evo-summary-value">{showAdvancedOptions ? getSessionPurposeLabel(form.purpose) : getSessionPurposeLabel('system')}</strong>
+                <span className="evo-summary-meta">Technical name: {generatedSessionName}</span>
+              </div>
+              <div className="evo-summary-card evo-summary-card-muted">
+                <span className="evo-summary-label">Connection Method</span>
+                <strong className="evo-summary-value">{form.connectMethod === 'pairing' ? 'Pairing Code' : 'QR Code'}</strong>
+                <span className="evo-summary-meta">Phone number is only required for pairing</span>
+              </div>
+            </div>
+
+            <div className="evo-form-row evo-form-row-stack-sm">
+              <label className="evo-label">
+                Connection Method
+                <select className="evo-input" value={form.connectMethod} onChange={(e) => setForm((current) => ({ ...current, connectMethod: e.target.value as 'qr' | 'pairing' }))}>
+                  <option value="qr">QR Code</option>
+                  <option value="pairing">Pairing Code</option>
+                </select>
+              </label>
+              <label className="evo-label">
+                Phone Number {form.connectMethod === 'pairing' ? '(required)' : '(optional)'}
+                <input className="evo-input evo-cell-mono" placeholder={form.connectMethod === 'pairing' ? '0192277233' : 'Optional for QR flow'} value={form.phoneNumber} onChange={(e) => setForm((current) => ({ ...current, phoneNumber: e.target.value }))} />
+              </label>
+            </div>
+
+            <div className="evo-field-note">The simple flow reuses GetTouch Internal on the active gateway and hides technical runtime fields. Open Advanced Options only for tenant/customer sessions or custom session naming.</div>
+
+            <div className="evo-row-actions">
+              <button className="evo-btn evo-btn-ghost evo-btn-xs" type="button" onClick={() => setShowAdvancedOptions((value) => !value)}>
+                {showAdvancedOptions ? 'Hide Advanced Options' : 'Advanced Options'}
+              </button>
+            </div>
+
+            {showAdvancedOptions ? (
+              <div className="evo-form-vert">
+                <div className="evo-form-row evo-form-row-stack-sm">
+                  <label className="evo-label">
+                    Display Label
+                    <input className="evo-input" placeholder="System Notification Number" value={form.displayLabel} onChange={(e) => setForm((current) => ({ ...current, displayLabel: e.target.value }))} />
+                  </label>
+                  <label className="evo-label">
+                    Custom Session Name
+                    <input className="evo-input evo-cell-mono" placeholder={`Auto if blank (${generatedSessionName})`} value={form.sessionName} onChange={(e) => setForm((current) => ({ ...current, sessionName: e.target.value }))} />
+                  </label>
+                </div>
+
+                <div className="evo-form-row evo-form-row-stack-sm">
+                  <label className="evo-label">
+                    Tenant
+                    <select className="evo-input" value={form.tenantId} onChange={(e) => setForm((current) => ({ ...current, tenantId: e.target.value }))}>
+                      <option value={defaultTenantId || ''}>GetTouch Internal (default)</option>
+                      {tenants.filter((tenant) => tenant.tenantId !== defaultTenantId).map((tenant) => (
+                        <option key={tenant.id} value={tenant.tenantId}>{getTenantDisplay(tenant)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="evo-label">
+                    Gateway
+                    <select className="evo-input" value={form.instanceId} onChange={(e) => setForm((current) => ({ ...current, instanceId: e.target.value }))}>
+                      <option value={preferredGateway?.id ?? ''}>{preferredGateway?.name ?? 'Choose gateway…'}</option>
+                      {instances.filter((instance) => instance.id !== preferredGateway?.id).map((instance) => (
+                        <option key={instance.id} value={instance.id}>{instance.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="evo-form-row evo-form-row-stack-sm">
+                  <label className="evo-label">
+                    Purpose
+                    <select
+                      className="evo-input"
+                      value={form.purpose}
+                      onChange={(e) => {
+                        const nextPurpose = e.target.value as Session['purpose'];
+                        setForm((current) => ({
+                          ...current,
+                          purpose: nextPurpose,
+                          displayLabel: current.displayLabel === 'System Notification Number' || !current.displayLabel
+                            ? nextPurpose === 'system'
+                              ? 'System Notification Number'
+                              : nextPurpose === 'customer_chat'
+                                ? 'Main WhatsApp Number'
+                                : nextPurpose === 'support'
+                                  ? 'Support WhatsApp Number'
+                                  : 'Sales WhatsApp Number'
+                            : current.displayLabel,
+                          isDefault: nextPurpose === 'system' ? true : current.isDefault,
+                        }));
+                      }}
+                    >
+                      {['system', 'customer_chat', 'support', 'sales'].map((purpose) => <option key={purpose} value={purpose}>{getSessionPurposeLabel(purpose)}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="evo-form-row evo-form-row-stack-sm">
+                  <label className="evo-checkbox">
+                    <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((current) => ({ ...current, isDefault: e.target.checked }))} />
+                    Mark as default session
+                  </label>
+                  <label className="evo-checkbox">
+                    <input type="checkbox" checked={form.botEnabled} onChange={(e) => setForm((current) => ({ ...current, botEnabled: e.target.checked }))} />
+                    Bot enabled
+                  </label>
+                  <label className="evo-checkbox">
+                    <input type="checkbox" checked={form.humanHandoffEnabled} onChange={(e) => setForm((current) => ({ ...current, humanHandoffEnabled: e.target.checked }))} />
+                    Human handoff enabled
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="evo-row-actions evo-row-actions-end">
+              <button className="evo-btn evo-btn-primary" type="submit" disabled={busy}>{busy ? 'Working…' : 'Connect WhatsApp Number'}</button>
+              <button className="evo-btn evo-btn-ghost" type="button" onClick={() => { resetForm(); setShowAdvancedOptions(false); setShowCreate(false); }}>Cancel</button>
+            </div>
             {err ? <div className="evo-form-err">{err}</div> : null}
           </form>
         )}
@@ -1246,52 +1599,49 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           <div className="evo-table-wrap">
             <table className="evo-table">
               <thead>
-                <tr><th>SESSION</th><th>TENANT</th><th>GATEWAY</th><th>PAIRED NUMBER</th><th>STATUS</th><th>LAST CHECKED</th><th>ACTIONS</th></tr>
+                <tr><th>NUMBER</th><th>TENANT</th><th>GATEWAY</th><th>PURPOSE</th><th>STATUS</th><th>PAIRED NUMBER</th><th>ACTIONS</th></tr>
               </thead>
               <tbody>
                 {visibleRows.map((row) => {
                   const isSelected = row.id === selectedSessionId;
-                  const instanceName = row.instanceId ? instanceMap.get(row.instanceId)?.name ?? '—' : '—';
+                  const gateway = row.instanceId ? instanceMap.get(row.instanceId) ?? null : null;
                   const tenant = row.tenantId ? tenantMap.get(row.tenantId) ?? null : null;
-                  const pairedNumber = getSessionPhone(row);
                   return (
                     <tr
                       key={row.id}
                       className={isSelected ? 'evo-row-selected' : undefined}
                       onClick={() => {
-                        setSelectedSessionId(row.id);
-                        setTestInstanceId(row.instanceId ?? '');
-                        setTestFeedback(null);
+                        if (isSystemSession(row)) {
+                          setSelectedSessionId(row.id);
+                          setTestInstanceId(row.instanceId ?? '');
+                          setTestFeedback(null);
+                        }
                       }}
                     >
                       <td>
-                        <div className="evo-cell-strong">{row.sessionName}</div>
-                        <div className="evo-cell-muted">Created {formatDateTime(row.createdAt)}</div>
+                        <div className="evo-cell-strong">{getSessionDisplayLabel(row)}</div>
+                        <div className="evo-cell-muted evo-cell-mono">{row.sessionName}</div>
                       </td>
                       <td>
                         <div className="evo-cell-strong">{getTenantDisplay(tenant)}</div>
                         <div className="evo-cell-muted">{tenant?.tenantKey ?? 'legacy-session'}</div>
                       </td>
                       <td>
-                        <div className="evo-cell-strong">{instanceName}</div>
-                        <div className="evo-cell-muted">{row.instanceId ?? '—'}</div>
+                        <div className="evo-cell-strong">{gateway?.name ?? '—'}</div>
+                        <div className="evo-cell-muted">{gateway?.slug ?? row.instanceId ?? '—'}</div>
                       </td>
-                      <td className="evo-cell-mono">{pairedNumber ?? '—'}</td>
+                      <td><span className="evo-pill evo-pill-info evo-pill-xs">{getSessionPurposeLabel(row.purpose)}</span></td>
                       <td>
-                        <span className={statusBadge(row.status)}>{row.status.replace('_', ' ')}</span>
+                        <span className={statusBadge(row.status)}>{formatSessionStatusLabel(row.status)}</span>
                         {row.qrStatus ? <div className="evo-cell-muted">{row.qrStatus}</div> : null}
                       </td>
-                      <td className="evo-cell-muted">
-                        <div>{timeAgo(row.updatedAt)}</div>
-                        {row.lastConnectedAt ? <div>Connected {timeAgo(row.lastConnectedAt)}</div> : null}
-                      </td>
+                      <td className="evo-cell-mono">{getSessionPhone(row) ?? '—'}</td>
                       <td>
                         <div className="evo-row-actions">
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'qr'); }}>Connect QR</button>
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void openPairingModal(row.id); }}>Pairing Code</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void startQrFlow(row); }}>Connect QR</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); openPairingModal(row); }}>Pairing Code</button>
                           <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void checkStatus(row.id); }}>Check Status</button>
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'restart'); }}>Restart</button>
-                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void action(row.id, 'logout'); }}>Logout</button>
+                          <button type="button" className="evo-btn evo-btn-ghost evo-btn-xs" onClick={(e) => { e.stopPropagation(); void logoutSession(row.id); }}>Logout</button>
                           <button type="button" className="evo-btn evo-btn-bad evo-btn-xs" onClick={(e) => { e.stopPropagation(); void remove(row.id, row.sessionName); }}>Delete</button>
                         </div>
                       </td>
@@ -1309,28 +1659,28 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           <div className="evo-side-card-head">
             <div>
               <h3 className="evo-panel-title">Send Test Message</h3>
-              <div className="evo-cell-muted">Server-side send only. No Evolution secrets reach the browser.</div>
+              <div className="evo-cell-muted">Server-side send only. The Evolution admin key never reaches the browser.</div>
             </div>
-            {selectedSession ? <span className={statusBadge(selectedSession.status)}>{selectedSession.status.replace('_', ' ')}</span> : null}
+            {selectedSession ? <span className={statusBadge(selectedSession.status)}>{formatSessionStatusLabel(selectedSession.status)}</span> : null}
           </div>
 
           <form className="evo-form-vert" onSubmit={sendTestMessage}>
             <div className="evo-form-row evo-form-row-stack-sm">
               <label className="evo-label">
-                Session
+                System Session
                 <select
                   className="evo-input"
                   value={selectedSessionId}
                   onChange={(e) => {
                     const nextId = e.target.value;
-                    const nextSession = rows.find((row) => row.id === nextId) ?? null;
+                    const nextSession = systemSessions.find((row) => row.id === nextId) ?? null;
                     setSelectedSessionId(nextId);
                     setTestInstanceId(nextSession?.instanceId ?? '');
                     setTestFeedback(null);
                   }}
                 >
-                  <option value="">Choose a session…</option>
-                  {sessionOptions.map((row) => <option key={row.id} value={row.id}>{row.sessionName}</option>)}
+                  <option value="">Choose the system session…</option>
+                  {sessionOptions.map((row) => <option key={row.id} value={row.id}>{getSessionDisplayLabel(row)}</option>)}
                 </select>
               </label>
               <label className="evo-label">
@@ -1344,8 +1694,8 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
             <div className="evo-session-note-grid">
               <div className="evo-summary-card evo-summary-card-muted">
-                <span className="evo-summary-label">Session</span>
-                <strong className="evo-summary-value">{selectedSession?.sessionName ?? 'Not selected'}</strong>
+                <span className="evo-summary-label">System Number</span>
+                <strong className="evo-summary-value">{getSessionDisplayLabel(selectedSession)}</strong>
                 <span className="evo-summary-meta">{selectedInstance?.name ?? 'Choose a gateway'}</span>
               </div>
               <div className="evo-summary-card evo-summary-card-muted">
@@ -1357,12 +1707,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
             <label className="evo-label">
               Recipient Number
-              <input
-                className="evo-input evo-cell-mono"
-                placeholder="0192277233 or 60192277233"
-                value={testForm.recipientPhone}
-                onChange={(e) => setTestForm((current) => ({ ...current, recipientPhone: e.target.value }))}
-              />
+              <input className="evo-input evo-cell-mono" placeholder="0192277233 or 60192277233" value={testForm.recipientPhone} onChange={(e) => setTestForm((current) => ({ ...current, recipientPhone: e.target.value }))} />
             </label>
             <div className="evo-field-note">
               {normalizedRecipient ? `Normalized to ${normalizedRecipient}` : 'Use a Malaysian mobile number. Local 01x format is accepted.'}
@@ -1371,17 +1716,10 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
 
             <label className="evo-label">
               Message
-              <textarea
-                className="evo-input evo-textarea"
-                rows={5}
-                value={testForm.text}
-                onChange={(e) => setTestForm((current) => ({ ...current, text: e.target.value }))}
-              />
+              <textarea className="evo-input evo-textarea" rows={5} value={testForm.text} onChange={(e) => setTestForm((current) => ({ ...current, text: e.target.value }))} />
             </label>
 
-            {selectedSession && selectedSession.status !== 'connected' ? (
-              <div className="evo-inline-feedback evo-inline-feedback-warn">Connect this session before sending test traffic.</div>
-            ) : null}
+            {!connectedSystemSession ? <div className="evo-inline-feedback evo-inline-feedback-warn">Connect the System WhatsApp Number first.</div> : null}
             {testFeedback ? <div className={`evo-inline-feedback evo-inline-feedback-${testFeedback.tone}`}>{testFeedback.text}</div> : null}
 
             <div className="evo-row-actions evo-row-actions-end">
@@ -1396,13 +1734,13 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           <div className="evo-side-card-head">
             <div>
               <h3 className="evo-panel-title">Recent Test Results</h3>
-              <div className="evo-cell-muted">Latest test-message attempts for the selected session.</div>
+              <div className="evo-cell-muted">Latest system-number test-message attempts.</div>
             </div>
-            {selectedSession ? <span className="evo-cell-muted">{selectedSession.sessionName}</span> : null}
+            {selectedSession ? <span className="evo-cell-muted">{getSessionDisplayLabel(selectedSession)}</span> : null}
           </div>
 
           {testResultsLoading ? <div className="evo-empty">Loading…</div> : testResults.length === 0 ? (
-            <div className="evo-results-empty">No test messages have been sent for this session yet.</div>
+            <div className="evo-results-empty">No test messages have been sent for the system session yet.</div>
           ) : (
             <div className="evo-results-list">
               {testResults.slice(0, 8).map((result) => (
@@ -1427,33 +1765,37 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
           <div className="evo-modal evo-qr-modal" onClick={(e) => e.stopPropagation()}>
             <div className="evo-modal-head">
               <div>
-                <h3 className="evo-panel-title">Connect WhatsApp Session</h3>
-                <p className="evo-modal-subtitle">Scan a QR code or request a pairing code without leaving the admin portal.</p>
+                <h3 className="evo-panel-title">{qrModal.purpose === 'system' ? 'Connect System WhatsApp Number' : 'Connect Tenant WhatsApp Number'}</h3>
+                <p className="evo-modal-subtitle">
+                  {qrModal.purpose === 'system'
+                    ? 'Open WhatsApp → Linked devices → Link a device → scan this QR.'
+                    : 'Connect this WhatsApp number by scanning a QR code or using a pairing code.'}
+                </p>
               </div>
               <button className="evo-modal-close" type="button" onClick={() => setQrModal(null)}>Close</button>
             </div>
 
             <div className="evo-summary-grid">
               <div className="evo-summary-card">
-                <span className="evo-summary-label">Session</span>
-                <strong className="evo-summary-value">{qrModal.sessionName}</strong>
+                <span className="evo-summary-label">Display Label</span>
+                <strong className="evo-summary-value">{qrModal.displayLabel}</strong>
                 <span className="evo-summary-meta">{qrModal.tenantLabel}</span>
+              </div>
+              <div className="evo-summary-card">
+                <span className="evo-summary-label">Technical Session</span>
+                <strong className="evo-summary-value evo-cell-mono">{qrModal.sessionName}</strong>
+                <span className="evo-summary-meta">{getSessionPurposeLabel(qrModal.purpose)}</span>
               </div>
               <div className="evo-summary-card">
                 <span className="evo-summary-label">Gateway</span>
                 <strong className="evo-summary-value">{qrModal.instanceName}</strong>
                 <span className="evo-summary-meta">{formatQrState(qrModal.state)}</span>
               </div>
-              <div className="evo-summary-card">
-                <span className="evo-summary-label">Connect Method</span>
-                <strong className="evo-summary-value">{qrModal.activeTab === 'pairing' ? 'Pairing Code' : 'QR Code'}</strong>
-                <span className="evo-summary-meta">Switch tabs any time</span>
-              </div>
             </div>
 
             <div className="evo-status-row">
-              <span className={statusBadge(qrModal.pollStatus === 'ready' ? 'connecting' : qrModal.pollStatus === 'idle' ? 'pending' : qrModal.pollStatus)}>
-                {qrModal.pollStatus === 'ready' ? 'QR Ready' : qrModal.pollStatus === 'idle' ? 'Ready' : qrModal.pollStatus.replace('_', ' ')}
+              <span className={statusBadge(qrModal.pollStatus === 'ready' ? 'connecting' : qrModal.pollStatus === 'idle' ? 'pending_connection' : qrModal.pollStatus)}>
+                {qrModal.pollStatus === 'ready' ? 'QR Ready' : qrModal.pollStatus === 'idle' ? 'Idle' : qrModal.pollStatus.replace('_', ' ')}
               </span>
               <span className="evo-status-meta">State: {formatQrState(qrModal.state)}</span>
               {qrCountdown != null ? <span className="evo-status-meta">Refreshes in {qrCountdown}s</span> : null}
@@ -1461,7 +1803,7 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
               <span className="evo-status-meta">Attempt {qrModal.pollAttempt}/{QR_POLL_MAX_ATTEMPTS}</span>
             </div>
 
-            {qrModal.pollStatus === 'connected' ? <div className="evo-inline-feedback evo-inline-feedback-good">Session connected. Closing this dialog automatically.</div> : null}
+            {qrModal.pollStatus === 'connected' ? <div className="evo-inline-feedback evo-inline-feedback-good">Connected successfully{pairingPhoneNormalized ? ` · ${pairingPhoneNormalized}` : ''}.</div> : null}
             {qrModal.pollStatus === 'timeout' ? <div className="evo-inline-feedback evo-inline-feedback-bad">{qrModal.detail ?? 'Timed out waiting for connection.'}</div> : null}
             {qrModal.pollStatus === 'failed' ? <div className="evo-inline-feedback evo-inline-feedback-bad">{qrModal.detail ?? 'Failed to request a QR code.'}</div> : null}
 
@@ -1486,12 +1828,13 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
                 </div>
                 <div className="evo-pairing-card">
                   <h4 className="evo-panel-title">How to scan</h4>
-                  <div className="evo-cell-muted">Open WhatsApp on the phone you want to link, then go to Linked Devices and scan the code shown here.</div>
-                  <div className="evo-field-note">If QR emission is delayed, keep this window open. The portal will retry state checks automatically.</div>
+                  <div className="evo-cell-muted">Open WhatsApp → Linked devices → Link a device → scan this QR.</div>
+                  <div className="evo-field-note">Phone number is optional for QR. The portal will poll every few seconds and mark the session connected only after Evolution confirms it.</div>
                   {qrModal.detail && qrModal.pollStatus === 'ready' ? <div className="evo-inline-feedback evo-inline-feedback-warn">{qrModal.detail}</div> : null}
                   <div className="evo-row-actions">
-                    <button className="evo-btn evo-btn-primary" type="button" onClick={() => { void action(qrModal.id, 'qr'); }} disabled={qrModal.pollStatus === 'connecting'}>Request Fresh QR</button>
-                    <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'pairing' } : current)}>Use Pairing Code</button>
+                    <button className="evo-btn evo-btn-primary" type="button" onClick={() => { const session = rows.find((row) => row.id === qrModal.id); if (session) void startQrFlow(session); }} disabled={qrModal.pollStatus === 'connecting'}>Refresh QR</button>
+                    <button className="evo-btn evo-btn-ghost" type="button" onClick={() => { void handleModalStatusCheck(); }}>Check Status</button>
+                    <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'pairing' } : current)}>Use Pairing Code Instead</button>
                   </div>
                 </div>
               </div>
@@ -1499,43 +1842,39 @@ function SessionsTab({ onChange }: { onChange: () => void }) {
               <div className="evo-modal-grid">
                 <div className="evo-pairing-card">
                   <label className="evo-label">
-                    Phone number
-                    <input
-                      className="evo-input evo-cell-mono"
-                      placeholder="0192277233"
-                      value={qrModal.pairingPhone}
-                      onChange={(e) => setQrModal((current) => current ? { ...current, pairingPhone: e.target.value, pairingError: null } : current)}
-                    />
+                    Phone Number
+                    <input className="evo-input evo-cell-mono" placeholder="0192277233" value={qrModal.pairingPhone} onChange={(e) => setQrModal((current) => current ? { ...current, pairingPhone: e.target.value, pairingError: null } : current)} />
                   </label>
                   <div className="evo-field-note">
-                    {pairingPhoneNormalized ? `Will request a pairing code for ${pairingPhoneNormalized}` : 'Use the primary WhatsApp number for the device you want to link.'}
+                    {pairingPhoneNormalized ? `Normalized to ${pairingPhoneNormalized}` : 'Phone number is required only for pairing code. Malaysian numbers are normalized server-side.'}
                   </div>
                   {qrModal.pairingError ? <div className="evo-inline-feedback evo-inline-feedback-bad">{qrModal.pairingError}</div> : null}
-                  {!qrModal.pairing && qrModal.qr ? <div className="evo-inline-feedback evo-inline-feedback-warn">Evolution returned a QR code instead. Switch tabs if you want to scan it.</div> : null}
                   <div className="evo-row-actions">
                     <button className="evo-btn evo-btn-primary" type="button" disabled={qrModal.pairingBusy || !pairingPhoneNormalized} onClick={() => { void requestPairingCode(); }}>
                       {qrModal.pairingBusy ? 'Requesting…' : 'Request Pairing Code'}
                     </button>
+                    <button className="evo-btn evo-btn-ghost" type="button" onClick={() => { void handleModalStatusCheck(); }}>Check Status</button>
                     <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal((current) => current ? { ...current, activeTab: 'qr' } : current)}>Back to QR</button>
                   </div>
                 </div>
                 <div className="evo-pairing-card">
-                  <h4 className="evo-panel-title">Pairing code</h4>
+                  <h4 className="evo-panel-title">Pairing Code</h4>
                   {qrModal.pairing ? (
                     <div className="evo-pairing-code">{qrModal.pairing}</div>
                   ) : (
                     <div className="evo-qr-placeholder evo-qr-placeholder-compact">
                       <strong>No pairing code yet</strong>
-                      <span>Request a new code, or use QR code if the backend falls back to QR flow.</span>
+                      <span>Open WhatsApp → Linked devices → Link with phone number instead → enter this code.</span>
                     </div>
                   )}
-                  <div className="evo-field-note">In WhatsApp, choose Linked Devices, then Link with phone number instead.</div>
+                  <div className="evo-field-note">Do not mark this session connected until Evolution confirms the connection.</div>
                   {qrModal.detail ? <div className="evo-inline-feedback evo-inline-feedback-warn">{qrModal.detail}</div> : null}
                 </div>
               </div>
             )}
 
             <div className="evo-row-actions evo-row-actions-end">
+              <button className="evo-btn evo-btn-ghost" type="button" onClick={() => { void handleModalStatusCheck(); }}>Check Status</button>
               <button className="evo-btn evo-btn-ghost" type="button" onClick={() => setQrModal(null)}>Close</button>
             </div>
           </div>
