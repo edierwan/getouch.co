@@ -272,7 +272,12 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
 function FlashBanner({ flash }: { flash: FlashMessage }) {
   if (!flash) return null;
   return (
-    <section className={`portal-aac-flash portal-aac-flash-${flash.tone}`}>
+    <section
+      className={`portal-aac-flash portal-aac-flash-${flash.tone}`}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       <span>{flash.text}</span>
     </section>
   );
@@ -1577,6 +1582,12 @@ export function AppAccessControlConsole() {
     void loadSnapshot();
   }, []);
 
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+
   const selectedApp = data?.selectedApp ?? null;
   const selectedTenantBinding = data?.selectedTenantBinding ?? null;
   const selectedTargetLabel = targetLabelFromBinding(selectedTenantBinding);
@@ -1837,9 +1848,6 @@ export function AppAccessControlConsole() {
                     <div className="portal-aac-eyebrow">Registered Apps</div>
                     <h3>Product Catalog</h3>
                   </div>
-                  <button type="button" className="portal-aac-primary-button" onClick={() => openModal({ kind: 'createApp' })}>
-                    Create App
-                  </button>
                 </div>
 
                 {data.apps.length === 0 ? (
@@ -1882,6 +1890,9 @@ export function AppAccessControlConsole() {
                         <h3>{selectedApp.name}</h3>
                       </div>
                       <div className="portal-aac-action-row">
+                        <button type="button" className="portal-aac-primary-button" onClick={() => openModal({ kind: 'createApp' })}>
+                          Create App
+                        </button>
                         <button type="button" className="portal-aac-primary-button" onClick={() => void rotatePlatformKey(selectedApp)} disabled={mutating}>
                           {platformKeyActionLabel(selectedApp)}
                         </button>

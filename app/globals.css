@@ -4239,6 +4239,32 @@ fieldset.portal-akm-field { padding: 0; margin: 0; }
   word-break: break-all;
 }
 
+.portal-aac-flash {
+  position: fixed;
+  top: clamp(1rem, 3vw, 1.75rem);
+  right: clamp(1rem, 3vw, 1.75rem);
+  z-index: 60;
+  min-width: min(320px, calc(100vw - 2rem));
+  max-width: min(460px, calc(100vw - 2rem));
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--aac-line);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+}
+
+.portal-aac-flash-success {
+  color: #eafff7;
+  border-color: rgba(121, 210, 208, 0.28);
+  background: linear-gradient(135deg, rgba(20, 46, 43, 0.94), rgba(18, 24, 28, 0.96));
+}
+
+.portal-aac-flash-error {
+  color: #fff3f0;
+  border-color: rgba(255, 159, 141, 0.3);
+  background: linear-gradient(135deg, rgba(66, 31, 26, 0.94), rgba(24, 18, 18, 0.96));
+}
+
 .portal-aac-flow-list {
   list-style: none;
   padding: 0;
