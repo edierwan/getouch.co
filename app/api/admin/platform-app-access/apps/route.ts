@@ -11,8 +11,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await readJsonBody(req);
-    const row = await createPlatformApp(body);
-    return NextResponse.json({ ok: true, app: { id: row.id, appCode: row.appCode } });
+    const result = await createPlatformApp(body);
+    return NextResponse.json({
+      ok: true,
+      app: {
+        id: result.app.id,
+        appCode: result.app.appCode,
+      },
+      platformAppKey: {
+        plaintext: result.platformAppKey.plaintext,
+        masked: result.platformAppKey.masked,
+        keyPrefix: result.platformAppKey.keyPrefix,
+        keyLast4: result.platformAppKey.keyLast4,
+        scopes: result.platformAppKey.scopes,
+      },
+    });
   } catch (err) {
     return handlePlatformRegistryError('platform-app-access/apps:POST', err);
   }

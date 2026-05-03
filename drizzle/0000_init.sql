@@ -1,5 +1,5 @@
 -- Getouch Central Auth: initial schema
--- Applies to: getouch.co, getouch.co.dev, getouch.co.stg databases
+-- Applies to the portal control-plane database.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

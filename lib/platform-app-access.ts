@@ -6,7 +6,13 @@ import {
   normalizeServiceName,
 } from './platform-app-access-config';
 import {
+  PLATFORM_BROKER_API_BASE_PATH,
+  getPlatformBrokerSenderStatus,
+} from './platform-broker';
+import { maskPlatformAppKey } from './platform-app-keys';
+import {
   platformApps,
+  platformAppKeys,
   platformAppServiceCapabilities,
   platformAppTenantBindings,
   platformSecretRefs,
@@ -28,6 +34,8 @@ export interface PlatformAccessSummary {
   scopedKeyCount: number;
 }
 
+export type PlatformAppKeyStatus = 'missing' | 'configured' | 'revoked';
+
 export interface PlatformAppItem {
   id: string;
   appCode: string;
@@ -44,6 +52,12 @@ export interface PlatformAppItem {
   serviceIntegrationCount: number;
   secretRefCount: number;
   ecosystemAccess: 'enabled';
+  platformKeyStatus: PlatformAppKeyStatus;
+  platformKeyConnected: boolean;
+  platformKeyMask: string | null;
+  platformKeyCreatedAt: string | null;
+  platformKeyLastUsedAt: string | null;
+  platformKeyScopes: string[];
 }
 
 export interface PlatformAppServiceCapabilityItem {
@@ -131,11 +145,27 @@ export interface PlatformTenantServiceStatusItem {
   internalBaseUrl: string | null;
 }
 
+export interface PlatformBrokerSnapshot {
+  apiBasePath: string;
+  status: 'active';
+  appKeyStatus: PlatformAppKeyStatus;
+  appKeyConnected: boolean;
+  appKeyMask: string | null;
+  appKeyLastUsedAt: string | null;
+  provider: string;
+  senderInstance: string;
+  senderStatus: string;
+  senderDisplayLabel: string | null;
+  senderPairedNumber: string | null;
+  recentCallsNote: string;
+}
+
 export interface PlatformAccessSnapshot {
   summary: PlatformAccessSummary;
   apps: PlatformAppItem[];
   selectedAppCode: string | null;
   selectedApp: PlatformAppItem | null;
+  selectedAppBroker: PlatformBrokerSnapshot | null;
   appCapabilities: PlatformAppServiceCapabilityItem[];
   tenantBindings: PlatformTenantBindingItem[];
   serviceIntegrations: PlatformServiceIntegrationItem[];
@@ -150,6 +180,7 @@ export interface PlatformAccessSnapshot {
     createTenantBinding: 'enabled';
     createServiceIntegration: 'enabled';
     createSecretRef: 'enabled';
+    rotatePlatformKey: 'enabled';
   };
 }
 
@@ -226,7 +257,7 @@ function resolveTenantServiceStatus(
 }
 
 export async function getPlatformAccessSummary(): Promise<PlatformAccessSummary> {
-  const [appsResult, bindingsResult, capabilitiesResult, integrationsResult, secretRefsResult] = await Promise.all([
+  const [appsResult, bindingsResult, capabilitiesResult, integrationsResult, secretRefsResult, scopedKeysResult] = await Promise.all([
     db.select({ count: count() }).from(platformApps),
     db
       .select({ count: count() })
@@ -235,6 +266,7 @@ export async function getPlatformAccessSummary(): Promise<PlatformAccessSummary>
     db.select({ count: count() }).from(platformAppServiceCapabilities),
     db.select({ count: count() }).from(platformServiceIntegrations),
     db.select({ count: count() }).from(platformSecretRefs),
+    db.select({ count: count() }).from(platformAppKeys).where(eq(platformAppKeys.status, 'active')),
   ]);
 
   const appCount = Number(appsResult[0]?.count ?? 0);
@@ -242,6 +274,7 @@ export async function getPlatformAccessSummary(): Promise<PlatformAccessSummary>
   const ecosystemCapabilityCount = Number(capabilitiesResult[0]?.count ?? 0);
   const serviceIntegrationCount = Number(integrationsResult[0]?.count ?? 0);
   const secretRefCount = Number(secretRefsResult[0]?.count ?? 0);
+  const scopedKeyCount = Number(scopedKeysResult[0]?.count ?? 0);
 
   return {
     appCount,
@@ -249,7 +282,7 @@ export async function getPlatformAccessSummary(): Promise<PlatformAccessSummary>
     ecosystemCapabilityCount,
     serviceIntegrationCount,
     secretRefCount,
-    scopedKeyCount: secretRefCount,
+    scopedKeyCount,
   };
 }
 
@@ -285,17 +318,26 @@ async function listPlatformSecretRefsRaw() {
     .orderBy(asc(platformSecretRefs.serviceName), asc(platformSecretRefs.refPath));
 }
 
+async function listPlatformAppKeysRaw() {
+  return db
+    .select()
+    .from(platformAppKeys)
+    .orderBy(desc(platformAppKeys.createdAt));
+}
+
 export async function getPlatformAccessSnapshot(opts?: {
   selectedAppCode?: string | null;
   selectedTenantBindingId?: string | null;
 }): Promise<PlatformAccessSnapshot> {
-  const [summary, rawApps, rawCapabilities, rawBindings, rawIntegrations, rawSecretRefs] = await Promise.all([
+  const [summary, rawApps, rawCapabilities, rawBindings, rawIntegrations, rawSecretRefs, rawKeys, brokerSender] = await Promise.all([
     getPlatformAccessSummary(),
     listPlatformAppsRaw(),
     listPlatformAppCapabilitiesRaw(),
     listPlatformTenantBindingsRaw(),
     listPlatformServiceIntegrationsRaw(),
     listPlatformSecretRefsRaw(),
+    listPlatformAppKeysRaw(),
+    getPlatformBrokerSenderStatus(),
   ]);
 
   const rawAppMap = new Map(rawApps.map((app) => [app.id, app]));
@@ -325,6 +367,13 @@ export async function getPlatformAccessSnapshot(opts?: {
     secretRefCountByAppId.set(secretRef.appId, (secretRefCountByAppId.get(secretRef.appId) ?? 0) + 1);
   }
 
+  const keysByAppId = new Map<string, typeof rawKeys>();
+  for (const key of rawKeys) {
+    const items = keysByAppId.get(key.appId) ?? [];
+    items.push(key);
+    keysByAppId.set(key.appId, items);
+  }
+
   const apps: PlatformAppItem[] = rawApps.map((app) => ({
     id: app.id,
     appCode: app.appCode,
@@ -341,6 +390,24 @@ export async function getPlatformAccessSnapshot(opts?: {
     serviceIntegrationCount: integrationCountByAppId.get(app.id) ?? 0,
     secretRefCount: secretRefCountByAppId.get(app.id) ?? 0,
     ecosystemAccess: 'enabled',
+    ...(() => {
+      const appKeys = keysByAppId.get(app.id) ?? [];
+      const activeKey = appKeys.find((key) => key.status === 'active') ?? null;
+      const latestKey = activeKey ?? appKeys[0] ?? null;
+
+      let platformKeyStatus: PlatformAppKeyStatus = 'missing';
+      if (activeKey) platformKeyStatus = 'configured';
+      else if (latestKey?.status === 'revoked') platformKeyStatus = 'revoked';
+
+      return {
+        platformKeyStatus,
+        platformKeyConnected: Boolean(activeKey?.lastUsedAt),
+        platformKeyMask: latestKey ? maskPlatformAppKey(latestKey.keyPrefix, latestKey.keyLast4) : null,
+        platformKeyCreatedAt: toIso(latestKey?.createdAt),
+        platformKeyLastUsedAt: toIso(activeKey?.lastUsedAt),
+        platformKeyScopes: Array.isArray(latestKey?.scopes) ? latestKey.scopes : [],
+      };
+    })(),
   }));
 
   const selectedApp = apps.find((app) => app.appCode === opts?.selectedAppCode)
@@ -484,11 +551,29 @@ export async function getPlatformAccessSnapshot(opts?: {
       )
     : selectedSecretRefs.filter((secretRef) => secretRef.tenantBindingId === null);
 
+  const selectedAppBroker = selectedApp
+    ? {
+      apiBasePath: PLATFORM_BROKER_API_BASE_PATH,
+      status: 'active' as const,
+      appKeyStatus: selectedApp.platformKeyStatus,
+      appKeyConnected: selectedApp.platformKeyConnected,
+      appKeyMask: selectedApp.platformKeyMask,
+      appKeyLastUsedAt: selectedApp.platformKeyLastUsedAt,
+      provider: brokerSender.provider,
+      senderInstance: brokerSender.instance,
+      senderStatus: String(brokerSender.status),
+      senderDisplayLabel: brokerSender.displayLabel,
+      senderPairedNumber: brokerSender.pairedNumber,
+      recentCallsNote: 'Broker activity logging placeholder. Evolution delivery logs are still recorded server-side.',
+    }
+    : null;
+
   return {
     summary,
     apps,
     selectedAppCode: selectedApp?.appCode ?? null,
     selectedApp,
+    selectedAppBroker,
     appCapabilities,
     tenantBindings,
     serviceIntegrations,
@@ -503,6 +588,7 @@ export async function getPlatformAccessSnapshot(opts?: {
       createTenantBinding: 'enabled',
       createServiceIntegration: 'enabled',
       createSecretRef: 'enabled',
+      rotatePlatformKey: 'enabled',
     },
   };
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import type {
   PlatformAccessSnapshot,
   PlatformAppItem,
+  PlatformBrokerSnapshot,
   PlatformSecretRefItem,
   PlatformServiceIntegrationItem,
   PlatformTenantBindingItem,
@@ -17,9 +18,22 @@ import {
 } from '@/lib/platform-app-access-config';
 import { ApiKeyManagerConsole } from './ApiKeyManagerConsole';
 
-type Tab = 'apps' | 'apiKeys' | 'tenantBindings' | 'serviceLinks' | 'secretRefs';
+type Tab = 'apps' | 'platformBroker' | 'apiKeys' | 'tenantBindings' | 'serviceLinks' | 'secretRefs';
 type FlashTone = 'success' | 'error';
 type FlashMessage = { tone: FlashTone; text: string } | null;
+type RevealedPlatformKeyAuthState = 'idle' | 'testing' | 'success' | 'error';
+
+type RevealedPlatformKey = {
+  appId: string;
+  appCode: string;
+  plaintext: string;
+  masked: string;
+  keyPrefix: string;
+  keyLast4: string;
+  scopes: string[];
+  authState: RevealedPlatformKeyAuthState;
+  authMessage: string | null;
+};
 
 type ModalState =
   | { kind: 'createApp' }
@@ -42,6 +56,7 @@ type ModalState =
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'apps', label: 'Apps' },
+  { id: 'platformBroker', label: 'Platform Broker' },
   { id: 'apiKeys', label: 'API Keys' },
   { id: 'tenantBindings', label: 'Tenant Bindings' },
   { id: 'serviceLinks', label: 'Service Links' },
@@ -109,6 +124,16 @@ function titleCase(value: string | null): string {
 
 function formatStatusLabel(value: string): string {
   switch (value) {
+    case 'configured':
+      return 'Configured';
+    case 'connected':
+      return 'Connected';
+    case 'missing':
+      return 'Missing';
+    case 'not_checked':
+      return 'Not Checked';
+    case 'not_configured':
+      return 'Not Configured';
     case 'not_linked':
       return 'Not Linked';
     case 'linked':
@@ -128,8 +153,11 @@ function toneForStatus(status: string): string {
   switch (status) {
     case 'active':
     case 'available':
+    case 'connected':
     case 'linked':
       return 'portal-status-good';
+    case 'configured':
+    case 'not_checked':
     case 'not_linked':
     case 'planned':
     case 'sandbox':
@@ -137,6 +165,8 @@ function toneForStatus(status: string): string {
     case 'disabled':
     case 'error':
     case 'inactive':
+    case 'missing':
+    case 'not_configured':
     case 'revoked':
       return 'portal-status-bad';
     default:
@@ -169,10 +199,46 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function extractRevealedPlatformKey(json: Record<string, unknown>): RevealedPlatformKey | null {
+  const app = objectValue(json.app);
+  const platformAppKey = objectValue(json.platformAppKey);
+
+  if (
+    typeof app.id !== 'string'
+    || typeof app.appCode !== 'string'
+    || typeof platformAppKey.plaintext !== 'string'
+    || typeof platformAppKey.masked !== 'string'
+    || typeof platformAppKey.keyPrefix !== 'string'
+    || typeof platformAppKey.keyLast4 !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    appId: app.id,
+    appCode: app.appCode,
+    plaintext: platformAppKey.plaintext,
+    masked: platformAppKey.masked,
+    keyPrefix: platformAppKey.keyPrefix,
+    keyLast4: platformAppKey.keyLast4,
+    scopes: Array.isArray(platformAppKey.scopes)
+      ? platformAppKey.scopes.filter((scope): scope is string => typeof scope === 'string')
+      : [],
+    authState: 'idle',
+    authMessage: null,
+  };
+}
+
 function getApiErrorMessage(json: Record<string, unknown>, status: number): string {
   if (typeof json.message === 'string' && json.message.trim()) return json.message;
   if (typeof json.error === 'string' && json.error.trim()) return json.error;
   return `Request failed (${status})`;
+}
+
+function platformKeyActionLabel(app: PlatformAppItem): string {
+  return app.platformKeyStatus === 'configured'
+    ? 'Regenerate Platform App Key'
+    : 'Generate Platform App Key';
 }
 
 function stripDescriptionMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
@@ -302,6 +368,18 @@ function AppOverviewCard({ app }: { app: PlatformAppItem }) {
           <dd>Enabled</dd>
         </div>
         <div>
+          <dt>Platform App Key</dt>
+          <dd><StatusBadge value={app.platformKeyStatus} /></dd>
+        </div>
+        <div>
+          <dt>Broker Auth</dt>
+          <dd><StatusBadge value={app.platformKeyConnected ? 'connected' : 'not_checked'} /></dd>
+        </div>
+        <div>
+          <dt>Masked Key</dt>
+          <dd>{app.platformKeyMask || 'Not generated yet'}</dd>
+        </div>
+        <div>
           <dt>Tenant Bindings</dt>
           <dd>{app.tenantBindingCount}</dd>
         </div>
@@ -311,9 +389,192 @@ function AppOverviewCard({ app }: { app: PlatformAppItem }) {
         </div>
       </dl>
       <p className="portal-aac-helper-note">
-        App Code is generated automatically and used internally for logs, routing, and service mappings.
+        App Code is generated automatically and used internally for logs, routing, broker auth, and service mappings.
       </p>
     </section>
+  );
+}
+
+function RevealedPlatformKeyPanel({
+  value,
+  busy,
+  onCopy,
+  onTest,
+  onDismiss,
+}: {
+  value: RevealedPlatformKey | null;
+  busy: boolean;
+  onCopy: () => void;
+  onTest: () => void;
+  onDismiss: () => void;
+}) {
+  if (!value) return null;
+
+  const authStatus = value.authState === 'success'
+    ? 'connected'
+    : value.authState === 'error'
+      ? 'error'
+      : value.authState === 'testing'
+        ? 'planned'
+        : 'not_checked';
+
+  return (
+    <section className="portal-aac-panel">
+      <div className="portal-aac-panel-head">
+        <div>
+          <div className="portal-aac-eyebrow">One-Time Reveal</div>
+          <h3>Platform App Key ready for {value.appCode}</h3>
+        </div>
+        <StatusBadge value={authStatus} />
+      </div>
+      <p className="portal-aac-panel-copy">
+        This raw key is shown once. After you dismiss this panel, the portal keeps only the masked fingerprint and hash.
+      </p>
+      <dl className="portal-aac-detail-list">
+        <div>
+          <dt>Masked Key</dt>
+          <dd>{value.masked}</dd>
+        </div>
+        <div>
+          <dt>Scopes</dt>
+          <dd>{value.scopes.length > 0 ? value.scopes.join(', ') : 'platform:*'}</dd>
+        </div>
+        <div>
+          <dt>Auth Check</dt>
+          <dd>{value.authMessage || 'Run Test App Key to verify broker auth before you dismiss this.'}</dd>
+        </div>
+      </dl>
+      <div className="portal-aac-form-field-wide">
+        <div className="portal-aac-helper-note">Raw Platform App Key</div>
+        <code className="portal-aac-secret-path">{value.plaintext}</code>
+      </div>
+      <div className="portal-aac-action-row">
+        <button type="button" className="portal-aac-primary-button" onClick={onCopy} disabled={busy}>Copy Key</button>
+        <button type="button" className="portal-aac-secondary-button" onClick={onTest} disabled={busy}>
+          {value.authState === 'testing' ? 'Testing…' : 'Test App Key'}
+        </button>
+        <button type="button" className="portal-aac-secondary-button" onClick={onDismiss} disabled={busy}>Dismiss</button>
+      </div>
+    </section>
+  );
+}
+
+function PlatformBrokerPanel({
+  app,
+  broker,
+  busy,
+  canTestKey,
+  onRotateKey,
+  onTestKey,
+}: {
+  app: PlatformAppItem | null;
+  broker: PlatformBrokerSnapshot | null;
+  busy: boolean;
+  canTestKey: boolean;
+  onRotateKey: () => void;
+  onTestKey: () => void;
+}) {
+  if (!app || !broker) {
+    return (
+      <section className="portal-aac-panel">
+        <EmptyState title="No app selected" body="Select or create an app first to manage the Platform Broker and Platform App Key." />
+      </section>
+    );
+  }
+
+  return (
+    <div className="portal-aac-panel-grid">
+      <section className="portal-aac-panel">
+        <div className="portal-aac-panel-head">
+          <div>
+            <div className="portal-aac-eyebrow">Platform Broker</div>
+            <h3>{app.name} broker access</h3>
+          </div>
+          <StatusBadge value={broker.status} />
+        </div>
+        <p className="portal-aac-panel-copy">
+          The broker exposes one app-scoped entry point for shared services. WAPI should use this instead of carrying raw downstream service keys.
+        </p>
+        <dl className="portal-aac-detail-list">
+          <div>
+            <dt>Broker API URL</dt>
+            <dd>{broker.apiBasePath}</dd>
+          </div>
+          <div>
+            <dt>App Key Status</dt>
+            <dd><StatusBadge value={broker.appKeyStatus} /></dd>
+          </div>
+          <div>
+            <dt>Auth Status</dt>
+            <dd><StatusBadge value={broker.appKeyConnected ? 'connected' : 'not_checked'} /></dd>
+          </div>
+          <div>
+            <dt>Masked Key</dt>
+            <dd>{broker.appKeyMask || 'Not generated yet'}</dd>
+          </div>
+          <div>
+            <dt>Last Broker Auth / Use</dt>
+            <dd>{formatDateTime(broker.appKeyLastUsedAt)}</dd>
+          </div>
+        </dl>
+        <div className="portal-aac-action-row">
+          <button type="button" className="portal-aac-primary-button" onClick={onRotateKey} disabled={busy}>
+            {platformKeyActionLabel(app)}
+          </button>
+          <button type="button" className="portal-aac-secondary-button" onClick={onTestKey} disabled={busy || !canTestKey}>
+            Test App Key
+          </button>
+        </div>
+        <p className="portal-aac-helper-note">
+          Test App Key uses the one-time raw key currently visible above. If you dismiss it, regenerate a key to run another broker auth check.
+        </p>
+      </section>
+
+      <section className="portal-aac-panel">
+        <div className="portal-aac-panel-head">
+          <div>
+            <div className="portal-aac-eyebrow">WhatsApp Sender</div>
+            <h3>Evolution / {broker.senderInstance}</h3>
+          </div>
+          <StatusBadge value={broker.senderStatus} />
+        </div>
+        <p className="portal-aac-panel-copy">
+          Platform broker WhatsApp delivery uses the portal-controlled Evolution system session and keeps the Evolution admin key server-side only.
+        </p>
+        <dl className="portal-aac-detail-list">
+          <div>
+            <dt>Provider</dt>
+            <dd>{broker.provider}</dd>
+          </div>
+          <div>
+            <dt>Logical Sender</dt>
+            <dd>{broker.senderInstance}</dd>
+          </div>
+          <div>
+            <dt>Display Label</dt>
+            <dd>{broker.senderDisplayLabel || 'System Notification Number'}</dd>
+          </div>
+          <div>
+            <dt>Paired Number</dt>
+            <dd>{broker.senderPairedNumber || 'Not connected yet'}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="portal-aac-panel">
+        <div className="portal-aac-panel-head">
+          <div>
+            <div className="portal-aac-eyebrow">Recent Broker Calls</div>
+            <h3>Activity</h3>
+          </div>
+          <StatusBadge value="planned" />
+        </div>
+        <p className="portal-aac-panel-copy">{broker.recentCallsNote}</p>
+        <p className="portal-aac-helper-note">
+          The broker already records delivery attempts in the Evolution message log. A broker-specific activity list can be layered on later without changing the auth model.
+        </p>
+      </section>
+    </div>
   );
 }
 
@@ -1286,6 +1547,7 @@ export function AppAccessControlConsole() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<FlashMessage>(null);
+  const [revealedPlatformKey, setRevealedPlatformKey] = useState<RevealedPlatformKey | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [mutating, setMutating] = useState(false);
@@ -1404,6 +1666,88 @@ export function AppAccessControlConsole() {
     openModal({ kind: 'deleteServiceLink', integration });
   }
 
+  async function rotatePlatformKey(app: PlatformAppItem) {
+    const shouldConfirm = app.platformKeyStatus === 'configured';
+    if (shouldConfirm && !window.confirm('Regenerate this Platform App Key? The current active key will be revoked immediately.')) {
+      return;
+    }
+
+    setMutating(true);
+    try {
+      const res = await fetch(`/api/admin/platform-app-access/apps/${app.id}/platform-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rotate' }),
+      });
+      const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok || json.ok !== true) {
+        throw new Error(getApiErrorMessage(json, res.status));
+      }
+
+      const nextRevealedKey = extractRevealedPlatformKey(json);
+      if (nextRevealedKey) setRevealedPlatformKey(nextRevealedKey);
+      setFlash({
+        tone: 'success',
+        text: app.platformKeyStatus === 'configured'
+          ? 'Platform App Key regenerated.'
+          : 'Platform App Key created.',
+      });
+      await loadSnapshot(app.appCode, data?.selectedTenantBindingId ?? null);
+    } catch (mutationError) {
+      const message = mutationError instanceof Error ? mutationError.message : 'Platform App Key request failed';
+      setFlash({ tone: 'error', text: message });
+    } finally {
+      setMutating(false);
+    }
+  }
+
+  async function copyRevealedPlatformKey() {
+    if (!revealedPlatformKey) return;
+
+    try {
+      await navigator.clipboard.writeText(revealedPlatformKey.plaintext);
+      setFlash({ tone: 'success', text: `Copied Platform App Key for ${revealedPlatformKey.appCode}.` });
+    } catch {
+      setFlash({ tone: 'error', text: 'Could not copy the Platform App Key.' });
+    }
+  }
+
+  async function testRevealedPlatformKey() {
+    if (!revealedPlatformKey) return;
+
+    setRevealedPlatformKey((current) => current ? { ...current, authState: 'testing', authMessage: null } : current);
+    try {
+      const res = await fetch('/api/platform/auth/check', {
+        method: 'POST',
+        headers: { 'X-Platform-App-Key': revealedPlatformKey.plaintext },
+      });
+      const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok || json.ok !== true) {
+        throw new Error(getApiErrorMessage(json, res.status));
+      }
+
+      setRevealedPlatformKey((current) => current
+        ? {
+          ...current,
+          authState: 'success',
+          authMessage: 'Broker auth check passed. This key is ready to use in WAPI.',
+        }
+        : current);
+      setFlash({ tone: 'success', text: `Broker auth check passed for ${revealedPlatformKey.appCode}.` });
+      await loadSnapshot(revealedPlatformKey.appCode, data?.selectedTenantBindingId ?? null);
+    } catch (testError) {
+      const message = testError instanceof Error ? testError.message : 'Broker auth check failed';
+      setRevealedPlatformKey((current) => current
+        ? {
+          ...current,
+          authState: 'error',
+          authMessage: message,
+        }
+        : current);
+      setFlash({ tone: 'error', text: message });
+    }
+  }
+
   return (
     <div className="portal-aac-shell">
       <section className="portal-aac-banner">
@@ -1417,6 +1761,14 @@ export function AppAccessControlConsole() {
       </section>
 
       <FlashBanner flash={flash} />
+
+      <RevealedPlatformKeyPanel
+        value={revealedPlatformKey}
+        busy={mutating || revealedPlatformKey?.authState === 'testing'}
+        onCopy={() => void copyRevealedPlatformKey()}
+        onTest={() => void testRevealedPlatformKey()}
+        onDismiss={() => setRevealedPlatformKey(null)}
+      />
 
       {error ? (
         <section className="portal-aac-panel portal-aac-error">
@@ -1530,6 +1882,9 @@ export function AppAccessControlConsole() {
                         <h3>{selectedApp.name}</h3>
                       </div>
                       <div className="portal-aac-action-row">
+                        <button type="button" className="portal-aac-primary-button" onClick={() => void rotatePlatformKey(selectedApp)} disabled={mutating}>
+                          {platformKeyActionLabel(selectedApp)}
+                        </button>
                         <button type="button" className="portal-aac-secondary-button" onClick={() => openModal({ kind: 'editApp', app: selectedApp })}>
                           Edit App
                         </button>
@@ -1635,6 +1990,17 @@ export function AppAccessControlConsole() {
           ) : null}
 
           {tab === 'apiKeys' ? <ApiKeyManagerConsole /> : null}
+
+          {tab === 'platformBroker' ? (
+            <PlatformBrokerPanel
+              app={selectedApp}
+              broker={data.selectedAppBroker}
+              busy={mutating || revealedPlatformKey?.authState === 'testing'}
+              canTestKey={Boolean(revealedPlatformKey && selectedApp && revealedPlatformKey.appId === selectedApp.id)}
+              onRotateKey={() => selectedApp && void rotatePlatformKey(selectedApp)}
+              onTestKey={() => void testRevealedPlatformKey()}
+            />
+          ) : null}
 
           {tab === 'tenantBindings' ? (
             <section className="portal-aac-panel">
@@ -1770,7 +2136,11 @@ export function AppAccessControlConsole() {
               const app = objectValue(json.app);
               return { appCode: typeof app.appCode === 'string' ? app.appCode : null, tenantBindingId: null };
             },
-          }).then(() => undefined)}
+          }).then((json) => {
+            const nextRevealedKey = json ? extractRevealedPlatformKey(json) : null;
+            if (nextRevealedKey) setRevealedPlatformKey(nextRevealedKey);
+            return undefined;
+          })}
         />
       ) : null}
 

@@ -15,11 +15,13 @@ import {
 } from './platform-app-access-config';
 import {
   platformApps,
+  platformAppKeys,
   platformAppServiceCapabilities,
   platformAppTenantBindings,
   platformSecretRefs,
   platformServiceIntegrations,
 } from './schema';
+import { buildPlatformAppKeyInsert } from './platform-app-keys';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -251,7 +253,26 @@ export async function createPlatformApp(input: Record<string, unknown>) {
         .values(defaultCapabilityValues(app.id))
         .onConflictDoNothing();
 
-      return app;
+      const generatedKey = buildPlatformAppKeyInsert({
+        appId: app.id,
+        appCode: app.appCode,
+      });
+
+      const keyRows = await tx.insert(platformAppKeys).values(generatedKey.values).returning();
+      const platformAppKey = keyRows[0];
+      if (!platformAppKey) fail(500, 'platform_app_key_create_failed', 'Platform App Key could not be created');
+
+      return {
+        app,
+        platformAppKey: {
+          row: platformAppKey,
+          plaintext: generatedKey.plaintext,
+          masked: generatedKey.masked,
+          keyPrefix: generatedKey.keyPrefix,
+          keyLast4: generatedKey.keyLast4,
+          scopes: generatedKey.scopes,
+        },
+      };
     });
 
     return created;

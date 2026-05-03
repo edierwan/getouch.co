@@ -605,6 +605,29 @@ export const platformApps = pgTable(
   ],
 );
 
+export const platformAppKeys = pgTable(
+  'platform_app_keys',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    appId: uuid('app_id').references(() => platformApps.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    keyPrefix: text('key_prefix').notNull(),
+    keyHash: text('key_hash').notNull(),
+    keyLast4: text('key_last4').notNull(),
+    scopes: jsonb('scopes').$type<string[]>().default(['platform:*']).notNull(),
+    status: text('status').default('active').notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('platform_app_keys_key_hash_idx').on(table.keyHash),
+    index('platform_app_keys_app_idx').on(table.appId),
+    index('platform_app_keys_status_idx').on(table.status),
+  ],
+);
+
 export const platformAppServiceCapabilities = pgTable(
   'platform_app_service_capabilities',
   {
