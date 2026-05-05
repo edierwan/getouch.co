@@ -311,6 +311,9 @@ services:
       coolify:
         aliases:
           - vllm-qwen3-14b-fp8
+      litellm-app:
+        aliases:
+          - vllm-qwen3-14b-fp8
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.9.2
@@ -426,6 +429,7 @@ services:
     networks:
       - edge
       - coolify
+      - litellm-app
 
   # ────────────────────────────────────────────────────────
   # SearXNG — privacy-respecting meta search engine
@@ -723,3 +727,6 @@ networks:
     driver: bridge
   coolify:
     external: true
+  litellm-app:
+    external: true
+    name: ${LITELLM_APP_NETWORK:-v10dpbj6m4u9eyjcko1yizyj}

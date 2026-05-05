@@ -516,6 +516,26 @@ function liteLlmStatusLabel(status: Awaited<ReturnType<typeof probeLiteLlmRoute>
           : 'Degraded';
 }
 
+function createLiteLlmProbeFallback(config: ReturnType<typeof getPlatformAiConfig>, errorMessage: string) {
+  const baseUrl = config.liteLlmBaseUrl || DEFAULT_PLATFORM_LITELLM_BASE_URL;
+  return {
+    checkedAt: new Date().toISOString(),
+    baseUrl,
+    healthUrl: `${baseUrl.replace(/\/v1$/, '')}/health/liveliness`,
+    modelsUrl: `${baseUrl}/models`,
+    chatUrl: `${baseUrl}/chat/completions`,
+    healthOk: false,
+    modelsOk: false,
+    aliasFound: false,
+    chatOk: false,
+    chatStatusCode: null,
+    status: config.liteLlmApiKey ? 'degraded' as const : 'manual_action_required' as const,
+    models: [],
+    message: errorMessage,
+    chatMessage: errorMessage,
+  };
+}
+
 function buildRuntimeWarnings(runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>, metrics: ModelRuntimeManagerStatus['metrics']) {
   const warnings: string[] = [];
 
@@ -639,7 +659,10 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
   const config = getPlatformAiConfig();
   const [runtime, liteLlmProbe, gateway, remote] = await Promise.all([
     getAiRuntimeStatus(),
-    probeLiteLlmRoute(config),
+    probeLiteLlmRoute(config).catch((error) => createLiteLlmProbeFallback(
+      config,
+      error instanceof Error ? error.message : 'LiteLLM probe failed before the route status could be loaded.',
+    )),
     getGatewayStatus().catch(() => null),
     getRemoteRuntimeInventory(),
   ]);

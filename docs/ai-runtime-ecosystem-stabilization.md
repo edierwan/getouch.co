@@ -380,3 +380,91 @@ Remaining manual or external follow-up:
 
 - Dify provider repair still has to be completed in the external native Dify workspace because that runtime is not hosted on the inspected AI machine.
 - The manual cross-app Docker network joins for `open-webui` and `vllm-qwen3-14b-fp8` should be made durable in the controlling deployment layer so a future Coolify recreation does not undo the restored internal route.
+
+## 11. Browser-Reported Regression and Dify Provider Failure
+
+### Browser-reported state
+
+- Portal page `https://portal.getouch.co/ai/vllm` currently renders the shell but shows `Unable to load Model Runtime Manager.` instead of the runtime dashboard.
+- The failing browser surface is the public route `/ai/vllm`, which should resolve to the same underlying runtime manager data as `/admin/ai/vllm` and `/admin/service-endpoints/vllm`.
+- The Dify WAPI workflow at `https://dify.getouch.co/app/cae6da69-a151-45b4-8651-ff9ba4a453a3/workflow` reports `Provider langgenius/openai/openai does not exist.` during Preview.
+- In the same Dify app, Model Provider reports `Model provider not set up. Please install a model provider first.`
+- The failing Dify LLM node still appears to reference stale OpenAI wiring such as `gpt-4o` and `langgenius/openai/openai` instead of the current LiteLLM-backed production alias.
+
+### Previously validated runtime state
+
+- Direct vLLM `/v1/models` returned `200` with `Qwen/Qwen3-14B-FP8` visible.
+- Direct vLLM `/v1/chat/completions` returned `200`.
+- From inside `open-webui`, LiteLLM `/health/liveliness` returned `200`.
+- From inside `open-webui`, LiteLLM `/v1/models` returned `200` with alias `getouch-qwen3-14b` present.
+- From inside `open-webui`, LiteLLM `/v1/chat/completions` returned `200` for `getouch-qwen3-14b`.
+- Swap was safely reset and `/swap.img` returned to `0B` used.
+- Known remaining runtime risk before this regression: the restored internal OpenWebUI/LiteLLM/vLLM path still depended on manual cross-app Docker network joins surviving container recreation.
+
+### Suspected root causes
+
+- The portal runtime manager page is likely failing hard because one probe or status loader is still throwing instead of degrading to a failed status row when a dependency is unavailable, timed out, or returning unexpected data.
+- A deployment skew is also plausible: the browser may still be hitting a live build that does not yet include all of the newly added defensive runtime-manager handling.
+- The Dify WAPI workflow is failing because the active workspace does not currently have a valid OpenAI-compatible provider bound to LiteLLM, and one or more workflow LLM nodes still point to the removed provider id `langgenius/openai/openai` and stale model `gpt-4o`.
+- If Dify is external to the AI host, the correct LiteLLM endpoint for Dify may differ from the internal `http://litellm:4000/v1` route that now works for OpenWebUI.
+- The manual network fix for OpenWebUI and vLLM may not yet be persisted in the actual deployment controller, which still leaves route durability exposed across service recreation.
+
+### Fix plan
+
+1. Inspect the live portal route chain and the backing runtime manager/status API to capture the exact failure mode and make the UI degrade safely instead of fully failing.
+2. Verify whether the current production deployment is serving the latest runtime-manager hardening code or whether a safe redeploy is needed.
+3. Inspect the active Dify workspace and the WAPI Chatflow provider configuration directly, install or enable the correct OpenAI-compatible provider, and bind it to a Dify-reachable LiteLLM `/v1` endpoint.
+4. Update every affected Dify workflow LLM node from stale OpenAI provider references to the LiteLLM-backed provider using model `getouch-qwen3-14b`.
+5. Persist the currently working OpenWebUI/LiteLLM/vLLM network shape through the actual controlling deployment layer so it survives service recreation.
+6. Revalidate portal loading, vLLM health, LiteLLM health, OpenWebUI pathing, Dify Preview, and host swap/Ollama state.
+
+### Validation checklist
+
+- `/ai/vllm` loads without the fatal runtime-manager error banner.
+- `/admin/ai/vllm` loads.
+- `/admin/service-endpoints/vllm` loads if still exposed.
+- Failed probes render as degraded rows/cards with short safe reasons instead of crashing the page.
+- Direct vLLM `/v1/models` returns `200`.
+- Direct vLLM `/v1/chat/completions` returns `200`.
+- LiteLLM `/health/liveliness` returns `200`.
+- LiteLLM `/v1/models` returns `200` and includes `getouch-qwen3-14b`.
+- LiteLLM `/v1/chat/completions` returns `200` for `getouch-qwen3-14b`.
+- OpenWebUI still reaches LiteLLM through a stable internal `/v1` endpoint.
+- Dify WAPI workflow Preview with `hi` returns a real response.
+- Dify no longer reports `Provider langgenius/openai/openai does not exist.`
+- Swap remains healthy and no Ollama model is resident.
+
+## 12. Final Regression Fix and Dify Repair Summary
+
+### Portal regression fix
+
+- The browser-facing `Unable to load Model Runtime Manager.` banner was reproduced against the live admin API by minting a short-lived signed portal session and calling `/api/admin/service-endpoints/vllm/status` directly from the running portal container.
+- The live API returned `500` with `Cannot read properties of undefined (reading 'status')`.
+- Local source-level reproduction pinned the throw to `deriveRuntimeStatus()` in `lib/model-runtime-manager.ts`, where `runtime.vllm.status` was dereferenced after `getAiRuntimeStatus()` had returned only a partial payload containing `checkedAt`.
+- The root fix was applied in `lib/ai-runtime.ts`: `getAiRuntimeStatus()` now normalizes degraded or partial host-probe payloads into a full `AiRuntimeStatus` shape instead of letting downstream consumers receive an incomplete object.
+- `runAiRuntimeAction()` now uses the same normalization so admin actions and follow-up status reads stay structurally consistent.
+- `lib/model-runtime-manager.ts` was hardened further so an unexpected LiteLLM probe failure degrades into a failed status row payload instead of rejecting the whole runtime-manager load.
+
+### Durable network fix
+
+- The working OpenWebUI/LiteLLM/vLLM topology was persisted in the actual host deployment file `/home/deploy/apps/getouch.co/compose.yaml`.
+- `open-webui` now declares membership on an external `litellm-app` network.
+- `vllm-qwen3-14b-fp8` now declares the same external `litellm-app` network with alias `vllm-qwen3-14b-fp8`.
+- The external network is parameterized as `${LITELLM_APP_NETWORK:-v10dpbj6m4u9eyjcko1yizyj}` so the current LiteLLM app-network id remains the default while still allowing an explicit override if that network is recreated under a different name later.
+- The updated host compose file was backed up, replaced in place, and validated successfully with `docker compose -f compose.yaml config` on the production host without restarting the currently healthy containers.
+
+### Validation completed
+
+- Local `getAiRuntimeStatus()` now returns the full runtime shape even when the host probe degrades.
+- Local `getModelRuntimeManagerStatus()` now completes successfully and returns runtime, backend, LiteLLM, and integration-health data instead of throwing.
+- `npm run build` in `getouch.co` passed after the regression fix and compose durability change.
+- The live LiteLLM app network currently contains `litellm-v10dpbj6m4u9eyjcko1yizyj`, `open-webui`, and `vllm-qwen3-14b-fp8` together.
+- From inside `open-webui`, `http://litellm:4000/health/liveliness` returned `200` and authenticated `http://litellm:4000/v1/models` still included `getouch-qwen3-14b` after the host compose update.
+
+### Dify repair status
+
+- The native Dify workspace URL was opened directly, but the browser session in this automation context is not authenticated and is redirected to `https://dify.getouch.co/signin`.
+- No Dify containers are present on the inspected AI host, so the provider failure is not repairable from that machine's container surface.
+- The portal-side `dify_connections` table currently contains no managed Dify connection rows, so there is no repo-controlled or portal-controlled mapping available here for the affected workflow.
+- The current session therefore does not have a usable authenticated Dify console control path even after checking the browser, the AI host, the portal database, and the repo.
+- Because of that external auth boundary, the Dify provider/workflow repair could not be executed from this session. The unresolved runtime task remains the native Dify workspace repair: replace the stale provider id `langgenius/openai/openai` with an OpenAI-compatible LiteLLM provider, use a Dify-reachable LiteLLM `/v1` endpoint, set model `getouch-qwen3-14b`, republish the workflow, and rerun Preview until the provider error is gone.

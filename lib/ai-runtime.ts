@@ -152,6 +152,168 @@ type RawCommandPayload = {
   status: AiRuntimeStatus;
 };
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function createFallbackAiRuntimeStatus(errorMessage: string | null, checkedAt = new Date().toISOString()): AiRuntimeStatus {
+  return {
+    checkedAt,
+    runtime: {
+      activeRuntime: 'Unknown',
+      recommendedMode: 'Ollama primary / vLLM trial only',
+      recommendedReason: 'Shared runtime probe unavailable; showing conservative fallback status.',
+      warning: errorMessage || 'AI runtime probe unavailable. Falling back to conservative runtime status.',
+    },
+    gpu: {
+      available: false,
+      name: null,
+      totalVramMiB: null,
+      usedVramMiB: null,
+      freeVramMiB: null,
+      utilizationGpuPercent: null,
+      temperatureC: null,
+      driverVersion: null,
+      cudaVersion: null,
+      dockerAccess: false,
+      dockerAccessError: errorMessage,
+    },
+    ollama: {
+      containerStatus: 'unknown',
+      apiReachable: false,
+      apiError: errorMessage,
+      residentModel: null,
+      residentProcessor: null,
+      residentSize: null,
+      residentContext: null,
+      residentUntil: null,
+      installedModels: [],
+      installedCount: 0,
+    },
+    vllm: {
+      status: 'Unknown',
+      intendedModel: VLLM_MODEL,
+      intendedEndpoint: VLLM_INTERNAL_ENDPOINT,
+      publicExposure: 'No',
+      containerStatus: 'unknown',
+      providerReachable: false,
+      providerError: errorMessage,
+      configuredInCompose: false,
+      composeServiceFound: false,
+      lastError: errorMessage,
+      blockedReason: errorMessage,
+    },
+    openWebUi: {
+      reachable: false,
+      providerBaseUrls: [],
+      providerKeysConfigured: 0,
+      ollamaProviderAvailable: false,
+      liteLlmProviderBaseUrl: null,
+      liteLlmProviderConfigured: false,
+      liteLlmProviderModelsOk: false,
+      liteLlmProviderAliasFound: false,
+      liteLlmProviderChatOk: false,
+      liteLlmProviderModelsStatusCode: null,
+      liteLlmProviderChatStatusCode: null,
+      liteLlmProviderDetail: null,
+      vllmProviderConfigured: false,
+      vllmProviderUsable: false,
+      error: errorMessage,
+    },
+    assistant: {
+      containerStatus: 'unknown',
+      reachable: false,
+      defaultModelId: null,
+      models: [],
+      error: errorMessage,
+    },
+    docker: {
+      network: null,
+      openWebUiContainer: 'open-webui',
+      ollamaContainer: 'ollama',
+      vllmContainer: VLLM_SERVICE_NAME,
+      publicExposureDetected: false,
+    },
+    host: {
+      memoryTotal: null,
+      memoryUsed: null,
+      memoryAvailable: null,
+      swapTotal: null,
+      swapUsed: null,
+      diskSrvFree: null,
+    },
+    actions: {
+      canRefresh: true,
+      canUnloadOllama: false,
+      canStartVllmTrial: false,
+      canStopVllm: false,
+      canRestoreOllama: false,
+      canConfigureOpenWebUiVllm: false,
+      startBlockedReason: errorMessage,
+      configureBlockedReason: errorMessage,
+    },
+    links: {
+      openWebUi: 'https://ai.getouch.co',
+      grafanaGpu: GRAFANA_GPU_URL,
+    },
+    commandPolicy: {
+      mode: 'inline-fixed-commands',
+      allowedActions: [
+        'status',
+        'ollama-unload-current',
+        'vllm-start',
+        'vllm-stop',
+        'restore-ollama',
+        'openwebui-configure-vllm',
+      ],
+    },
+  };
+}
+
+function normalizeAiRuntimeStatus(input: unknown, errorMessage: string | null = null): AiRuntimeStatus {
+  const source = asRecord(input);
+  const checkedAt = typeof source.checkedAt === 'string' && source.checkedAt
+    ? source.checkedAt
+    : new Date().toISOString();
+  const fallback = createFallbackAiRuntimeStatus(errorMessage, checkedAt);
+  const assistant = asRecord(source.assistant);
+  const commandPolicy = asRecord(source.commandPolicy);
+  const allowedActions = Array.isArray(commandPolicy.allowedActions)
+    ? commandPolicy.allowedActions.filter(
+      (action): action is AiRuntimeAction => typeof action === 'string' && fallback.commandPolicy.allowedActions.includes(action as AiRuntimeAction),
+    )
+    : fallback.commandPolicy.allowedActions;
+
+  return {
+    ...fallback,
+    ...source,
+    checkedAt,
+    runtime: { ...fallback.runtime, ...asRecord(source.runtime) },
+    gpu: { ...fallback.gpu, ...asRecord(source.gpu) },
+    ollama: { ...fallback.ollama, ...asRecord(source.ollama) },
+    vllm: { ...fallback.vllm, ...asRecord(source.vllm) },
+    openWebUi: { ...fallback.openWebUi, ...asRecord(source.openWebUi) },
+    assistant: {
+      ...fallback.assistant,
+      ...assistant,
+      models: Array.isArray(assistant.models)
+        ? assistant.models as AiRuntimeStatus['assistant']['models']
+        : fallback.assistant.models,
+    },
+    docker: { ...fallback.docker, ...asRecord(source.docker) },
+    host: { ...fallback.host, ...asRecord(source.host) },
+    actions: { ...fallback.actions, ...asRecord(source.actions) },
+    links: { ...fallback.links, ...asRecord(source.links) },
+    commandPolicy: {
+      ...fallback.commandPolicy,
+      ...commandPolicy,
+      allowedActions: allowedActions.length > 0 ? allowedActions : fallback.commandPolicy.allowedActions,
+    },
+  };
+}
+
 function runRemoteScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -1048,18 +1210,24 @@ async function runAiRuntimeCommand(action: AiRuntimeAction): Promise<RawCommandP
 }
 
 export async function getAiRuntimeStatus(): Promise<AiRuntimeStatus> {
-  const result = await runAiRuntimeCommand('status');
-  return result.status;
+  try {
+    const result = await runAiRuntimeCommand('status');
+    return normalizeAiRuntimeStatus(result.status);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to load AI runtime status.';
+    return createFallbackAiRuntimeStatus(message);
+  }
 }
 
 export async function runAiRuntimeAction(action: Exclude<AiRuntimeAction, 'status'>): Promise<AiRuntimeActionResult> {
   const result = await runAiRuntimeCommand(action);
+  const status = normalizeAiRuntimeStatus(result.status, result.ok ? null : result.message);
   return {
     ok: result.ok,
     action: result.action,
     message: result.message,
-    checkedAt: result.status.checkedAt,
-    status: result.status,
+    checkedAt: status.checkedAt,
+    status,
   };
 }
 
