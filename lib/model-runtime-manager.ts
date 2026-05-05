@@ -42,6 +42,15 @@ type RemoteRuntimeInventory = {
   downloaded: Record<string, boolean>;
 };
 
+type IntegrationHealthCheck = {
+  key: string;
+  label: string;
+  status: string;
+  endpoint: string;
+  detail: string;
+  checkedAt: string;
+};
+
 export type ModelRuntimeManagerStatus = {
   checkedAt: string;
   sourceOfTruth: {
@@ -74,6 +83,10 @@ export type ModelRuntimeManagerStatus = {
     healthOk: boolean;
     aliasFound: boolean;
     baseUrl: string;
+    chatUrl: string;
+    chatOk: boolean;
+    chatStatusCode: number | null;
+    chatMessage: string;
     models: string[];
   };
   openWebUi: {
@@ -96,8 +109,11 @@ export type ModelRuntimeManagerStatus = {
     gpuUtilizationLabel: string;
     ramPercent: number | null;
     ramLabel: string;
+    swapPercent: number | null;
+    swapLabel: string;
     lastCheckedAt: string;
   };
+  integrationHealth: IntegrationHealthCheck[];
   modelCatalog: Array<{
     displayName: string;
     modelId: string;
@@ -365,7 +381,7 @@ function deriveRuntimeStatus(runtime: Awaited<ReturnType<typeof getAiRuntimeStat
   }
   if (runtime.vllm.containerStatus === 'running') {
     return {
-      status: 'Starting' as const,
+      status: runtime.vllm.status === 'Starting' ? 'Starting' as const : 'Failed' as const,
       detail: runtime.vllm.providerError || 'vLLM container is running but the internal API is not ready yet.',
     };
   }
@@ -389,7 +405,10 @@ function deriveBackendHealth(runtime: Awaited<ReturnType<typeof getAiRuntimeStat
     return { status: 'Failed' as const, detail: runtime.vllm.lastError || 'vLLM restart activity indicates backend failure.' };
   }
   if (runtime.vllm.containerStatus === 'running') {
-    return { status: 'Starting' as const, detail: runtime.vllm.providerError || 'vLLM container is up but readiness is still failing.' };
+    return {
+      status: runtime.vllm.status === 'Starting' ? 'Starting' as const : 'Failed' as const,
+      detail: runtime.vllm.providerError || 'vLLM container is up but readiness is still failing.',
+    };
   }
   if (runtime.vllm.containerStatus === 'stopped') {
     return { status: 'Stopped' as const, detail: 'vLLM backend is stopped.' };
@@ -398,7 +417,10 @@ function deriveBackendHealth(runtime: Awaited<ReturnType<typeof getAiRuntimeStat
 }
 
 function deriveOpenWebUiStatus(providerBaseUrls: string[], liteLlmBaseUrl: string, liteLlmStatus: ModelRuntimeManagerStatus['liteLlm']['status'], runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>) {
-  const configured = providerBaseUrls.includes(liteLlmBaseUrl) || providerBaseUrls.includes(DEFAULT_PLATFORM_LITELLM_INTERNAL_BASE_URL);
+  const configured = runtime.openWebUi.liteLlmProviderConfigured
+    || providerBaseUrls.includes(liteLlmBaseUrl)
+    || providerBaseUrls.includes(DEFAULT_PLATFORM_LITELLM_INTERNAL_BASE_URL)
+    || providerBaseUrls.some((entry) => /litellm/i.test(entry));
 
   if (!runtime.openWebUi.reachable && runtime.openWebUi.error) {
     return {
@@ -423,8 +445,26 @@ function deriveOpenWebUiStatus(providerBaseUrls: string[], liteLlmBaseUrl: strin
 
   if (liteLlmStatus === 'Ready') {
     return {
-      status: 'Working' as const,
-      detail: 'OpenWebUI points at LiteLLM and the active alias is visible server-side.',
+      status: runtime.openWebUi.liteLlmProviderChatOk ? 'Working' as const : 'Configured' as const,
+      detail: runtime.openWebUi.liteLlmProviderChatOk
+        ? runtime.openWebUi.liteLlmProviderDetail || 'OpenWebUI can complete chat requests through LiteLLM.'
+        : runtime.openWebUi.liteLlmProviderDetail || 'OpenWebUI points at LiteLLM, but the container-level provider path is not verified yet.',
+    };
+  }
+
+  if (runtime.openWebUi.liteLlmProviderDetail) {
+    return {
+      status: runtime.openWebUi.liteLlmProviderChatOk ? 'Working' as const : 'Degraded' as const,
+      detail: runtime.openWebUi.liteLlmProviderDetail,
+    };
+  }
+
+  if (runtime.openWebUi.liteLlmProviderConfigured) {
+    return {
+      status: 'Configured' as const,
+      detail: runtime.openWebUi.liteLlmProviderChatOk
+        ? 'OpenWebUI can complete chat requests through LiteLLM.'
+        : 'OpenWebUI has a LiteLLM provider entry, but the container-level probe has not confirmed chat completion yet.',
     };
   }
 
@@ -441,6 +481,9 @@ function buildMetrics(runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>) {
   const ramTotal = parseHumanSizeToBytes(runtime.host.memoryTotal);
   const ramUsed = parseHumanSizeToBytes(runtime.host.memoryUsed);
   const ramPercent = ramTotal && ramUsed ? Math.round((ramUsed / ramTotal) * 100) : null;
+  const swapTotal = parseHumanSizeToBytes(runtime.host.swapTotal);
+  const swapUsed = parseHumanSizeToBytes(runtime.host.swapUsed);
+  const swapPercent = swapTotal && swapUsed ? Math.round((swapUsed / swapTotal) * 100) : null;
 
   return {
     gpuMemoryPercent,
@@ -453,8 +496,117 @@ function buildMetrics(runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>) {
     ramLabel: runtime.host.memoryUsed && runtime.host.memoryTotal
       ? `${runtime.host.memoryUsed} / ${runtime.host.memoryTotal}`
       : 'Not available',
+    swapPercent,
+    swapLabel: runtime.host.swapUsed && runtime.host.swapTotal
+      ? `${runtime.host.swapUsed} / ${runtime.host.swapTotal}`
+      : 'Not available',
     lastCheckedAt: runtime.checkedAt,
   };
+}
+
+function liteLlmStatusLabel(status: Awaited<ReturnType<typeof probeLiteLlmRoute>>['status']): ModelRuntimeManagerStatus['liteLlm']['status'] {
+  return status === 'ready'
+    ? 'Ready'
+    : status === 'route_missing'
+      ? 'Alias missing'
+      : status === 'manual_action_required'
+        ? 'Manual action required'
+        : status === 'not_configured'
+          ? 'Not configured'
+          : 'Degraded';
+}
+
+function buildRuntimeWarnings(runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>, metrics: ModelRuntimeManagerStatus['metrics']) {
+  const warnings: string[] = [];
+
+  if (runtime.runtime.warning) {
+    warnings.push(runtime.runtime.warning);
+  }
+  if (!runtime.vllm.configuredInCompose) {
+    warnings.push('No host-side vLLM compose service is currently defined.');
+  }
+  if (metrics.swapPercent !== null && metrics.swapPercent >= 80) {
+    warnings.push(`Swap usage is ${metrics.swapPercent}% (${metrics.swapLabel}). Keep only one heavy runtime active and stop the current vLLM process before switching models.`);
+  }
+  if (runtime.vllm.containerStatus === 'running') {
+    warnings.push('Switch the production model by stopping the current vLLM runtime first. Do not overlap large model loads on this 16GB GPU.');
+  }
+
+  return warnings;
+}
+
+function buildIntegrationHealth(
+  runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>,
+  backendHealth: ModelRuntimeManagerStatus['backendHealth'],
+  liteLlmProbe: Awaited<ReturnType<typeof probeLiteLlmRoute>>,
+  liteLlmStatus: ModelRuntimeManagerStatus['liteLlm']['status'],
+  openWebUi: ModelRuntimeManagerStatus['openWebUi'],
+  ollama: ModelRuntimeManagerStatus['ollama'],
+): IntegrationHealthCheck[] {
+  const openWebUiLiteLlmEndpoint = runtime.openWebUi.liteLlmProviderBaseUrl
+    || runtime.openWebUi.providerBaseUrls.find((entry) => entry.includes('litellm'))
+    || OPEN_WEBUI_URL;
+
+  const liteLlmChatStatus = liteLlmProbe.chatOk
+    ? 'Working'
+    : liteLlmProbe.status === 'manual_action_required'
+      ? 'Manual action required'
+      : liteLlmProbe.status === 'not_configured'
+        ? 'Not configured'
+        : liteLlmProbe.status === 'route_missing'
+          ? 'Alias missing'
+          : 'Degraded';
+
+  return [
+    {
+      key: 'vllm-direct',
+      label: 'vLLM direct API',
+      status: backendHealth.status,
+      endpoint: `${aiRuntimeMeta.vllmEndpoint}/models`,
+      detail: backendHealth.detail,
+      checkedAt: runtime.checkedAt,
+    },
+    {
+      key: 'litellm-route',
+      label: 'LiteLLM route',
+      status: liteLlmStatus,
+      endpoint: liteLlmProbe.modelsUrl,
+      detail: liteLlmProbe.message,
+      checkedAt: liteLlmProbe.checkedAt,
+    },
+    {
+      key: 'litellm-chat',
+      label: 'LiteLLM chat completion',
+      status: liteLlmChatStatus,
+      endpoint: liteLlmProbe.chatUrl,
+      detail: liteLlmProbe.chatMessage,
+      checkedAt: liteLlmProbe.checkedAt,
+    },
+    {
+      key: 'openwebui-provider',
+      label: 'OpenWebUI provider',
+      status: openWebUi.status,
+      endpoint: openWebUiLiteLlmEndpoint,
+      detail: openWebUi.detail,
+      checkedAt: runtime.checkedAt,
+    },
+    {
+      key: 'dify-provider',
+      label: 'Dify provider',
+      status: 'Manual action required',
+      endpoint: 'https://dify.getouch.co',
+      detail: 'The portal cannot inspect Dify workflow-node provider bindings from this repo. Current operator evidence still shows provider missing: langgenius/openai/openai.',
+      checkedAt: runtime.checkedAt,
+    },
+    {
+      key: 'ollama-sandbox',
+      label: 'Ollama sandbox',
+      status: ollama.status,
+      endpoint: 'http://ollama:11434',
+      detail: ollama.detail,
+      checkedAt: runtime.checkedAt,
+    },
+  ];
 }
 
 function buildSwitchModeDetail(runtime: Awaited<ReturnType<typeof getAiRuntimeStatus>>, liteLlmKeyPresent: boolean) {
@@ -475,10 +627,11 @@ function buildSwitchModeDetail(runtime: Awaited<ReturnType<typeof getAiRuntimeSt
 function buildManualSteps(model: ApprovedModel, status: ModelRuntimeManagerStatus) {
   return [
     `Unload any resident Ollama model before the switch if GPU memory is still occupied${status.ollama.residentModel ? ` (current resident model: ${status.ollama.residentModel})` : ''}.`,
+    'Stop the current vLLM runtime before changing the backend model or LiteLLM alias. Do not overlap large model loads on this 16GB GPU.',
     `Create or update the host-side vLLM deployment so it serves ${model.modelId} on the internal runtime endpoint ${status.sourceOfTruth.vllmInternalBaseUrl}.`,
     `Ensure LiteLLM maps the stable public alias ${model.publicAlias} to the selected backend model ${model.modelId} using the server-side LiteLLM key only.`,
-    `If OpenWebUI should expose the model for testing, add ${status.sourceOfTruth.liteLlmPublicBaseUrl} or ${status.sourceOfTruth.liteLlmInternalBaseUrl} as an OpenAI-compatible provider and keep Ollama as dev/testing only.`,
-    'After the host-side changes, rerun the portal health checks until Runtime Status is Ready and LiteLLM Route Status is Ready.',
+    `If OpenWebUI should expose the model for testing, wire it to a LiteLLM endpoint that the container can actually reach. Prefer a shared internal hostname over the public edge URL when available, and keep Ollama sandbox-only.`,
+    'After the host-side changes, rerun the portal health checks until Runtime Status is Ready, LiteLLM Route is Ready, and LiteLLM Chat Completion is Working.',
   ];
 }
 
@@ -493,11 +646,17 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
 
   const runtimeStatus = deriveRuntimeStatus(runtime);
   const backendHealth = deriveBackendHealth(runtime);
+  const liteLlmStatus = liteLlmStatusLabel(liteLlmProbe.status);
   const switchMode: SwitchMode = 'manual';
   const switchModeDetail = buildSwitchModeDetail(runtime, Boolean(config.liteLlmApiKey));
   const activeModelId = remote.activeModelId || (runtime.vllm.containerStatus === 'running' ? runtime.vllm.intendedModel : null);
   const activeModelDisplayName = APPROVED_MODELS.find((model) => model.modelId === activeModelId)?.displayName || activeModelId;
-  const openWebUi = deriveOpenWebUiStatus(runtime.openWebUi.providerBaseUrls, config.liteLlmBaseUrl, liteLlmProbe.status === 'ready' ? 'Ready' : liteLlmProbe.status === 'route_missing' ? 'Alias missing' : liteLlmProbe.status === 'not_configured' ? 'Not configured' : liteLlmProbe.status === 'manual_action_required' ? 'Manual action required' : 'Degraded', runtime);
+  const openWebUi = {
+    ...deriveOpenWebUiStatus(runtime.openWebUi.providerBaseUrls, config.liteLlmBaseUrl, liteLlmStatus, runtime),
+    url: OPEN_WEBUI_URL,
+    providerBaseUrls: runtime.openWebUi.providerBaseUrls,
+  };
+  const metrics = buildMetrics(runtime);
   const totalVramMiB = runtime.gpu.totalVramMiB;
   const controls = {
     canStart: runtime.actions.canStartVllmTrial,
@@ -509,6 +668,27 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
       ? null
       : runtime.vllm.blockedReason || 'No host-side vLLM service is configured yet.',
   };
+  const ollama = {
+    status: runtime.ollama.containerStatus === 'running'
+      ? runtime.ollama.residentModel
+        ? 'Active'
+        : 'Idle'
+      : runtime.ollama.containerStatus === 'stopped'
+        ? 'Stopped'
+        : runtime.ollama.containerStatus === 'missing'
+          ? 'Missing'
+          : 'Unknown',
+    detail: runtime.ollama.residentModel
+      ? `Sandbox resident model ${runtime.ollama.residentModel} is still holding GPU memory.`
+      : runtime.ollama.containerStatus === 'running'
+        ? 'Ollama sandbox is running without a resident model.'
+        : 'Ollama sandbox is not actively holding GPU memory right now.',
+    residentModel: runtime.ollama.residentModel,
+    installedModels: runtime.ollama.installedModels,
+    gpuConflict: Boolean(runtime.ollama.residentModel),
+  } as const;
+  const integrationHealth = buildIntegrationHealth(runtime, backendHealth, liteLlmProbe, liteLlmStatus, openWebUi, ollama);
+  const runtimeWarnings = buildRuntimeWarnings(runtime, metrics);
 
   const modelCatalog = APPROVED_MODELS.map((model) => {
     const downloaded = Boolean(remote.downloaded[model.modelId]);
@@ -565,47 +745,26 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
         },
         backendHealth,
         liteLlm: {
-          status: liteLlmProbe.status === 'ready'
-            ? 'Ready'
-            : liteLlmProbe.status === 'route_missing'
-              ? 'Alias missing'
-              : liteLlmProbe.status === 'manual_action_required'
-                ? 'Manual action required'
-                : liteLlmProbe.status === 'not_configured'
-                  ? 'Not configured'
-                  : 'Degraded',
+          status: liteLlmStatus,
           detail: liteLlmProbe.message,
           healthOk: liteLlmProbe.healthOk,
           aliasFound: liteLlmProbe.aliasFound,
           baseUrl: config.liteLlmBaseUrl,
+          chatUrl: liteLlmProbe.chatUrl,
+          chatOk: liteLlmProbe.chatOk,
+          chatStatusCode: liteLlmProbe.chatStatusCode,
+          chatMessage: liteLlmProbe.chatMessage,
           models: liteLlmProbe.models,
         },
         openWebUi: {
           status: openWebUi.status,
           detail: openWebUi.detail,
-          url: OPEN_WEBUI_URL,
-          providerBaseUrls: runtime.openWebUi.providerBaseUrls,
+          url: openWebUi.url,
+          providerBaseUrls: openWebUi.providerBaseUrls,
         },
-        ollama: {
-          status: runtime.ollama.containerStatus === 'running'
-            ? runtime.ollama.residentModel
-              ? 'Active'
-              : 'Idle'
-            : runtime.ollama.containerStatus === 'stopped'
-              ? 'Stopped'
-              : runtime.ollama.containerStatus === 'missing'
-                ? 'Missing'
-                : 'Unknown',
-          detail: runtime.ollama.residentModel
-            ? `Resident model ${runtime.ollama.residentModel} is still holding GPU memory.`
-            : runtime.ollama.containerStatus === 'running'
-              ? 'Ollama is running without a resident model.'
-              : 'Ollama is not actively holding GPU memory right now.',
-          residentModel: runtime.ollama.residentModel,
-          installedModels: runtime.ollama.installedModels,
-          gpuConflict: Boolean(runtime.ollama.residentModel),
-        },
-        metrics: buildMetrics(runtime),
+        ollama,
+        metrics,
+        integrationHealth: [],
         modelCatalog: [],
         controls,
         diagnostics: {
@@ -615,7 +774,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
             publicBaseUrl: gateway?.publicBaseUrl || DEFAULT_PLATFORM_LITELLM_BASE_URL,
             docsUrl: gateway?.docsUrl || 'https://portal.getouch.co/ai/vllm',
           },
-          runtimeWarnings: runtime.runtime.warning ? [runtime.runtime.warning] : [],
+          runtimeWarnings,
         },
       }),
     };
@@ -645,47 +804,26 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
     },
     backendHealth,
     liteLlm: {
-      status: liteLlmProbe.status === 'ready'
-        ? 'Ready'
-        : liteLlmProbe.status === 'route_missing'
-          ? 'Alias missing'
-          : liteLlmProbe.status === 'manual_action_required'
-            ? 'Manual action required'
-            : liteLlmProbe.status === 'not_configured'
-              ? 'Not configured'
-              : 'Degraded',
+      status: liteLlmStatus,
       detail: liteLlmProbe.message,
       healthOk: liteLlmProbe.healthOk,
       aliasFound: liteLlmProbe.aliasFound,
       baseUrl: config.liteLlmBaseUrl,
+      chatUrl: liteLlmProbe.chatUrl,
+      chatOk: liteLlmProbe.chatOk,
+      chatStatusCode: liteLlmProbe.chatStatusCode,
+      chatMessage: liteLlmProbe.chatMessage,
       models: liteLlmProbe.models,
     },
     openWebUi: {
       status: openWebUi.status,
       detail: openWebUi.detail,
-      url: OPEN_WEBUI_URL,
-      providerBaseUrls: runtime.openWebUi.providerBaseUrls,
+      url: openWebUi.url,
+      providerBaseUrls: openWebUi.providerBaseUrls,
     },
-    ollama: {
-      status: runtime.ollama.containerStatus === 'running'
-        ? runtime.ollama.residentModel
-          ? 'Active'
-          : 'Idle'
-        : runtime.ollama.containerStatus === 'stopped'
-          ? 'Stopped'
-          : runtime.ollama.containerStatus === 'missing'
-            ? 'Missing'
-            : 'Unknown',
-      detail: runtime.ollama.residentModel
-        ? `Resident model ${runtime.ollama.residentModel} is occupying GPU memory and should be unloaded before a heavy vLLM runtime starts.`
-        : runtime.ollama.containerStatus === 'running'
-          ? 'Ollama is running without a resident model.'
-          : 'Ollama is not actively using the GPU runtime right now.',
-      residentModel: runtime.ollama.residentModel,
-      installedModels: runtime.ollama.installedModels,
-      gpuConflict: Boolean(runtime.ollama.residentModel),
-    },
-    metrics: buildMetrics(runtime),
+    ollama,
+    metrics,
+    integrationHealth,
     modelCatalog,
     controls,
     diagnostics: {
@@ -695,10 +833,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
         publicBaseUrl: gateway?.publicBaseUrl || 'https://vllm.getouch.co/v1',
         docsUrl: gateway?.docsUrl || 'https://portal.getouch.co/ai/vllm',
       },
-      runtimeWarnings: [
-        ...(runtime.runtime.warning ? [runtime.runtime.warning] : []),
-        ...(!runtime.vllm.configuredInCompose ? ['No host-side vLLM compose service is currently defined.'] : []),
-      ],
+      runtimeWarnings,
     },
   };
 }

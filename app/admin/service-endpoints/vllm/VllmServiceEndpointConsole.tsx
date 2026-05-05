@@ -45,8 +45,16 @@ function statusClass(tone: 'healthy' | 'active' | 'warning') {
 
 function toneForStatus(value: string) {
   if (['Ready', 'Healthy', 'Working', 'Active', 'ready', 'active'].includes(value)) return 'active' as const;
-  if (['Configured'].includes(value)) return 'healthy' as const;
+  if (['Configured', 'Idle'].includes(value)) return 'healthy' as const;
   return 'warning' as const;
+}
+
+function liteLlmChatStatus(value: ModelRuntimeManagerStatus['liteLlm']) {
+  if (value.chatOk) return 'Working';
+  if (value.status === 'Manual action required') return 'Manual action required';
+  if (value.status === 'Not configured') return 'Not configured';
+  if (value.status === 'Alias missing') return 'Alias missing';
+  return 'Degraded';
 }
 
 function meterStyle(percent: number | null) {
@@ -159,7 +167,7 @@ export function VllmServiceEndpointConsole() {
       {
         label: 'Public Alias',
         value: data.runtime.publicAlias,
-        detail: 'Apps should call the Platform Broker, not LiteLLM or vLLM directly.',
+        detail: 'Production integrations should use the LiteLLM-backed alias, never direct vLLM.',
         tone: 'healthy',
         icon: '⇄',
       },
@@ -171,6 +179,13 @@ export function VllmServiceEndpointConsole() {
         icon: '↗',
       },
       {
+        label: 'LiteLLM Chat',
+        value: liteLlmChatStatus(data.liteLlm),
+        detail: data.liteLlm.chatMessage,
+        tone: toneForStatus(liteLlmChatStatus(data.liteLlm)),
+        icon: '≈',
+      },
+      {
         label: 'OpenWebUI',
         value: data.openWebUi.status,
         detail: data.openWebUi.detail,
@@ -178,7 +193,7 @@ export function VllmServiceEndpointConsole() {
         icon: '⌘',
       },
       {
-        label: 'Ollama GPU State',
+        label: 'Ollama Sandbox',
         value: data.ollama.status,
         detail: data.ollama.detail,
         tone: data.ollama.gpuConflict ? 'warning' : 'healthy',
@@ -313,8 +328,9 @@ export function VllmServiceEndpointConsole() {
               <div className="portal-info-table-row"><span className="portal-info-table-label">Active Model</span><span className="portal-info-table-value">{data.runtime.activeModelDisplayName || 'None active'}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Public Model Alias</span><span className="portal-info-table-value">{data.runtime.publicAlias}</span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">LiteLLM Route Status</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(data.liteLlm.status))}>{data.liteLlm.status}</span></span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">LiteLLM Chat Completion</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(liteLlmChatStatus(data.liteLlm)))}>{liteLlmChatStatus(data.liteLlm)}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">OpenWebUI Provider</span><span className="portal-info-table-value"><span className={statusClass(toneForStatus(data.openWebUi.status))}>{data.openWebUi.status}</span></span></div>
-              <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama GPU State</span><span className="portal-info-table-value"><span className={statusClass(data.ollama.gpuConflict ? 'warning' : 'healthy')}>{data.ollama.status}</span></span></div>
+              <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama Sandbox</span><span className="portal-info-table-value"><span className={statusClass(data.ollama.gpuConflict ? 'warning' : 'healthy')}>{data.ollama.status}</span></span></div>
               <div className="portal-info-table-row"><span className="portal-info-table-label">Last Health Check</span><span className="portal-info-table-value">{formatDateTime(data.runtime.lastHealthCheckAt)}</span></div>
             </div>
           </section>
@@ -344,6 +360,39 @@ export function VllmServiceEndpointConsole() {
           </section>
         </div>
 
+        <section className="portal-panel portal-panel-fill">
+          <div className="portal-panel-head">
+            <div>
+              <h3 className="portal-panel-title">Integration Health</h3>
+              <p className="portal-page-sub">End-to-end checks for the production path: vLLM, LiteLLM route, LiteLLM chat, OpenWebUI, Dify, and the Ollama sandbox state.</p>
+            </div>
+          </div>
+          <div className="portal-vllm-table-wrap">
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Status</th>
+                  <th>Endpoint</th>
+                  <th>Last Checked</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.integrationHealth.map((check) => (
+                  <tr key={check.key}>
+                    <td>{check.label}</td>
+                    <td><span className={statusClass(toneForStatus(check.status))}>{check.status}</span></td>
+                    <td className="portal-ai-runtime-wrap">{check.endpoint}</td>
+                    <td>{formatDateTime(check.checkedAt)}</td>
+                    <td className="portal-ai-runtime-wrap">{check.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <div className="portal-vllm-grid">
           <section className="portal-panel">
             <div className="portal-panel-head">
@@ -368,7 +417,22 @@ export function VllmServiceEndpointConsole() {
                 <div className="portal-vllm-meter-title">RAM Usage</div>
                 <div className="portal-vllm-meter-sub">{data.metrics.ramLabel}</div>
               </div>
+              <div className="portal-vllm-meter-card">
+                <div className="portal-vllm-meter-ring" style={meterStyle(data.metrics.swapPercent)}><span>{data.metrics.swapPercent === null ? '—' : `${data.metrics.swapPercent}%`}</span></div>
+                <div className="portal-vllm-meter-title">Swap Usage</div>
+                <div className="portal-vllm-meter-sub">{data.metrics.swapLabel}</div>
+              </div>
             </div>
+            <div className="portal-vllm-note-list" style={{ marginTop: '0.25rem' }}>
+              <div>RAM: {data.metrics.ramLabel}</div>
+              <div>Swap: {data.metrics.swapLabel}</div>
+              <div>Switch large models by stopping the current vLLM runtime first.</div>
+            </div>
+            {data.metrics.swapPercent !== null && data.metrics.swapPercent >= 80 ? (
+              <div className="portal-banner portal-banner-warning" style={{ marginTop: '0.9rem' }}>
+                Swap usage is high at {data.metrics.swapPercent}%. Keep only one heavy runtime active and clear the current vLLM process before any model change.
+              </div>
+            ) : null}
             <p className="portal-page-sub">Last checked {formatDateTime(data.metrics.lastCheckedAt)}.</p>
           </section>
 
@@ -445,6 +509,7 @@ export function VllmServiceEndpointConsole() {
               </div>
               <div className="portal-vllm-note-list">
                 <div>{data.liteLlm.detail}</div>
+                <div>{data.liteLlm.chatMessage}</div>
                 <div>{data.openWebUi.detail}</div>
                 <div>{data.backendHealth.detail}</div>
                 <div>{data.runtime.switchModeDetail}</div>

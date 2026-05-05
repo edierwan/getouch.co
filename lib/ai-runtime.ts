@@ -18,6 +18,9 @@ const AI_RUNTIME_SSH_KNOWN_HOSTS_PATH = process.env.AI_RUNTIME_SSH_KNOWN_HOSTS_P
 const VLLM_SERVICE_NAME = 'vllm-qwen3-14b-fp8';
 const VLLM_MODEL = 'Qwen/Qwen3-14B-FP8';
 const VLLM_INTERNAL_ENDPOINT = 'http://vllm-qwen3-14b-fp8:8000/v1';
+const LITELLM_MODEL_ALIAS = process.env.PLATFORM_LITELLM_MODEL_ALIAS
+  || process.env.GETOUCH_LITELLM_MODEL_ALIAS
+  || 'getouch-qwen3-14b';
 const GRAFANA_GPU_URL = process.env.AI_RUNTIME_GRAFANA_GPU_URL || 'https://grafana.getouch.co';
 const MIN_FREE_VRAM_MIB_FOR_TRIAL = Number(process.env.AI_RUNTIME_MIN_FREE_VRAM_MIB || '12000');
 
@@ -80,6 +83,14 @@ export type AiRuntimeStatus = {
     providerBaseUrls: string[];
     providerKeysConfigured: number;
     ollamaProviderAvailable: boolean;
+    liteLlmProviderBaseUrl: string | null;
+    liteLlmProviderConfigured: boolean;
+    liteLlmProviderModelsOk: boolean;
+    liteLlmProviderAliasFound: boolean;
+    liteLlmProviderChatOk: boolean;
+    liteLlmProviderModelsStatusCode: number | null;
+    liteLlmProviderChatStatusCode: number | null;
+    liteLlmProviderDetail: string | null;
     vllmProviderConfigured: boolean;
     vllmProviderUsable: boolean;
     error: string | null;
@@ -195,11 +206,12 @@ ACTION='${action}'
 VLLM_SERVICE='${VLLM_SERVICE_NAME}'
 VLLM_MODEL='${VLLM_MODEL}'
 VLLM_ENDPOINT='${VLLM_INTERNAL_ENDPOINT}'
+LITELLM_ALIAS='${LITELLM_MODEL_ALIAS}'
 MIN_FREE_VRAM_MIB='${String(MIN_FREE_VRAM_MIB_FOR_TRIAL)}'
 COMPOSE_FILE='/home/deploy/apps/getouch.co/compose.yaml'
 HF_CACHE_DIR='/srv/apps/ai/huggingface'
 PUBLIC_PORTS='80/tcp,443/tcp'
-export ACTION VLLM_SERVICE VLLM_MODEL VLLM_ENDPOINT MIN_FREE_VRAM_MIB COMPOSE_FILE HF_CACHE_DIR PUBLIC_PORTS
+export ACTION VLLM_SERVICE VLLM_MODEL VLLM_ENDPOINT LITELLM_ALIAS MIN_FREE_VRAM_MIB COMPOSE_FILE HF_CACHE_DIR PUBLIC_PORTS
 
 json_escape() {
   python3 - <<'PY' "$1"
@@ -220,6 +232,7 @@ from datetime import datetime, timezone
 VLLM_SERVICE = os.environ['VLLM_SERVICE']
 VLLM_MODEL = os.environ['VLLM_MODEL']
 VLLM_ENDPOINT = os.environ['VLLM_ENDPOINT']
+LITELLM_ALIAS = os.environ['LITELLM_ALIAS']
 MIN_FREE_VRAM_MIB = int(os.environ['MIN_FREE_VRAM_MIB'])
 COMPOSE_FILE = os.environ['COMPOSE_FILE']
 HF_CACHE_DIR = os.environ['HF_CACHE_DIR']
@@ -252,6 +265,258 @@ def detect_ollama_gpu_holder():
     if process_name.endswith('ollama') and memory_mib and memory_mib > 1024:
       return memory_mib
   return None
+
+def compact_error(value, limit=180):
+  text = ' '.join(str(value or '').split())
+  if not text:
+    return ''
+  return text[:limit]
+
+def classify_vllm_probe_issue(status_code, detail):
+  text = compact_error(detail).lower()
+  if status_code in {401, 403}:
+    return 'unauthorized'
+  if status_code == 404:
+    return 'bad_url'
+  if status_code == 503 or 'loading' in text or 'initializing' in text or 'warmup' in text:
+    return 'model_loading'
+  if 'expected_model_missing' in text:
+    return 'model_missing'
+  if 'connection refused' in text or 'failed to establish a new connection' in text:
+    return 'port_unreachable'
+  if 'name or service not known' in text or 'temporary failure in name resolution' in text:
+    return 'bad_url'
+  if 'timed out' in text or 'timeout' in text or status_code in {408, 504}:
+    return 'timeout'
+  if 'out of memory' in text or 'cuda out of memory' in text or 'oom' in text:
+    return 'oom'
+  if status_code and status_code >= 500:
+    return 'upstream_error'
+  return 'unreachable'
+
+def format_vllm_probe_issue(status_code, detail):
+  issue = classify_vllm_probe_issue(status_code, detail)
+  if issue == 'unauthorized':
+    return 'Unauthorized (401) from vLLM /v1/models.'
+  if issue == 'bad_url':
+    return 'Bad vLLM URL or port for the internal /v1/models probe.'
+  if issue == 'model_loading':
+    return 'vLLM is still loading the model or returned 503.'
+  if issue == 'model_missing':
+    return 'Expected model is missing from vLLM /v1/models.'
+  if issue == 'port_unreachable':
+    return 'Port unreachable for the internal vLLM API.'
+  if issue == 'timeout':
+    return 'Timed out probing the internal vLLM API.'
+  if issue == 'oom':
+    return 'Possible OOM detected while probing vLLM.'
+  if status_code:
+    return f'vLLM probe returned HTTP {status_code}.'
+  return compact_error(detail) or 'vLLM API not reachable'
+
+def probe_vllm_models():
+  script = """
+import json
+import os
+import urllib.error
+import urllib.request
+
+headers = {}
+api_key = os.environ.get('VLLM_API_KEY')
+if api_key:
+    headers['Authorization'] = 'Bearer ' + api_key
+
+result = {
+    'healthOk': False,
+    'modelsOk': False,
+    'statusCode': None,
+    'detail': None,
+    'hasModel': False,
+}
+
+try:
+    with urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8) as response:
+        result['healthOk'] = 200 <= getattr(response, 'status', response.getcode()) < 300
+except urllib.error.HTTPError as exc:
+    result['detail'] = f'health:{exc.code}'
+except Exception as exc:
+    result['detail'] = type(exc).__name__ + ':' + str(exc)
+
+try:
+    request = urllib.request.Request('http://127.0.0.1:8000/v1/models', headers=headers)
+    with urllib.request.urlopen(request, timeout=8) as response:
+        payload = json.load(response)
+        ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]
+        result['modelsOk'] = 200 <= getattr(response, 'status', response.getcode()) < 300
+        result['statusCode'] = getattr(response, 'status', response.getcode())
+        result['hasModel'] = """ + json.dumps(VLLM_MODEL) + """ in ids
+        if result['modelsOk'] and not result['hasModel']:
+            result['detail'] = 'expected_model_missing'
+except urllib.error.HTTPError as exc:
+    result['statusCode'] = exc.code
+    try:
+        result['detail'] = exc.read().decode('utf-8', 'ignore')
+    except Exception:
+        result['detail'] = f'http:{exc.code}'
+except Exception as exc:
+    result['detail'] = type(exc).__name__ + ':' + str(exc)
+
+print(json.dumps(result))
+"""
+
+  rc, out, err = run(f"docker exec {shlex.quote(VLLM_SERVICE)} python3 -c {shlex.quote(script)}")
+  if rc != 0 or not out:
+    return {
+      'healthOk': False,
+      'modelsOk': False,
+      'statusCode': None,
+      'detail': err or out or 'vLLM probe command failed',
+      'hasModel': False,
+    }
+  try:
+    payload = json.loads(out)
+    if isinstance(payload, dict):
+      return payload
+  except Exception:
+    pass
+  return {
+    'healthOk': False,
+    'modelsOk': False,
+    'statusCode': None,
+    'detail': out,
+    'hasModel': False,
+  }
+
+def classify_litellm_probe_issue(status_code, detail):
+  text = compact_error(detail).lower()
+  if status_code == 403 and '1010' in text:
+    return 'edge_blocked'
+  if status_code in {401, 403}:
+    return 'unauthorized'
+  if status_code == 404:
+    return 'bad_url'
+  if 'expected_alias_missing' in text:
+    return 'alias_missing'
+  if 'name or service not known' in text or 'temporary failure in name resolution' in text:
+    return 'dns_failure'
+  if 'timed out' in text or 'timeout' in text or status_code in {408, 504}:
+    return 'timeout'
+  if status_code and status_code >= 500:
+    return 'upstream_error'
+  return 'unreachable'
+
+def format_openwebui_litellm_issue(status_code, detail):
+  issue = classify_litellm_probe_issue(status_code, detail)
+  if issue == 'edge_blocked':
+    return 'OpenWebUI is pointed at LiteLLM, but the current public URL is blocked by the edge policy (403 / 1010).'
+  if issue == 'unauthorized':
+    return 'OpenWebUI LiteLLM provider key was rejected.'
+  if issue == 'bad_url':
+    return 'OpenWebUI LiteLLM provider URL is invalid or missing the /v1 route.'
+  if issue == 'alias_missing':
+    return 'OpenWebUI can reach LiteLLM, but the expected alias is missing from /v1/models.'
+  if issue == 'dns_failure':
+    return 'OpenWebUI cannot resolve the configured LiteLLM host from its current Docker networks.'
+  if issue == 'timeout':
+    return 'OpenWebUI timed out calling the configured LiteLLM provider.'
+  if status_code:
+    return f'OpenWebUI LiteLLM provider returned HTTP {status_code}.'
+  return compact_error(detail) or 'OpenWebUI LiteLLM provider is not reachable.'
+
+def probe_openwebui_litellm(base_url, api_key):
+  script = """
+import json
+import urllib.error
+import urllib.request
+
+base_url = """ + json.dumps(base_url.rstrip('/')) + """
+headers = {}
+api_key = """ + json.dumps(api_key) + """
+if api_key:
+    headers['Authorization'] = 'Bearer ' + api_key
+
+result = {
+    'modelsOk': False,
+    'modelsStatusCode': None,
+    'aliasFound': False,
+    'chatOk': False,
+    'chatStatusCode': None,
+    'detail': None,
+}
+
+try:
+    request = urllib.request.Request(base_url + '/models', headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body = response.read().decode('utf-8', 'ignore')
+        payload = json.loads(body)
+        ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]
+        result['modelsOk'] = 200 <= getattr(response, 'status', response.getcode()) < 300
+        result['modelsStatusCode'] = getattr(response, 'status', response.getcode())
+        result['aliasFound'] = """ + json.dumps(LITELLM_ALIAS) + """ in ids
+        if result['modelsOk'] and not result['aliasFound']:
+            result['detail'] = 'expected_alias_missing'
+except urllib.error.HTTPError as exc:
+    result['modelsStatusCode'] = exc.code
+    try:
+        result['detail'] = exc.read().decode('utf-8', 'ignore')
+    except Exception:
+        result['detail'] = f'http:{exc.code}'
+except Exception as exc:
+    result['detail'] = type(exc).__name__ + ':' + str(exc)
+
+if result['modelsOk'] and result['aliasFound']:
+    try:
+        payload = json.dumps({
+            'model': """ + json.dumps(LITELLM_ALIAS) + """,
+            'messages': [{'role': 'user', 'content': 'hi'}],
+            'stream': False,
+            'max_tokens': 16,
+            'temperature': 0,
+        }).encode('utf-8')
+        request = urllib.request.Request(base_url + '/chat/completions', data=payload, headers={**headers, 'Content-Type': 'application/json'})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read().decode('utf-8', 'ignore')
+            parsed = json.loads(body)
+            result['chatStatusCode'] = getattr(response, 'status', response.getcode())
+            result['chatOk'] = 200 <= result['chatStatusCode'] < 300 and isinstance(parsed.get('choices'), list) and len(parsed.get('choices')) > 0
+            if result['chatStatusCode'] >= 300 or not result['chatOk']:
+                result['detail'] = 'chat_response_invalid'
+    except urllib.error.HTTPError as exc:
+        result['chatStatusCode'] = exc.code
+        try:
+            result['detail'] = exc.read().decode('utf-8', 'ignore')
+        except Exception:
+            result['detail'] = f'http:{exc.code}'
+    except Exception as exc:
+        result['detail'] = type(exc).__name__ + ':' + str(exc)
+
+print(json.dumps(result))
+"""
+
+  rc, out, err = run(f"docker exec open-webui python3 -c {shlex.quote(script)}")
+  if rc != 0 or not out:
+    return {
+      'modelsOk': False,
+      'modelsStatusCode': None,
+      'aliasFound': False,
+      'chatOk': False,
+      'chatStatusCode': None,
+      'detail': err or out or 'OpenWebUI LiteLLM probe command failed',
+    }
+  try:
+    payload = json.loads(out)
+    if isinstance(payload, dict):
+      return payload
+  except Exception:
+    pass
+  return {
+    'modelsOk': False,
+    'modelsStatusCode': None,
+    'aliasFound': False,
+    'chatOk': False,
+    'chatStatusCode': None,
+    'detail': out,
+  }
 
 status = {
     'checkedAt': datetime.now(timezone.utc).isoformat(),
@@ -304,6 +569,14 @@ status = {
         'providerBaseUrls': [],
         'providerKeysConfigured': 0,
         'ollamaProviderAvailable': False,
+      'liteLlmProviderBaseUrl': None,
+      'liteLlmProviderConfigured': False,
+      'liteLlmProviderModelsOk': False,
+      'liteLlmProviderAliasFound': False,
+      'liteLlmProviderChatOk': False,
+      'liteLlmProviderModelsStatusCode': None,
+      'liteLlmProviderChatStatusCode': None,
+      'liteLlmProviderDetail': None,
         'vllmProviderConfigured': False,
         'vllmProviderUsable': False,
         'error': None,
@@ -500,6 +773,30 @@ if rc == 0 and webui_env:
     status['openWebUi']['providerKeysConfigured'] = len(keys)
     status['openWebUi']['ollamaProviderAvailable'] = env_map.get('OLLAMA_BASE_URL', '').startswith('http://ollama:11434')
     status['openWebUi']['vllmProviderConfigured'] = VLLM_ENDPOINT in base_urls
+
+    litellm_index = next((index for index, base_url in enumerate(base_urls) if 'litellm' in base_url.lower()), None)
+    if litellm_index is not None:
+      status['openWebUi']['liteLlmProviderConfigured'] = True
+      status['openWebUi']['liteLlmProviderBaseUrl'] = base_urls[litellm_index]
+      provider_key = keys[litellm_index] if litellm_index < len(keys) else None
+      if provider_key:
+        litellm_probe = probe_openwebui_litellm(base_urls[litellm_index], provider_key)
+        status['openWebUi']['liteLlmProviderModelsOk'] = bool(litellm_probe.get('modelsOk'))
+        status['openWebUi']['liteLlmProviderAliasFound'] = bool(litellm_probe.get('aliasFound'))
+        status['openWebUi']['liteLlmProviderChatOk'] = bool(litellm_probe.get('chatOk'))
+        status['openWebUi']['liteLlmProviderModelsStatusCode'] = litellm_probe.get('modelsStatusCode')
+        status['openWebUi']['liteLlmProviderChatStatusCode'] = litellm_probe.get('chatStatusCode')
+        if litellm_probe.get('detail'):
+          status['openWebUi']['liteLlmProviderDetail'] = format_openwebui_litellm_issue(
+            litellm_probe.get('chatStatusCode') or litellm_probe.get('modelsStatusCode'),
+            litellm_probe.get('detail'),
+          )
+        elif litellm_probe.get('chatOk'):
+          status['openWebUi']['liteLlmProviderDetail'] = f'OpenWebUI can complete chat requests through LiteLLM alias {LITELLM_ALIAS}.'
+        elif litellm_probe.get('modelsOk') and litellm_probe.get('aliasFound'):
+          status['openWebUi']['liteLlmProviderDetail'] = 'OpenWebUI can reach LiteLLM and see the alias, but chat completion still fails.'
+      else:
+        status['openWebUi']['liteLlmProviderDetail'] = 'OpenWebUI LiteLLM provider is configured, but the matching API key is missing from OPENAI_API_KEYS.'
     status['assistant']['defaultModelId'] = env_map.get('DEFAULT_MODELS', '').strip() or None
 
     rc, pipelines_env, _ = run("docker inspect open-webui-pipelines --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null")
@@ -548,10 +845,10 @@ status['openWebUi']['vllmProviderUsable'] = status['openWebUi']['vllmProviderCon
 
 # vLLM status
 if status['vllm']['containerStatus'] == 'running':
-    rc, models_out, models_err = run(f"docker exec open-webui sh -lc 'curl -sf {shlex.quote(VLLM_ENDPOINT)}/models >/dev/null'")
-    status['vllm']['providerReachable'] = rc == 0
-    if rc != 0:
-        status['vllm']['providerError'] = models_err or 'vLLM API not reachable'
+  probe = probe_vllm_models()
+  status['vllm']['providerReachable'] = bool(probe.get('healthOk') and probe.get('modelsOk') and probe.get('hasModel'))
+  if not status['vllm']['providerReachable']:
+    status['vllm']['providerError'] = format_vllm_probe_issue(probe.get('statusCode'), probe.get('detail'))
 
     rc, restart_count, _ = run(f"docker inspect {shlex.quote(VLLM_SERVICE)} --format '{{{{.RestartCount}}}}'")
     restart_count_value = int(restart_count) if restart_count.isdigit() else 0
@@ -561,7 +858,8 @@ if status['vllm']['containerStatus'] == 'running':
     elif status['vllm']['providerReachable']:
         status['vllm']['status'] = 'Running'
     else:
-        status['vllm']['status'] = 'Starting'
+    issue = classify_vllm_probe_issue(probe.get('statusCode'), probe.get('detail'))
+    status['vllm']['status'] = 'Starting' if issue == 'model_loading' else 'Failed'
 elif status['vllm']['containerStatus'] == 'stopped':
     status['vllm']['status'] = 'Installed but stopped' if status['vllm']['configuredInCompose'] else 'Blocked'
 elif status['vllm']['containerStatus'] == 'missing':
@@ -696,7 +994,7 @@ case "$ACTION" in
     docker compose -f "$COMPOSE_FILE" up -d "$VLLM_SERVICE" >/dev/null 2>&1 || true
     ready=0
     for _ in $(seq 1 24); do
-      if docker exec "$VLLM_SERVICE" python3 -c "import json, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8); payload = json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/models', timeout=8)); ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]; raise SystemExit(0 if '$VLLM_MODEL' in ids else 1)" >/dev/null 2>&1; then
+      if docker exec "$VLLM_SERVICE" python3 -c "import json, os, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8); headers = {}; api_key = os.environ.get('VLLM_API_KEY'); headers = {'Authorization': 'Bearer ' + api_key} if api_key else {}; request = urllib.request.Request('http://127.0.0.1:8000/v1/models', headers=headers); payload = json.load(urllib.request.urlopen(request, timeout=8)); ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]; raise SystemExit(0 if '$VLLM_MODEL' in ids else 1)" >/dev/null 2>&1; then
         ready=1
         break
       fi

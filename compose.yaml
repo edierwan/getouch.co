@@ -347,7 +347,7 @@ services:
       RAG_PDF_EXTRACT_IMAGES: "true"
 
       # ── Pipelines connection ──
-      OPENAI_API_BASE_URLS: "http://pipelines:9099;https://litellm.getouch.co/v1;https://api.openai.com/v1"
+      OPENAI_API_BASE_URLS: "http://pipelines:9099;${OPENWEBUI_LITELLM_BASE_URL:-https://litellm.getouch.co/v1};https://api.openai.com/v1"
       OPENAI_API_KEYS: "0p3n-w3bu!;${LITELLM_MASTER_KEY:-litellm-placeholder};${OPENAI_API_KEY:-sk-placeholder}"
 
       # ── Features ──
