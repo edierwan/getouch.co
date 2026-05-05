@@ -269,15 +269,15 @@ The current Dify issue is still a manual/provider-state problem:
 - From inside `open-webui`, authenticated LiteLLM `/v1/chat/completions` for `getouch-qwen3-14b` now returns `200` with a real completion when allowed a longer timeout.
 - LiteLLM now resolves its own Postgres and vLLM backend on the corrected app-network topology and is listening again on port `4000`.
 - The swap reset completed safely; `/swap.img` is active again with `0B` used and the host still shows about `21 GiB` available memory after the page-in.
-- The remaining live blockers are now external Dify provider state, making the current manual cross-app network joins durable across container recreation, and waiting for production deployment to catch up to the pushed repo changes.
+- The remaining live blockers are now external Dify provider state and making the current manual cross-app network joins durable across container recreation.
 
 ## 8. Continuation Plan
 
 ### Current known state
 
 - Git branch is currently `main`.
-- Local `HEAD` and `origin/main` are now both `a37de70` after pushing the stabilization commit to GitHub `main`.
-- The live portal build-info endpoint still reports production commit `bfd4e0e`, so the runtime stabilization changes are pushed but not yet visible on the live portal deployment.
+- Local `HEAD` and `origin/main` are now both `231a37a` after the runtime-fix commit plus a documentation-only follow-up push.
+- The live portal build-info endpoint currently reports production commit `a37de70`, which means the runtime/code changes are already deployed, while the later documentation-only follow-up commit `231a37a` is newer than the build currently served by the portal.
 - The admin navigation points operators to `/admin/ai/vllm`.
 - `/admin/ai/vllm` re-exports `/admin/ai-services/vllm`, which re-exports `/admin/service-endpoints/vllm`, so `/admin/ai/vllm` is the active operator-facing route while `/admin/service-endpoints/vllm` is the underlying implementation route.
 - Repo-side portal/runtime fixes are already in place for auth-aware vLLM probing, LiteLLM route versus chat separation, Integration Health, swap visibility, and Ollama sandbox labeling.
@@ -296,7 +296,7 @@ The current Dify issue is still a manual/provider-state problem:
 
 1. Execute the Dify console repair in the external workspace so the failing workflow nodes stop referencing `langgenius/openai/openai` and use a reachable LiteLLM `/v1` provider with model `getouch-qwen3-14b`.
 2. Make the manual `open-webui` and `vllm-qwen3-14b-fp8` cross-app network joins durable in the controlling deployment layer so the restored internal route survives container recreation.
-3. Wait for production deployment to catch up to commit `a37de70`, then verify the live portal Integration Health surface reflects the restored LiteLLM and OpenWebUI path on `/admin/ai/vllm`.
+3. After the live portal advances from `a37de70` to the latest `main` commit, verify the deployed `/admin/ai/vllm` Integration Health surface still reflects the restored LiteLLM and OpenWebUI path.
 
 ### Safety rules
 
