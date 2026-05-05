@@ -468,3 +468,44 @@ Remaining manual or external follow-up:
 - The portal-side `dify_connections` table currently contains no managed Dify connection rows, so there is no repo-controlled or portal-controlled mapping available here for the affected workflow.
 - The current session therefore does not have a usable authenticated Dify console control path even after checking the browser, the AI host, the portal database, and the repo.
 - Because of that external auth boundary, the Dify provider/workflow repair could not be executed from this session. The unresolved runtime task remains the native Dify workspace repair: replace the stale provider id `langgenius/openai/openai` with an OpenAI-compatible LiteLLM provider, use a Dify-reachable LiteLLM `/v1` endpoint, set model `getouch-qwen3-14b`, republish the workflow, and rerun Preview until the provider error is gone.
+
+## 13. Authenticated Native Dify Repair
+
+This section supersedes the Dify access blocker recorded in section 12.
+
+### Authenticated console findings
+
+- The native Dify workspace was reached in an authenticated browser session for app `cae6da69-a151-45b4-8651-ff9ba4a453a3`.
+- Dify console APIs that modify or inspect provider inventory require the CSRF token from the `__Host-csrf_token` cookie to be sent as the `X-CSRF-Token` header.
+- `GET /console/api/workspaces/current/model-providers` initially showed only `langgenius/openai_api_compatible/openai_api_compatible`, and it had no configured models.
+- `GET /console/api/workspaces/current/models/model-types/llm` initially returned an empty list, which matched the workflow's `Incompatible` LLM node state.
+- `GET /console/api/apps/cae6da69-a151-45b4-8651-ff9ba4a453a3/workflows/draft` confirmed two stale model bindings in the draft:
+  - Knowledge Retrieval node `1711528915811`: `provider: openai`, `name: gpt-3.5-turbo`
+  - LLM node `1711528917469`: `provider: langgenius/openai/openai`, `name: gpt-4o`
+
+### Native Dify repair executed
+
+- In Dify workspace settings, `OpenAI-API-compatible` was configured with a custom LLM model for the production alias:
+  - model name: `getouch-qwen3-14b`
+  - display name: `Getouch Qwen3 14B`
+  - endpoint URL: `https://litellm.getouch.co/v1`
+  - endpoint model name: `getouch-qwen3-14b`
+  - API key: existing LiteLLM key, redacted
+- A browser-side fetch to `https://litellm.getouch.co/v1/models` with the existing LiteLLM key returned `200` and included `getouch-qwen3-14b`, which confirmed the public LiteLLM route was reachable from the Dify browser path.
+- The Dify draft was then updated through `POST /console/api/apps/cae6da69-a151-45b4-8651-ff9ba4a453a3/workflows/draft` using the current draft hash.
+- The LLM node `1711528917469` was changed to `provider: langgenius/openai_api_compatible/openai_api_compatible`, `name: getouch-qwen3-14b`.
+- The Knowledge Retrieval node `1711528915811` single-retrieval model was changed to the same provider and model so the draft no longer retained any stale OpenAI provider binding.
+- The updated draft was published through `POST /console/api/apps/cae6da69-a151-45b4-8651-ff9ba4a453a3/workflows/publish`.
+
+### Validation completed
+
+- After the first LLM-node repair, the browser Preview accepted `hi` and returned `Hello! How can I assist you today? 😊` instead of `Provider langgenius/openai/openai does not exist.`
+- A follow-up draft read after the final repair confirmed both the LLM node and the Knowledge Retrieval node now point to `langgenius/openai_api_compatible/openai_api_compatible` with model `getouch-qwen3-14b`.
+- The publish API returned `200` with `result: success` for the final repaired draft.
+- The Dify workflow is no longer blocked on the missing provider id `langgenius/openai/openai`.
+
+### Final state
+
+- Portal runtime regression remains fixed from the earlier repo changes.
+- The durable host network fix remains in place for OpenWebUI -> LiteLLM -> vLLM.
+- The native Dify WAPI workflow has now been rebound to the production LiteLLM alias `getouch-qwen3-14b` and republished from the authenticated workspace.
