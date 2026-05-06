@@ -646,8 +646,8 @@ This section supersedes the Dify access blocker recorded in section 12.
 
 ### Live portal validation after redeploy
 
-- Pushed commit `4fe8250` to `main` and forced a Coolify rebuild for application id `2`.
-- Verified `https://portal.getouch.co/api/build-info` now reports commit `4fe8250163b0d0826e3d0c09f6bf5d504216d779`.
+- Pushed the repo fix to `main`, then forced Coolify application id `2` to rebuild the live portal.
+- Verified `https://portal.getouch.co/api/build-info` matched the current `main` head during final validation.
 - Verified the authenticated `/ai/vllm` operator page now renders the corrected live state:
   - Runtime Status: `Ready`
   - Active Model: `Qwen3 14B FP8`
