@@ -509,3 +509,150 @@ This section supersedes the Dify access blocker recorded in section 12.
 - Portal runtime regression remains fixed from the earlier repo changes.
 - The durable host network fix remains in place for OpenWebUI -> LiteLLM -> vLLM.
 - The native Dify WAPI workflow has now been rebound to the production LiteLLM alias `getouch-qwen3-14b` and republished from the authenticated workspace.
+
+## 14. Runtime Status Inconsistency and Performance Investigation
+
+### Latest browser and operator findings
+
+- Portal `/ai/vllm` now loads, but the reported state is internally inconsistent:
+  - Runtime Status: `Not deployed`
+  - Active Model: `None active`
+  - vLLM direct API: `Not deployed`
+  - LiteLLM Route: `Ready`
+  - LiteLLM Chat: `Working`
+  - Public Alias: `getouch-qwen3-14b`
+  - OpenWebUI: `Unknown`
+  - Ollama Sandbox: `Unknown`
+  - Resource Usage: GPU, RAM, and Swap all show `Not available`
+- The above is contradictory because LiteLLM chat for `getouch-qwen3-14b` should not succeed unless LiteLLM can reach some backend that can answer the completion path.
+- Dify WAPI Preview now uses `Getouch Qwen3 14B`, but operator evidence says the Preview feels slow or stuck compared with the earlier Ollama/OpenWebUI tests.
+- Operator expectation is that the existing `Qwen/Qwen3-14B-FP8` production path should not feel slower than the earlier test path without a concrete bottleneck such as route overhead, buffered streaming, probe mismatch, or degraded GPU residency.
+
+### Suspected causes
+
+- The portal vLLM probe may be checking from the wrong network or execution context.
+- The portal host-metric probe may be failing even though the inference path is alive.
+- LiteLLM may be using a different backend than expected for `getouch-qwen3-14b`.
+- Dify may be calling the public LiteLLM path instead of an internal route.
+- Dify workflow overhead or the Knowledge Retrieval node may be causing most of the perceived delay.
+- Streaming may be disabled, buffered, or hidden behind the current provider path.
+- vLLM may be loaded and serving, but GPU utilization or host metrics may not be visible to the portal probes.
+- The GPU may still be holding another model or CUDA process besides the intended vLLM runtime.
+- Current vLLM parameters for `Qwen/Qwen3-14B-FP8` on 16 GiB VRAM may be safe but not yet tuned for latency.
+
+### Investigation checklist
+
+1. Reproduce the live portal status payload on `/ai/vllm`, `/admin/ai/vllm`, `/admin/service-endpoints/vllm`, and `/api/admin/service-endpoints/vllm/status`.
+2. Trace the repo control path through `lib/ai-runtime.ts`, `lib/model-runtime-manager.ts`, and `lib/platform-ai.ts` to determine exactly why the portal maps the current runtime to `Not deployed`.
+3. Verify the deployed environment variables and network context used by the portal probes, including SSH availability, container names, endpoint URLs, and whether the direct vLLM probe includes the required API key.
+4. Confirm the exact LiteLLM backend mapping for alias `getouch-qwen3-14b` and prove whether it reaches local vLLM or some unintended fallback.
+5. Confirm GPU residency on the AI host with `nvidia-smi`, Docker stats, and process inspection so only the intended vLLM model remains resident.
+6. Measure direct vLLM, LiteLLM internal, LiteLLM public, OpenWebUI, and Dify end-to-end timings for the same prompts.
+7. Identify whether Dify slowness comes from network path, provider choice, workflow overhead, streaming behavior, Knowledge Retrieval, or the LLM node itself.
+8. Tune only the measured bottleneck and keep Ollama sandbox-only with no new runtime additions.
+
+### Benchmark plan
+
+- Prompts:
+  - `hi`
+  - `Explain what GetTouch WAPI does in 3 short bullets.`
+- Direct vLLM:
+  - measure total completion time
+  - capture time to first byte or first streamed token if available
+  - capture output tokens and approximate tokens per second if derivable
+  - observe GPU utilization during the request
+- LiteLLM internal:
+  - run the same prompts through alias `getouch-qwen3-14b`
+  - compare total time and whether responses stream or buffer
+- LiteLLM public:
+  - run the same prompts through `https://litellm.getouch.co/v1`
+  - compare total time and any edge or Cloudflare overhead
+- OpenWebUI:
+  - confirm provider path
+  - capture perceived latency and whether the provider is internal LiteLLM
+- Dify WAPI workflow:
+  - capture total preview time
+  - capture per-node timing if available
+  - separate Knowledge Retrieval time from LLM-node time
+  - determine whether streaming is enabled or buffered
+  - determine whether the workflow uses public LiteLLM or another route
+
+## 15. Performance and Status Fix Summary
+
+### Portal status root cause and fix
+
+- The portal `Not deployed` / `None active` state was a false negative caused by the embedded remote Python inside `lib/ai-runtime.ts` failing before it could return status JSON.
+- The concrete failure was a broken indentation path in the vLLM probe branch plus unsafe later use of `ollama_gpu_holder_mib`, which collapsed the probe to an empty fallback object.
+- `emit_result()` then hid the real probe failure by returning only `{"checkedAt": null}`, which made the portal look like the runtime was absent instead of unhealthy.
+- The repo-side fix was:
+  - initialize the Ollama GPU-holder probe before later reads
+  - repair the vLLM probe branch so a healthy direct probe sets `vllm.status = Running`
+  - make `emit_result()` preserve a short structured warning/error when the remote probe fails
+  - update the stale Dify integration row in `lib/model-runtime-manager.ts` to reflect the already repaired LiteLLM-backed WAPI Chatflow
+
+### Verified backend route
+
+- Live LiteLLM configuration still maps alias `getouch-qwen3-14b` to backend model `Qwen/Qwen3-14B-FP8` at internal endpoint `http://vllm-qwen3-14b-fp8:8000/v1`.
+- OpenWebUI remains configured to use internal LiteLLM at `http://litellm:4000/v1`.
+- The Dify draft workflow still points both Knowledge Retrieval and the LLM node at provider `langgenius/openai_api_compatible/openai_api_compatible` with model name `getouch-qwen3-14b`.
+- The Dify draft workflow is wired to pass `Knowledge Retrieval / result` into the LLM context and uses a system prompt that injects `{{#context#}}`.
+
+### Measured performance findings
+
+- Uncached `hi` benchmark before the Ollama unload:
+  - direct vLLM: `88.553 s`, `128` completion tokens, about `1.45 tok/s`, GPU max `100%`, VRAM max `15191 MiB`
+  - LiteLLM internal from the LiteLLM container: `88.568 s`
+  - OpenWebUI provider path through internal LiteLLM: `88.555 s`
+  - LiteLLM public with a browser-like user agent: `88.968 s`
+- LiteLLM public returned Cloudflare `403 / error code 1010` for the default Python `urllib` user agent, but the same route completed normally with a browser-like user agent.
+- The above shows route overhead is negligible. The bottleneck is not LiteLLM or the public edge path; it is the model response path itself.
+- After unloading the resident Ollama model, the same uncached direct-vLLM `hi` benchmark remained unchanged at `88.556 s`, which proves Ollama GPU residency was a hygiene issue but not the latency bottleneck.
+- Direct vLLM with the operator-style prompt `Explain what GetTouch WAPI does in 3 short bullets.` also remained about `88.537 s` with the default model behavior.
+- A direct vLLM probe with `chat_template_kwargs.enable_thinking=false` reduced the same WAPI-style prompt to `37.357 s`, but the answer was incorrect because the prompt lacked retrieval context and the model guessed the meaning of `WAPI`.
+
+### Dify findings
+
+- The live Dify WAPI Preview remained slow after the Ollama unload:
+  - nonce test prompt: about `103.364 s`
+  - actual prompt `Explain what GetTouch WAPI does in 3 short bullets.`: about `127.924 s`
+- The live Preview answer for the actual prompt was still `I'm not sure about that — could you clarify or rephrase your question?`
+- Because the workflow wiring is correct, the remaining Dify issue is no longer the provider binding. The current evidence points to the retrieval layer not returning useful GetTouch WAPI context for that question.
+- Dify therefore has two separate characteristics right now:
+  - the same slow underlying Qwen3 14B generation path as direct vLLM and LiteLLM
+  - an additional workflow/content problem where the retrieval result does not produce a useful GetTouch-specific answer
+
+### GPU and host hygiene actions
+
+- Confirmed the only intended production GPU holder is vLLM `Qwen/Qwen3-14B-FP8`.
+- Confirmed the Ollama sandbox had still left `qwen3:14b` resident on the GPU before cleanup.
+- Safely unloaded only the resident Ollama model with `ollama stop qwen3:14b`.
+- Verified afterwards that `ollama ps` was empty and `nvidia-smi` only showed `VLLM::EngineCore`.
+- Host swap had returned to `8 GiB` used, but `vmstat` showed no continuing swap-in or swap-out pressure after the Ollama unload.
+- Reset the stale swap allocation safely; host swap is now back to `0 B` used.
+
+### Tuning conclusion
+
+- No repo-side route change is required for LiteLLM, OpenWebUI, or the public LiteLLM path. All measured paths converge on the same backend latency.
+- No further GPU cleanup is required. Ollama is back to sandbox-idle with no resident model.
+- No global `no-thinking` change was applied to the production alias from this repo because the measured no-thinking probe was faster but semantically worse without retrieval context.
+- The remaining performance ceiling is the current `Qwen/Qwen3-14B-FP8` response speed on this hardware, about `1.45 tok/s` for these prompts.
+- The remaining Dify functional issue is external to this repo's portal code: the workflow wiring is correct, but the retrieval content for the WAPI question is not yielding a useful answer.
+
+### Files changed in this phase
+
+- `lib/ai-runtime.ts`
+- `lib/model-runtime-manager.ts`
+- `docs/ai-runtime-ecosystem-stabilization.md`
+
+### Live portal validation to record after redeploy
+
+- Push to `main`, let Coolify application id `2` rebuild, then verify:
+  - `/ai/vllm`
+  - `/admin/ai/vllm`
+  - `/admin/service-endpoints/vllm`
+  - `/api/admin/service-endpoints/vllm/status`
+- Expected portal result after redeploy:
+  - runtime shows the vLLM backend as active instead of `Not deployed`
+  - active model shows `Qwen3 14B FP8`
+  - GPU, RAM, and swap metrics are populated again
+  - Dify integration row shows the repaired provider status text from the repo change

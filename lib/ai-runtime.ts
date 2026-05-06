@@ -881,6 +881,7 @@ if rc != 0:
     status['ollama']['apiError'] = ollama_health_err or 'Ollama API not reachable'
 
 rc, ollama_ps, ollama_ps_err = run("docker exec ollama ollama ps")
+ollama_gpu_holder_mib = detect_ollama_gpu_holder()
 if rc == 0 and ollama_ps:
     lines = [line for line in ollama_ps.splitlines() if line.strip()]
     if len(lines) > 1:
@@ -894,7 +895,6 @@ if rc == 0 and ollama_ps:
             status['ollama']['residentContext'] = first[-2]
             status['ollama']['residentUntil'] = first[-1]
 
-    ollama_gpu_holder_mib = detect_ollama_gpu_holder()
     if not status['ollama']['residentModel'] and ollama_gpu_holder_mib is not None:
       status['ollama']['residentModel'] = '[resident model not reported]'
       status['ollama']['residentSize'] = f'{ollama_gpu_holder_mib} MiB'
@@ -1009,7 +1009,9 @@ status['openWebUi']['vllmProviderUsable'] = status['openWebUi']['vllmProviderCon
 if status['vllm']['containerStatus'] == 'running':
   probe = probe_vllm_models()
   status['vllm']['providerReachable'] = bool(probe.get('healthOk') and probe.get('modelsOk') and probe.get('hasModel'))
-  if not status['vllm']['providerReachable']:
+  if status['vllm']['providerReachable']:
+    status['vllm']['status'] = 'Running'
+  else:
     status['vllm']['providerError'] = format_vllm_probe_issue(probe.get('statusCode'), probe.get('detail'))
 
     rc, restart_count, _ = run(f"docker inspect {shlex.quote(VLLM_SERVICE)} --format '{{{{.RestartCount}}}}'")
@@ -1020,8 +1022,8 @@ if status['vllm']['containerStatus'] == 'running':
     elif status['vllm']['providerReachable']:
         status['vllm']['status'] = 'Running'
     else:
-    issue = classify_vllm_probe_issue(probe.get('statusCode'), probe.get('detail'))
-    status['vllm']['status'] = 'Starting' if issue == 'model_loading' else 'Failed'
+      issue = classify_vllm_probe_issue(probe.get('statusCode'), probe.get('detail'))
+      status['vllm']['status'] = 'Starting' if issue == 'model_loading' else 'Failed'
 elif status['vllm']['containerStatus'] == 'stopped':
     status['vllm']['status'] = 'Installed but stopped' if status['vllm']['configuredInCompose'] else 'Blocked'
 elif status['vllm']['containerStatus'] == 'missing':
@@ -1081,10 +1083,38 @@ emit_result() {
   local action="$2"
   local message="$3"
   local status_json
+  local status_error
+  local status_error_file
 
-  status_json="$(collect_status_json 2>/dev/null || true)"
+  status_error_file="$(mktemp)"
+  status_json="$(collect_status_json 2>"$status_error_file" || true)"
+  status_error="$(tr '\n' ' ' < "$status_error_file" | sed 's/  */ /g' | cut -c1-220)"
+  rm -f "$status_error_file"
   if [ -z "$status_json" ]; then
-    status_json='{"checkedAt":null}'
+  status_json="$(python3 - <<'PY' "$status_error"
+import json
+import sys
+
+detail = ' '.join((sys.argv[1] or '').split()) or 'AI runtime probe failed before status JSON was produced.'
+print(json.dumps({
+  'checkedAt': None,
+  'runtime': {
+    'warning': detail,
+  },
+  'vllm': {
+    'providerError': detail,
+    'lastError': detail,
+    'blockedReason': detail,
+  },
+  'gpu': {
+    'dockerAccessError': detail,
+  },
+  'openWebUi': {
+    'error': detail,
+  },
+}))
+PY
+)"
   fi
 
   python3 - <<'PY' "$ok" "$action" "$message" "$status_json"

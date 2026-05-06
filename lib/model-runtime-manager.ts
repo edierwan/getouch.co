@@ -613,9 +613,9 @@ function buildIntegrationHealth(
     {
       key: 'dify-provider',
       label: 'Dify provider',
-      status: 'Manual action required',
+      status: 'Working',
       endpoint: 'https://dify.getouch.co',
-      detail: 'The portal cannot inspect Dify workflow-node provider bindings from this repo. Current operator evidence still shows provider missing: langgenius/openai/openai.',
+      detail: 'Latest external validation confirmed the WAPI Chatflow is published on the OpenAI-compatible LiteLLM alias getouch-qwen3-14b. The portal still cannot inspect live workflow-node bindings from this repo.',
       checkedAt: runtime.checkedAt,
     },
     {
