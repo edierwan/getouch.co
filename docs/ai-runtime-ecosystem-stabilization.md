@@ -644,15 +644,29 @@ This section supersedes the Dify access blocker recorded in section 12.
 - `lib/model-runtime-manager.ts`
 - `docs/ai-runtime-ecosystem-stabilization.md`
 
-### Live portal validation to record after redeploy
+### Live portal validation after redeploy
 
-- Push to `main`, let Coolify application id `2` rebuild, then verify:
-  - `/ai/vllm`
-  - `/admin/ai/vllm`
-  - `/admin/service-endpoints/vllm`
-  - `/api/admin/service-endpoints/vllm/status`
-- Expected portal result after redeploy:
-  - runtime shows the vLLM backend as active instead of `Not deployed`
-  - active model shows `Qwen3 14B FP8`
-  - GPU, RAM, and swap metrics are populated again
-  - Dify integration row shows the repaired provider status text from the repo change
+- Pushed commit `4fe8250` to `main` and forced a Coolify rebuild for application id `2`.
+- Verified `https://portal.getouch.co/api/build-info` now reports commit `4fe8250163b0d0826e3d0c09f6bf5d504216d779`.
+- Verified the authenticated `/ai/vllm` operator page now renders the corrected live state:
+  - Runtime Status: `Ready`
+  - Active Model: `Qwen3 14B FP8`
+  - Public Alias: `getouch-qwen3-14b`
+  - LiteLLM Route: `Ready`
+  - LiteLLM Chat: `Working`
+  - OpenWebUI: `Working`
+  - Ollama Sandbox: `Idle`
+  - GPU Memory: `14.7 GiB / 15.9 GiB`
+  - RAM Usage: `41Gi / 62Gi`
+  - Swap Usage: `313Mi / 8.0Gi`
+- Verified `/admin/ai/vllm` and `/admin/service-endpoints/vllm` resolve to the same corrected canonical runtime manager surface.
+- Verified the authenticated JSON API `/api/admin/service-endpoints/vllm/status` now returns `200` with:
+  - `runtime.status = Ready`
+  - `runtime.activeModelDisplayName = Qwen3 14B FP8`
+  - `liteLlm.status = Ready`
+  - `liteLlm.chatOk = true`
+  - `openWebUi.status = Working`
+  - `ollama.status = Idle`
+  - `metrics.gpuMemoryPercent = 92`
+  - `metrics.swapPercent = 4`
+- The original portal inconsistency is resolved on the live site. The remaining operator concern is the separate Dify retrieval/content issue documented above, not the portal runtime status surface.
