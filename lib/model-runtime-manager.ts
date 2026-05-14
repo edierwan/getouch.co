@@ -2,8 +2,14 @@ import { spawn } from 'node:child_process';
 import { aiRuntimeMeta, getAiRuntimeStatus } from './ai-runtime';
 import { getGatewayStatus } from './ai-gateway';
 import {
+  GETOUCH_LOCAL_DEFAULT_ALIAS,
+  GETOUCH_LOCAL_LITELLM_MODEL_ALIAS,
+  GETOUCH_LOCAL_MODEL_DISPLAY_NAME,
+  GETOUCH_LOCAL_SOURCE_MODEL,
+  GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+} from './local-ai-model';
+import {
   DEFAULT_PLATFORM_LITELLM_INTERNAL_BASE_URL,
-  DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS,
   DEFAULT_PLATFORM_LITELLM_BASE_URL,
   getPlatformAiConfig,
   probeLiteLlmRoute,
@@ -30,8 +36,10 @@ type SwitchMode = 'manual' | 'automated';
 
 type ApprovedModel = {
   modelId: string;
+  runtimeModelId: string;
   displayName: string;
   publicAlias: string;
+  explicitAlias: string;
   estimatedVramMiB: number;
   notes: string;
 };
@@ -154,32 +162,13 @@ export type ModelRuntimeSwitchResult = {
 
 const APPROVED_MODELS: ApprovedModel[] = [
   {
-    modelId: 'Qwen/Qwen3-14B-FP8',
-    displayName: 'Qwen3 14B FP8',
-    publicAlias: DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS,
-    estimatedVramMiB: 15000,
-    notes: 'Primary production target on the current GPU, but only when Ollama is not holding the same VRAM window.',
-  },
-  {
-    modelId: 'Qwen/Qwen2.5-7B-Instruct',
-    displayName: 'Qwen2.5 7B Instruct',
-    publicAlias: DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS,
-    estimatedVramMiB: 8500,
-    notes: 'Safer fallback for the 16GB GPU when the 14B path is too tight.',
-  },
-  {
-    modelId: 'Qwen/Qwen2.5-14B-Instruct-AWQ',
-    displayName: 'Qwen2.5 14B Instruct AWQ',
-    publicAlias: DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS,
-    estimatedVramMiB: 12000,
-    notes: 'Quantized 14B option for the same public alias when validated on the live GPU.',
-  },
-  {
-    modelId: 'Qwen/Qwen2.5-1.5B-Instruct',
-    displayName: 'Qwen2.5 1.5B Instruct',
-    publicAlias: DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS,
-    estimatedVramMiB: 3000,
-    notes: 'Small test model for smoke checks when production GPU headroom is constrained.',
+    modelId: GETOUCH_LOCAL_SOURCE_MODEL,
+    runtimeModelId: GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+    displayName: GETOUCH_LOCAL_MODEL_DISPLAY_NAME,
+    publicAlias: GETOUCH_LOCAL_DEFAULT_ALIAS,
+    explicitAlias: GETOUCH_LOCAL_LITELLM_MODEL_ALIAS,
+    estimatedVramMiB: 10240,
+    notes: 'Primary production local model for the 16GB GPU. LiteLLM should expose both the stable and explicit aliases to the same backend.',
   },
 ];
 
@@ -615,7 +604,7 @@ function buildIntegrationHealth(
       label: 'Dify provider',
       status: 'Working',
       endpoint: 'https://dify.getouch.co',
-      detail: 'Latest external validation confirmed the WAPI Chatflow is published on the OpenAI-compatible LiteLLM alias getouch-qwen3-14b. The portal still cannot inspect live workflow-node bindings from this repo.',
+      detail: `Latest Dify validation should use the LiteLLM aliases ${GETOUCH_LOCAL_DEFAULT_ALIAS} or ${GETOUCH_LOCAL_LITELLM_MODEL_ALIAS}. The portal still cannot inspect live workflow-node bindings from this repo.`,
       checkedAt: runtime.checkedAt,
     },
     {
@@ -639,7 +628,7 @@ function buildSwitchModeDetail(runtime: Awaited<ReturnType<typeof getAiRuntimeSt
     reasons.push('No server-side LiteLLM API key is configured for route verification or broker forwarding.');
   }
 
-  reasons.push('The portal can control the fixed primary Qwen3 14B runtime, but arbitrary model switching remains gated until LiteLLM and the host compose path are parameterized per model.');
+  reasons.push('The portal can control the fixed primary Qwen3 8B runtime, but arbitrary model switching remains gated until LiteLLM and the host compose path are parameterized per model.');
 
   return reasons.join(' ');
 }
@@ -648,8 +637,8 @@ function buildManualSteps(model: ApprovedModel, status: ModelRuntimeManagerStatu
   return [
     `Unload any resident Ollama model before the switch if GPU memory is still occupied${status.ollama.residentModel ? ` (current resident model: ${status.ollama.residentModel})` : ''}.`,
     'Stop the current vLLM runtime before changing the backend model or LiteLLM alias. Do not overlap large model loads on this 16GB GPU.',
-    `Create or update the host-side vLLM deployment so it serves ${model.modelId} on the internal runtime endpoint ${status.sourceOfTruth.vllmInternalBaseUrl}.`,
-    `Ensure LiteLLM maps the stable public alias ${model.publicAlias} to the selected backend model ${model.modelId} using the server-side LiteLLM key only.`,
+    `Create or update the host-side vLLM deployment so it serves ${model.modelId} as ${model.runtimeModelId} on the internal runtime endpoint ${status.sourceOfTruth.vllmInternalBaseUrl}.`,
+    `Ensure LiteLLM maps the stable public alias ${model.publicAlias} and the explicit alias ${model.explicitAlias} to the selected backend model ${model.runtimeModelId} using the server-side LiteLLM key only.`,
     `If OpenWebUI should expose the model for testing, wire it to a LiteLLM endpoint that the container can actually reach. Prefer a shared internal hostname over the public edge URL when available, and keep Ollama sandbox-only.`,
     'After the host-side changes, rerun the portal health checks until Runtime Status is Ready, LiteLLM Route is Ready, and LiteLLM Chat Completion is Working.',
   ];
@@ -672,8 +661,9 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
   const liteLlmStatus = liteLlmStatusLabel(liteLlmProbe.status);
   const switchMode: SwitchMode = 'manual';
   const switchModeDetail = buildSwitchModeDetail(runtime, Boolean(config.liteLlmApiKey));
-  const activeModelId = remote.activeModelId || (runtime.vllm.containerStatus === 'running' ? runtime.vllm.intendedModel : null);
-  const activeModelDisplayName = APPROVED_MODELS.find((model) => model.modelId === activeModelId)?.displayName || activeModelId;
+  const activeModel = APPROVED_MODELS.find((model) => model.runtimeModelId === remote.activeModelId || model.modelId === remote.activeModelId) || null;
+  const activeModelId = activeModel?.modelId || (runtime.vllm.containerStatus === 'running' ? runtime.vllm.intendedModel : null);
+  const activeModelDisplayName = activeModel?.displayName || remote.activeModelId || activeModelId;
   const openWebUi = {
     ...deriveOpenWebUiStatus(runtime.openWebUi.providerBaseUrls, config.liteLlmBaseUrl, liteLlmStatus, runtime),
     url: OPEN_WEBUI_URL,
@@ -716,7 +706,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
   const modelCatalog = APPROVED_MODELS.map((model) => {
     const downloaded = Boolean(remote.downloaded[model.modelId]);
     const incompatible = totalVramMiB !== null && model.estimatedVramMiB > totalVramMiB;
-    const isActive = activeModelId === model.modelId;
+    const isActive = remote.activeModelId === model.runtimeModelId || activeModelId === model.modelId;
     const status: ModelCatalogStatus = isActive
       ? 'active'
       : incompatible
@@ -735,6 +725,7 @@ export async function getModelRuntimeManagerStatus(): Promise<ModelRuntimeManage
     if (!isActive) {
       notes.push('Switching remains manual until a host-side vLLM service definition and LiteLLM route update mechanism are approved.');
     }
+    notes.push(`Explicit alias: ${model.explicitAlias}.`);
 
     return {
       displayName: model.displayName,

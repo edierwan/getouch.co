@@ -553,7 +553,8 @@ export const SCOPE_CATALOG: Record<string, string[]> = {
   ai: ['ai:chat', 'ai:embed', 'ai:models', 'ai:admin'],
   mcp: ['mcp:connect', 'mcp:tools:list', 'mcp:tools:call', 'mcp:resources:read', 'mcp:admin'],
   model: [
-    'model:getouch-qwen3-14b',
+    'model:getouch-local-chat',
+    'model:getouch-qwen3-8b',
     'model:getouch-qwen3-30b',
     'model:getouch-embed',
     'model:ollama',

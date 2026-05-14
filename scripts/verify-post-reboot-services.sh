@@ -28,12 +28,14 @@ done
 
 echo
 echo "== vllm state =="
-docker inspect --format "{{.Name}}|status={{.State.Status}}|restart={{.HostConfig.RestartPolicy.Name}}" vllm-qwen3-14b-fp8 2>/dev/null || echo "vllm-qwen3-14b-fp8|missing"
+docker inspect --format "{{.Name}}|status={{.State.Status}}|restart={{.HostConfig.RestartPolicy.Name}}" vllm-qwen3-8b-fp8 2>/dev/null || echo "vllm-qwen3-8b-fp8|missing"
 
 echo
 echo "== open webui provider env =="
 docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' open-webui 2>/dev/null \
-	| grep -E '^(OLLAMA_BASE_URL|OPENAI_API_BASE_URLS|OPENAI_API_KEYS|DEFAULT_MODELS|WEBUI_NAME)=' || true
+	| grep -E '^(OLLAMA_BASE_URL|OPENAI_API_BASE_URLS|DEFAULT_MODELS|WEBUI_NAME)=' || true
+OPENAI_API_KEYS_COUNT="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' open-webui 2>/dev/null | sed -n 's/^OPENAI_API_KEYS=//p' | awk -F';' '{print NF}' | head -n1)"
+echo "OPENAI_API_KEYS_COUNT=${OPENAI_API_KEYS_COUNT:-0}"
 
 echo
 echo "== assistant pipeline models =="

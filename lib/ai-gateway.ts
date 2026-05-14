@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { NextRequest } from 'next/server';
+import {
+  GETOUCH_LOCAL_DEFAULT_ALIAS,
+  GETOUCH_LOCAL_LITELLM_MODEL_ALIAS,
+  GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+} from './local-ai-model';
 
 export type GatewayBackendType = 'disabled' | 'vllm' | 'ollama';
 
@@ -175,11 +180,27 @@ function parseGatewayKeys(raw: string | undefined) {
 }
 
 function defaultModelAliases(backendType: GatewayBackendType): GatewayModelRecord[] {
-  // Primary planned vLLM chat model. Marked 'planned' until backend is up;
-  // becomes effectively 'active' when probeGatewayBackend reports ready.
-  const primary: GatewayModelRecord = backendType === 'ollama'
-    ? { alias: 'getouch-qwen3-14b', backendModel: 'qwen3:14b', type: 'chat', status: 'active', notes: 'Ollama fallback' }
-    : { alias: 'getouch-qwen3-14b', backendModel: 'Qwen/Qwen3-14B-FP8', type: 'chat', status: 'planned', notes: 'Primary vLLM chat target' };
+  const chatStatus: GatewayModelStatus = backendType === 'ollama' ? 'blocked' : 'planned';
+  const chatNotes = backendType === 'ollama'
+    ? 'Local chat aliases are reserved for the vLLM runtime. Switch the gateway backend back to vLLM before enabling them.'
+    : 'Primary local vLLM chat target.';
+
+  const primary: GatewayModelRecord[] = [
+    {
+      alias: GETOUCH_LOCAL_DEFAULT_ALIAS,
+      backendModel: GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+      type: 'chat',
+      status: chatStatus,
+      notes: `${chatNotes} Stable integration alias.`,
+    },
+    {
+      alias: GETOUCH_LOCAL_LITELLM_MODEL_ALIAS,
+      backendModel: GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+      type: 'chat',
+      status: chatStatus,
+      notes: `${chatNotes} Explicit model alias for direct checks.`,
+    },
+  ];
 
   // Future targets recorded for portal visibility but NOT served by default.
   // Exact HF model IDs are pending verification; do not hardcode until tested.
@@ -188,7 +209,7 @@ function defaultModelAliases(backendType: GatewayBackendType): GatewayModelRecor
     { alias: 'getouch-embed', backendModel: 'pending-verified-hf-id', type: 'embedding', status: 'planned', notes: 'Future Nomic embedding alias — separate /v1/embeddings endpoint' },
   ];
 
-  return [primary, ...future];
+  return [...primary, ...future];
 }
 
 function parseModelAliases(raw: string | undefined, backendType: GatewayBackendType): GatewayModelRecord[] {

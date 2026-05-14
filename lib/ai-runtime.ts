@@ -1,4 +1,12 @@
 import { spawn } from 'node:child_process';
+import {
+  GETOUCH_LOCAL_ALIAS_OPTIONS,
+  GETOUCH_LOCAL_DEFAULT_ALIAS,
+  GETOUCH_LOCAL_SOURCE_MODEL,
+  GETOUCH_LOCAL_VLLM_INTERNAL_ENDPOINT,
+  GETOUCH_LOCAL_VLLM_SERVICE_NAME,
+  GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+} from './local-ai-model';
 
 const DEFAULT_SSH_DIR = process.env.HOME ? `${process.env.HOME}/.ssh` : '/home/nextjs/.ssh';
 
@@ -15,12 +23,13 @@ const AI_RUNTIME_SSH_KNOWN_HOSTS_PATH = process.env.AI_RUNTIME_SSH_KNOWN_HOSTS_P
   || process.env.INFRA_METRICS_SSH_KNOWN_HOSTS_PATH
   || `${DEFAULT_SSH_DIR}/known_hosts`;
 
-const VLLM_SERVICE_NAME = 'vllm-qwen3-14b-fp8';
-const VLLM_MODEL = 'Qwen/Qwen3-14B-FP8';
-const VLLM_INTERNAL_ENDPOINT = 'http://vllm-qwen3-14b-fp8:8000/v1';
+const VLLM_SERVICE_NAME = GETOUCH_LOCAL_VLLM_SERVICE_NAME;
+const VLLM_SOURCE_MODEL = GETOUCH_LOCAL_SOURCE_MODEL;
+const VLLM_SERVED_MODEL = GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME;
+const VLLM_INTERNAL_ENDPOINT = GETOUCH_LOCAL_VLLM_INTERNAL_ENDPOINT;
 const LITELLM_MODEL_ALIAS = process.env.PLATFORM_LITELLM_MODEL_ALIAS
   || process.env.GETOUCH_LITELLM_MODEL_ALIAS
-  || 'getouch-qwen3-14b';
+  || GETOUCH_LOCAL_DEFAULT_ALIAS;
 const GRAFANA_GPU_URL = process.env.AI_RUNTIME_GRAFANA_GPU_URL || 'https://grafana.getouch.co';
 const MIN_FREE_VRAM_MIB_FOR_TRIAL = Number(process.env.AI_RUNTIME_MIN_FREE_VRAM_MIB || '12000');
 
@@ -194,7 +203,7 @@ function createFallbackAiRuntimeStatus(errorMessage: string | null, checkedAt = 
     },
     vllm: {
       status: 'Unknown',
-      intendedModel: VLLM_MODEL,
+      intendedModel: VLLM_SOURCE_MODEL,
       intendedEndpoint: VLLM_INTERNAL_ENDPOINT,
       publicExposure: 'No',
       containerStatus: 'unknown',
@@ -366,14 +375,15 @@ set -euo pipefail
 
 ACTION='${action}'
 VLLM_SERVICE='${VLLM_SERVICE_NAME}'
-VLLM_MODEL='${VLLM_MODEL}'
+VLLM_SOURCE_MODEL='${VLLM_SOURCE_MODEL}'
+VLLM_SERVED_MODEL='${VLLM_SERVED_MODEL}'
 VLLM_ENDPOINT='${VLLM_INTERNAL_ENDPOINT}'
 LITELLM_ALIAS='${LITELLM_MODEL_ALIAS}'
 MIN_FREE_VRAM_MIB='${String(MIN_FREE_VRAM_MIB_FOR_TRIAL)}'
 COMPOSE_FILE='/home/deploy/apps/getouch.co/compose.yaml'
 HF_CACHE_DIR='/srv/apps/ai/huggingface'
 PUBLIC_PORTS='80/tcp,443/tcp'
-export ACTION VLLM_SERVICE VLLM_MODEL VLLM_ENDPOINT LITELLM_ALIAS MIN_FREE_VRAM_MIB COMPOSE_FILE HF_CACHE_DIR PUBLIC_PORTS
+export ACTION VLLM_SERVICE VLLM_SOURCE_MODEL VLLM_SERVED_MODEL VLLM_ENDPOINT LITELLM_ALIAS MIN_FREE_VRAM_MIB COMPOSE_FILE HF_CACHE_DIR PUBLIC_PORTS
 
 json_escape() {
   python3 - <<'PY' "$1"
@@ -392,7 +402,8 @@ import subprocess
 from datetime import datetime, timezone
 
 VLLM_SERVICE = os.environ['VLLM_SERVICE']
-VLLM_MODEL = os.environ['VLLM_MODEL']
+VLLM_SOURCE_MODEL = os.environ['VLLM_SOURCE_MODEL']
+VLLM_SERVED_MODEL = os.environ['VLLM_SERVED_MODEL']
 VLLM_ENDPOINT = os.environ['VLLM_ENDPOINT']
 LITELLM_ALIAS = os.environ['LITELLM_ALIAS']
 MIN_FREE_VRAM_MIB = int(os.environ['MIN_FREE_VRAM_MIB'])
@@ -511,7 +522,7 @@ try:
         ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]
         result['modelsOk'] = 200 <= getattr(response, 'status', response.getcode()) < 300
         result['statusCode'] = getattr(response, 'status', response.getcode())
-        result['hasModel'] = """ + json.dumps(VLLM_MODEL) + """ in ids
+        result['hasModel'] = """ + json.dumps(VLLM_SERVED_MODEL) + """ in ids
         if result['modelsOk'] and not result['hasModel']:
             result['detail'] = 'expected_model_missing'
 except urllib.error.HTTPError as exc:
@@ -715,7 +726,7 @@ status = {
     },
     'vllm': {
         'status': 'Unknown',
-        'intendedModel': VLLM_MODEL,
+        'intendedModel': VLLM_SOURCE_MODEL,
         'intendedEndpoint': VLLM_ENDPOINT,
         'publicExposure': 'No',
         'containerStatus': 'missing',
@@ -1186,7 +1197,7 @@ case "$ACTION" in
     docker compose -f "$COMPOSE_FILE" up -d "$VLLM_SERVICE" >/dev/null 2>&1 || true
     ready=0
     for _ in $(seq 1 24); do
-      if docker exec "$VLLM_SERVICE" python3 -c "import json, os, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8); headers = {}; api_key = os.environ.get('VLLM_API_KEY'); headers = {'Authorization': 'Bearer ' + api_key} if api_key else {}; request = urllib.request.Request('http://127.0.0.1:8000/v1/models', headers=headers); payload = json.load(urllib.request.urlopen(request, timeout=8)); ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]; raise SystemExit(0 if '$VLLM_MODEL' in ids else 1)" >/dev/null 2>&1; then
+      if docker exec "$VLLM_SERVICE" python3 -c "import json, os, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8); headers = {}; api_key = os.environ.get('VLLM_API_KEY'); headers = {'Authorization': 'Bearer ' + api_key} if api_key else {}; request = urllib.request.Request('http://127.0.0.1:8000/v1/models', headers=headers); payload = json.load(urllib.request.urlopen(request, timeout=8)); ids = [str(item.get('id')) for item in payload.get('data', []) if isinstance(item, dict) and item.get('id')]; raise SystemExit(0 if '$VLLM_SERVED_MODEL' in ids else 1)" >/dev/null 2>&1; then
         ready=1
         break
       fi
@@ -1264,7 +1275,7 @@ export async function runAiRuntimeAction(action: Exclude<AiRuntimeAction, 'statu
 export const aiRuntimeMeta = {
   sshTarget: AI_RUNTIME_SSH_TARGET,
   vllmServiceName: VLLM_SERVICE_NAME,
-  vllmModel: VLLM_MODEL,
+  vllmModel: VLLM_SOURCE_MODEL,
   vllmEndpoint: VLLM_INTERNAL_ENDPOINT,
   minFreeVramMiBForTrial: MIN_FREE_VRAM_MIB_FOR_TRIAL,
 };

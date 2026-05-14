@@ -9,6 +9,14 @@ import {
 import { getAiRuntimeStatus, type AiRuntimeStatus } from './ai-runtime';
 import { getApiKeyPepperStatus, listApiKeys } from './api-keys';
 import { db } from './db';
+import {
+  GETOUCH_LOCAL_DEFAULT_ALIAS,
+  GETOUCH_LOCAL_LITELLM_MODEL_ALIAS,
+  GETOUCH_LOCAL_SOURCE_MODEL,
+  GETOUCH_LOCAL_VLLM_INTERNAL_ENDPOINT,
+  GETOUCH_LOCAL_VLLM_SERVICE_NAME,
+  GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME,
+} from './local-ai-model';
 import { apiKeyUsageLogs } from './schema';
 
 type VllmKeyRow = {
@@ -127,9 +135,11 @@ type RemoteVllmIntrospection = {
   backendVersion: string | null;
 };
 
-const VLLM_INTERNAL_BACKEND = 'http://vllm-qwen3-14b-fp8:8000/v1';
-const VLLM_PUBLIC_ALIAS = 'getouch-qwen3-14b';
-const VLLM_INTERNAL_MODEL = 'Qwen/Qwen3-14B-FP8';
+const VLLM_INTERNAL_BACKEND = GETOUCH_LOCAL_VLLM_INTERNAL_ENDPOINT;
+const VLLM_PUBLIC_ALIAS = GETOUCH_LOCAL_DEFAULT_ALIAS;
+const VLLM_EXPLICIT_ALIAS = GETOUCH_LOCAL_LITELLM_MODEL_ALIAS;
+const VLLM_INTERNAL_MODEL = GETOUCH_LOCAL_SOURCE_MODEL;
+const VLLM_SERVED_MODEL = GETOUCH_LOCAL_VLLM_SERVED_MODEL_NAME;
 const DEFAULT_SSH_DIR = process.env.HOME ? `${process.env.HOME}/.ssh` : '/home/nextjs/.ssh';
 const AI_RUNTIME_SSH_TARGET = process.env.AI_RUNTIME_SSH_TARGET
   || process.env.INFRA_METRICS_SSH_TARGET
@@ -188,7 +198,14 @@ function defaultGatewayStatus(errorMessage: string | null): GatewayStatus {
     models: [
       {
         alias: VLLM_PUBLIC_ALIAS,
-        backendModel: VLLM_INTERNAL_MODEL,
+        backendModel: VLLM_SERVED_MODEL,
+        type: 'chat',
+        status: 'planned',
+        notes: 'Gateway status unavailable.',
+      },
+      {
+        alias: VLLM_EXPLICIT_ALIAS,
+        backendModel: VLLM_SERVED_MODEL,
         type: 'chat',
         status: 'planned',
         notes: 'Gateway status unavailable.',
@@ -413,7 +430,7 @@ async function getSafeRemoteVllmIntrospection(): Promise<RemoteVllmIntrospection
     return {
       gatewayContainer: 'coolify-app-2',
       gatewayStartedAt: null,
-      backendContainer: 'vllm-qwen3-14b-fp8',
+      backendContainer: GETOUCH_LOCAL_VLLM_SERVICE_NAME,
       backendStartedAt: null,
       backendVersion: null,
     };
@@ -510,7 +527,7 @@ export function createDegradedVllmDashboardStatus(errorMessage?: string | null):
       providerBaseUrl: gateway.publicBaseUrl,
       providerBaseUrls: [],
       status: 'Unknown',
-      note: 'vLLM backend is not running yet. Open WebUI will not show getouch-qwen3-14b until /v1/models is available.',
+      note: `vLLM backend is not running yet. Open WebUI will not show ${VLLM_PUBLIC_ALIAS} until /v1/models is available.`,
     },
     providerBaseUrls: [],
     providerApiKeysConfigured: false,
@@ -692,7 +709,7 @@ function createFallbackRuntimeStatus(errorMessage: string | null): AiRuntimeStat
       network: null,
       openWebUiContainer: 'open-webui',
       ollamaContainer: 'ollama',
-      vllmContainer: 'vllm-qwen3-14b-fp8',
+      vllmContainer: GETOUCH_LOCAL_VLLM_SERVICE_NAME,
       publicExposureDetected: false,
     },
     host: {
@@ -743,7 +760,7 @@ async function getSafeAiRuntimeStatus(): Promise<AiRuntimeStatus> {
 function isVllmCentralKey(key: Awaited<ReturnType<typeof listApiKeys>>[number]) {
   const services = (key.services as string[] | null) ?? [];
   const scopes = (key.scopes as string[] | null) ?? [];
-  return services.includes('ai') || scopes.some((scope) => scope.startsWith('ai:') || scope === `model:${VLLM_PUBLIC_ALIAS}`);
+  return services.includes('ai') || scopes.some((scope) => scope.startsWith('ai:') || scope === `model:${VLLM_PUBLIC_ALIAS}` || scope === `model:${VLLM_EXPLICIT_ALIAS}`);
 }
 
 function toGatewayVersion() {
@@ -778,7 +795,7 @@ function deriveOpenWebUiStatus(runtime: AiRuntimeStatus, gateway: GatewayStatus)
   if (!gateway.backend.ready && !configured) {
     return {
       status: 'Not configured' as const,
-      note: 'vLLM backend is not running yet. Open WebUI will not show getouch-qwen3-14b until /v1/models is available.',
+      note: `vLLM backend is not running yet. Open WebUI will not show ${VLLM_PUBLIC_ALIAS} until /v1/models is available.`,
     };
   }
 
@@ -792,7 +809,7 @@ function deriveOpenWebUiStatus(runtime: AiRuntimeStatus, gateway: GatewayStatus)
   if (!gateway.backend.ready) {
     return {
       status: 'Backend not ready' as const,
-      note: 'vLLM backend is not running yet. Open WebUI will not show getouch-qwen3-14b until /v1/models is available.',
+      note: `vLLM backend is not running yet. Open WebUI will not show ${VLLM_PUBLIC_ALIAS} until /v1/models is available.`,
     };
   }
 
@@ -889,7 +906,7 @@ export async function getVllmDashboardStatus(): Promise<VllmDashboardStatus> {
     providerBaseUrls: normalizedRuntime.openWebUi.providerBaseUrls,
     providerApiKeysConfigured: normalizedRuntime.openWebUi.providerKeysConfigured > 0,
     openWebuiProviderStatus: toProviderState(openWebUi.status),
-    openWebuiProviderModels: gateway.backend.ready ? [VLLM_PUBLIC_ALIAS] : [],
+    openWebuiProviderModels: gateway.backend.ready ? [VLLM_PUBLIC_ALIAS, VLLM_EXPLICIT_ALIAS] : [],
     apiKeys: keys,
     recentRequests,
     usage: {
@@ -960,7 +977,7 @@ async function getRemoteVllmIntrospection(): Promise<RemoteVllmIntrospection> {
 set -euo pipefail
 
 APP_CONTAINER=$(docker ps --filter label=coolify.applicationId=2 --format '{{.Names}}' | head -n1 || true)
-BACKEND_CONTAINER='vllm-qwen3-14b-fp8'
+BACKEND_CONTAINER='${GETOUCH_LOCAL_VLLM_SERVICE_NAME}'
 
 gateway_started=''
 backend_started=''
@@ -1081,7 +1098,7 @@ print(json.dumps({"container": container, "lines": lines, "message": "OK"}))
 PY`
       : String.raw`
 set -euo pipefail
-CONTAINER='vllm-qwen3-14b-fp8'
+CONTAINER='${GETOUCH_LOCAL_VLLM_SERVICE_NAME}'
 if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
   python3 - <<'PY'
 import json

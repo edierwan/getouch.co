@@ -83,7 +83,7 @@ Scopes are namespaced strings. Wildcards (`ai:*`, `*`) are recognized by the val
 | Group | Scopes |
 |-------|--------|
 | `ai` | `ai:chat`, `ai:embed`, `ai:models`, `ai:admin` |
-| `model` | `model:getouch-qwen3-14b`, `model:getouch-qwen3-30b`, `model:getouch-embed`, `model:ollama`, `model:vllm` |
+| `model` | `model:getouch-local-chat`, `model:getouch-qwen3-8b`, `model:getouch-qwen3-30b`, `model:getouch-embed`, `model:ollama`, `model:vllm` |
 | `whatsapp` | `whatsapp:send`, `whatsapp:read`, `whatsapp:session`, `whatsapp:webhook`, `whatsapp:admin` |
 | `voice` | `voice:call`, `voice:broadcast`, `voice:logs`, `voice:admin` |
 | `webhook` | `webhook:receive`, `webhook:send`, `webhook:manage` |
@@ -95,7 +95,7 @@ Recommended scopes for the current vLLM public gateway page:
 
 - `ai:chat`
 - `ai:models`
-- `model:getouch-qwen3-14b`
+- `model:getouch-local-chat`
 
 These are prefilled by the `/ai/vllm` create-key flow.
 

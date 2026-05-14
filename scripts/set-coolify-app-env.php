@@ -127,6 +127,7 @@ if ($value === '' && ! array_key_exists('allow-empty', $options)) {
     fail('Refusing to set an empty value without --allow-empty.', USAGE_ERROR);
 }
 
+require '/var/www/html/vendor/autoload.php';
 $app = require '/var/www/html/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 

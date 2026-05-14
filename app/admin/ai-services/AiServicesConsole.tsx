@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import {
+  GETOUCH_LOCAL_DEFAULT_ALIAS,
+  GETOUCH_LOCAL_LITELLM_MODEL_ALIAS,
+  GETOUCH_LOCAL_MODEL_DISPLAY_NAME,
+} from '@/lib/local-ai-model';
 import { SummaryGrid } from '../ui';
 
 type AiRuntimeStatus = {
@@ -205,7 +210,7 @@ const ACTIONS: Record<ActionKey, RuntimeAction> = {
   start: {
     key: 'start',
     title: 'Start vLLM Trial',
-    description: 'This starts the internal-only vLLM trial for Qwen/Qwen3-14B-FP8. It is not a parallel production mode.',
+    description: `This starts the internal-only vLLM runtime for ${GETOUCH_LOCAL_MODEL_DISPLAY_NAME}. It is not a parallel production mode.`,
     warnings: [
       'Unload the current Ollama resident model first to free GPU memory.',
       'If VRAM is still insufficient, vLLM may fail or enter a restart loop.',
@@ -447,7 +452,7 @@ export function AiServicesConsole() {
       },
       {
         name: 'vLLM',
-        description: 'OpenAI-compatible inference backend for Qwen/Qwen3-14B-FP8 trial.',
+        description: `OpenAI-compatible inference backend for ${GETOUCH_LOCAL_MODEL_DISPLAY_NAME}.`,
         type: 'INFERENCE',
         status: status.vllm.status.toUpperCase(),
         tone: toneForVllm(status.vllm.status),
@@ -726,7 +731,7 @@ export function AiServicesConsole() {
           <div className="portal-info-table-row"><span className="portal-info-table-label">Ollama models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{formatProviderModels('ollama', status.ollama.installedModels)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant models</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.models.length ? status.assistant.models.map((model) => formatAssistantModelLabel(model.displayName)).join(', ') : status.assistant.error || 'None reported'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Assistant default in Open WebUI</span><span className="portal-info-table-value portal-ai-runtime-wrap">{status.assistant.defaultModelId ? `assistant:${status.assistant.defaultModelId}` : 'Not set'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Planned vLLM alias</span><span className="portal-info-table-value">vllm:getouch-qwen3-14b {status.vllm.configuredInCompose ? '· configured' : '· planned / not deployed'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Planned vLLM aliases</span><span className="portal-info-table-value">vllm:{GETOUCH_LOCAL_DEFAULT_ALIAS}, vllm:{GETOUCH_LOCAL_LITELLM_MODEL_ALIAS} {status.vllm.configuredInCompose ? '· configured' : '· planned / not deployed'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Provider routing</span><span className="portal-info-table-value portal-ai-runtime-wrap">Open WebUI currently resolves through Ollama plus assistant/pipeline providers. vLLM remains a future routed backend until deployment is approved.</span></div>
         </div>
       </section>
@@ -853,14 +858,14 @@ export function AiServicesConsole() {
 
         <section id="ai-api-gateway-docs" className="portal-ai-runtime-section portal-ai-gateway-docs">
           <h4 className="portal-panel-label">API DOCS</h4>
-          <div className="portal-ai-runtime-inline-copy">Client apps should call the public alias `getouch-qwen3-14b`. The gateway maps that alias to the current backend model.</div>
+          <div className="portal-ai-runtime-inline-copy">Client apps should call the stable public alias `{GETOUCH_LOCAL_DEFAULT_ALIAS}`. The explicit operator alias `{GETOUCH_LOCAL_LITELLM_MODEL_ALIAS}` stays available for direct checks.</div>
           <div className="portal-dify-code-block portal-ai-code-block">{`curl ${gatewayStatus.publicBaseUrl}/models \
   -H "Authorization: Bearer <GETOUCH_VLLM_API_KEY>"`}</div>
           <div className="portal-dify-code-block portal-ai-code-block">{`curl ${gatewayStatus.publicBaseUrl}/chat/completions \
   -H "Authorization: Bearer <GETOUCH_VLLM_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "getouch-qwen3-14b",
+    "model": "getouch-local-chat",
     "messages": [
       {
         "role": "user",

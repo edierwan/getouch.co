@@ -1,3 +1,5 @@
+import { GETOUCH_LOCAL_DEFAULT_ALIAS } from './local-ai-model';
+
 type LiteLlmProbeStatus = 'ready' | 'route_missing' | 'manual_action_required' | 'degraded' | 'not_configured';
 
 type JsonRecord = Record<string, unknown>;
@@ -33,7 +35,7 @@ export type PlatformAiForwardInput = {
 
 export const DEFAULT_PLATFORM_LITELLM_BASE_URL = 'https://litellm.getouch.co/v1';
 export const DEFAULT_PLATFORM_LITELLM_INTERNAL_BASE_URL = 'http://litellm:4000/v1';
-export const DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS = 'getouch-qwen3-14b';
+export const DEFAULT_PLATFORM_LITELLM_MODEL_ALIAS = GETOUCH_LOCAL_DEFAULT_ALIAS;
 
 function pickEnv(...names: string[]) {
   for (const name of names) {

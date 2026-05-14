@@ -53,7 +53,7 @@ docker cp scripts/set-coolify-app-env.php coolify:/tmp/set-coolify-app-env.php
 docker exec coolify php /tmp/set-coolify-app-env.php \
   --app-id 2 \
   --key GETOUCH_LITELLM_MODEL_ALIAS \
-  --value getouch-qwen3-14b
+  --value getouch-local-chat
 
 # Secret example: prefer stdin or a file over --value.
 printf '%s' "$GETOUCH_LITELLM_API_KEY" | docker exec -i coolify php /tmp/set-coolify-app-env.php \
