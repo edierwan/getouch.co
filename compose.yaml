@@ -295,7 +295,7 @@ services:
         --served-model-name getouch-qwen3-8b
         --max-model-len 8192
         --enforce-eager
-        --gpu-memory-utilization 0.85
+        --gpu-memory-utilization 0.75
         $${VLLM_API_KEY:+--api-key "$$VLLM_API_KEY"}
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\" || exit 1"]
