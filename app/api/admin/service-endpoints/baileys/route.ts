@@ -15,14 +15,23 @@ export const dynamic = 'force-dynamic';
 
 interface WaSession {
   id: string;
+  sessionId?: string;
   status: string;
   qrAvailable?: boolean;
   phone?: string | null;
+  phoneNumber?: string | null;
   user?: { id?: string; name?: string } | null;
   lastActivityAt?: string | null;
+  lastSeenAt?: string | null;
   createdAt?: string | null;
   messages24h?: { inbound?: number; outbound?: number };
   tenantId?: string | null;
+}
+
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+function isValidPortalSessionId(id: string): boolean {
+  return SESSION_ID_RE.test(id);
 }
 
 interface WaSessionsList {
@@ -107,19 +116,24 @@ export async function GET() {
   };
 
   const dbSessionMap = new Map(dbData.sessions.map((session) => [session.id, session]));
-  const sessions = runtimeSessions.map((session) => {
-    const mirrored = dbSessionMap.get(session.id);
+  const sessions = runtimeSessions
+    .map((session) => {
+      const sessionId = session.id ?? session.sessionId ?? '';
+      if (!sessionId) return null;
+
+      const mirrored = dbSessionMap.get(sessionId);
     return {
-      id: session.id,
+      id: sessionId,
       status: session.status,
       qrAvailable: Boolean(session.qrAvailable),
-      phone: session.phone ?? session.user?.id ?? mirrored?.phone ?? null,
+      phone: session.phone ?? session.phoneNumber ?? session.user?.id ?? mirrored?.phone ?? null,
       tenantId: session.tenantId ?? mirrored?.tenantId ?? null,
-      lastActivityAt: session.lastActivityAt ?? mirrored?.lastActivityAt ?? null,
+      lastActivityAt: session.lastActivityAt ?? session.lastSeenAt ?? mirrored?.lastActivityAt ?? null,
       messages24h: (session.messages24h?.inbound ?? 0) + (session.messages24h?.outbound ?? 0),
       source: 'baileys_runtime' as const,
     };
-  });
+    })
+    .filter((session): session is NonNullable<typeof session> => Boolean(session));
 
   const baileysKeys = keysList
     .filter((key) => {
@@ -326,11 +340,9 @@ export async function POST(req: NextRequest) {
   const sessionId = body.sessionId != null ? String(body.sessionId) : '';
 
   // Slugify session ID server-side as a defence in depth.
-  const isValidSessionId = (id: string) => /^[a-z0-9_-]{1,40}$/.test(id);
-
   switch (action) {
     case 'create_session': {
-      if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
+      if (!isValidPortalSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const tenantId = body.tenantId != null ? String(body.tenantId) : undefined;
       const purpose = body.purpose != null ? String(body.purpose) : undefined;
       const notes = body.notes != null ? String(body.notes) : undefined;
@@ -338,17 +350,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }
     case 'reset_session': {
-      if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
+      if (!isValidPortalSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const r = await waProxy(`/admin/sessions/${encodeURIComponent(sessionId)}/reset`, { method: 'POST' });
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }
     case 'delete_session': {
-      if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
+      if (!isValidPortalSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const r = await waProxy(`/admin/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }
     case 'send_test': {
-      if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
+      if (!isValidPortalSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const to = String(body.to ?? '').trim();
       const text = String(body.text ?? '').trim();
       if (!to || !text) return NextResponse.json({ error: 'missing_to_or_text' }, { status: 400 });
@@ -360,7 +372,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
     }
     case 'pairing_code': {
-      if (!isValidSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
+      if (!isValidPortalSessionId(sessionId)) return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
       const phone = String(body.phone ?? '').trim();
       if (!phone) return NextResponse.json({ error: 'missing_phone' }, { status: 400 });
       const r = await waProxy(`/api/pairing-code`, { query: { phone, session: sessionId } });

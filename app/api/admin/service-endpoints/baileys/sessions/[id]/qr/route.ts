@@ -4,6 +4,8 @@ import { requireAdmin, waProxy } from '../../../_helpers';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
 interface Ctx { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, ctx: Ctx) {
@@ -11,7 +13,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   if (auth.error) return auth.error;
 
   const { id } = await ctx.params;
-  if (!/^[a-z0-9_-]{1,40}$/.test(id)) {
+  if (!SESSION_ID_RE.test(id)) {
     return NextResponse.json({ error: 'invalid_session_id' }, { status: 400 });
   }
   const r = await waProxy<{ qr?: string | null; status?: string }>(`/admin/sessions/${encodeURIComponent(id)}/qr`);
