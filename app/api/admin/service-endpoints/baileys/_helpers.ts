@@ -15,6 +15,7 @@ import { getSession } from '@/lib/auth';
 export const WA_BASE_URL = process.env.WA_URL || 'http://baileys-gateway:3001';
 export const WA_API_KEY = process.env.WA_API_KEY || '';
 export const WA_ADMIN_KEY = process.env.WA_ADMIN_KEY || process.env.WA_API_KEY || '';
+export const WA_WAPI_SECRET = process.env.WAPI_SECRET || '';
 export const WA_PUBLIC_URL = process.env.WA_PUBLIC_URL || 'https://wa.getouch.co';
 export const BAILEYS_DB_NAME = process.env.BAILEYS_DB_NAME || 'baileys';
 export const BAILEYS_DB_URL = process.env.BAILEYS_DATABASE_URL || '';
@@ -34,7 +35,7 @@ export interface WaProxyOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Optional override for which key header to send. */
-  auth?: 'api' | 'admin';
+  auth?: 'api' | 'admin' | 'wapi';
   /** Forward additional query string. */
   query?: Record<string, string | number | boolean | undefined | null>;
 }
@@ -56,6 +57,9 @@ export async function waProxy<T = unknown>(path: string, opts: WaProxyOptions = 
   if (!isWaConfigured()) {
     return { ok: false, status: 503, data: null, error: 'wa_runtime_not_configured' };
   }
+  if (opts.auth === 'wapi' && !WA_WAPI_SECRET) {
+    return { ok: false, status: 503, data: null, error: 'wa_wapi_secret_not_configured' };
+  }
 
   const url = new URL(path.startsWith('http') ? path : `${WA_BASE_URL}${path}`);
   if (opts.query) {
@@ -66,11 +70,15 @@ export async function waProxy<T = unknown>(path: string, opts: WaProxyOptions = 
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const isAdminPath = url.pathname === '/admin' || url.pathname.startsWith('/admin/');
-  const useAdmin = (opts.auth === 'admin' || (opts.auth !== 'api' && isAdminPath)) && WA_ADMIN_KEY;
-  if (useAdmin) {
-    headers['X-Admin-Key'] = WA_ADMIN_KEY;
+  if (opts.auth === 'wapi') {
+    headers['X-WAPI-Secret'] = WA_WAPI_SECRET;
   } else {
-    headers['X-API-Key'] = WA_API_KEY;
+    const useAdmin = (opts.auth === 'admin' || (opts.auth !== 'api' && isAdminPath)) && WA_ADMIN_KEY;
+    if (useAdmin) {
+      headers['X-Admin-Key'] = WA_ADMIN_KEY;
+    } else {
+      headers['X-API-Key'] = WA_API_KEY;
+    }
   }
 
   try {

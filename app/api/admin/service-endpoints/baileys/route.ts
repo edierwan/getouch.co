@@ -367,6 +367,7 @@ export async function POST(req: NextRequest) {
       // Use the per-session messages endpoint exposed by the wa runtime.
       const r = await waProxy(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
         method: 'POST',
+        auth: 'wapi',
         body: { to, text },
       });
       return NextResponse.json({ ok: r.ok, status: r.status, data: r.data, error: r.error }, { status: r.ok ? 200 : 502 });
