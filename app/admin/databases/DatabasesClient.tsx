@@ -20,8 +20,8 @@ const BACKUP_RETENTION_DAYS = 4;
 
 const PGADMIN_URL = 'https://db.getouch.co';
 const QDRANT_UI_URL = 'https://qdrant.getouch.co/dashboard';
-const SUPABASE_SSO_STUDIO = 'https://st-sso.getouch.co';
-const SUPABASE_PREPROD_STUDIO = 'https://st-stg-serapod.getouch.co';
+const SUPABASE_SSO_STUDIO = 'https://sb-sso.getouch.co';
+const SUPABASE_PREPROD_STUDIO = 'https://sb-stg-serapod.getouch.co';
 
 type TabId = 'overview' | 'databases' | 'supabase' | 'storage' | 'qdrant' | 'backups';
 
