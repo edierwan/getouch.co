@@ -323,7 +323,7 @@ export const DATABASE_ROWS: ResourceRow[] = [
     type: 'AUTH',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-sso.getouch.co',
+    href: 'https://sb-sso.getouch.co',
   },
   {
     name: 'Serapod Preprod',
@@ -407,10 +407,10 @@ export const DATABASE_MODULES: InfrastructureModule[] = [
     eyebrow: 'AUTH',
     title: 'Getouch SSO',
     description: 'Shared authentication, Studio, and API entrypoint for the wider getouch ecosystem.',
-    footer: 'st-sso.getouch.co',
+    footer: 'sb-sso.getouch.co',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-sso.getouch.co',
+    href: 'https://sb-sso.getouch.co',
   },
   {
     eyebrow: 'BAAS',
@@ -439,7 +439,7 @@ export const BAAS_ROWS: ResourceRow[] = [
     type: 'BAAS',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-sso.getouch.co',
+    href: 'https://sb-sso.getouch.co',
   },
   {
     name: 'Serapod Preprod',
@@ -467,7 +467,7 @@ export const BAAS_MODULES: InfrastructureModule[] = [
     footer: 'Shared operator auth stack',
     status: 'ONLINE',
     tone: 'healthy',
-    href: 'https://st-sso.getouch.co',
+    href: 'https://sb-sso.getouch.co',
   },
   {
     eyebrow: 'BAAS',
