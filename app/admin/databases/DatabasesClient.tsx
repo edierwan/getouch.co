@@ -2,18 +2,23 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PreprodBackupEntry, PreprodBackupOverview } from '@/lib/preprod-backups';
+import type { DatabaseProbes } from '@/lib/database-probes';
 import {
   describeClickHouse,
   describeLangfuse,
+  describeLiteLlm,
   describeRedis,
+  describeServiceProbe,
+  getCatalogService,
   type PlatformServicesSnapshot,
   type PlatformTone,
 } from '@/lib/platform-service-shared';
 import { Breadcrumb, PageIntro, SummaryGrid } from '../ui';
 import { ObjectStorageConsole } from '../service-endpoints/object-storage/ObjectStorageConsole';
 import { BackupNowForm, RestoreBackupDialog } from './DatabaseActions';
+import { SUPABASE_STACKS } from './supabase-stacks';
 
 const FALLBACK_TIME_ZONE = 'Asia/Kuala_Lumpur';
 const BACKUP_RETENTION_DAYS = 4;
@@ -167,50 +172,33 @@ function buildSummaryCards({
   ];
 }
 
-interface SupabaseStack {
-  id: string;
-  name: string;
-  environment: string;
-  status: string;
-  tone: PlatformTone;
-  studioUrl: string;
-  apiUrl?: string;
-  description: string;
-}
 
-const SUPABASE_STACKS: SupabaseStack[] = [
-  {
-    id: 'sso',
-    name: 'Getouch SSO',
-    environment: 'Production',
-    status: 'ONLINE',
-    tone: 'healthy',
-    studioUrl: SUPABASE_SSO_STUDIO,
-    apiUrl: 'https://sb-sso.getouch.co',
-    description: 'Central shared sign-in and identity provider for Getouch services.',
-  },
-  {
-    id: 'preprod',
-    name: 'Serapod Preprod',
-    environment: 'Preprod',
-    status: 'ONLINE',
-    tone: 'active',
-    studioUrl: SUPABASE_PREPROD_STUDIO,
-    apiUrl: 'https://sb-stg-serapod.getouch.co',
-    description: 'Isolated Supabase stack for Serapod product preprod.',
-  },
-];
+// SERAPOD-INFRA-007: live (probed) statuses shared with the tab components.
+type LiveStatus = {
+  probes: DatabaseProbes;
+  litellmStatus: { tone: PlatformTone; label: string };
+  qdrantStatus: { tone: PlatformTone; label: string };
+  stackStatus: (id: string) => { tone: PlatformTone; label: string };
+};
+const LiveStatusContext = createContext<LiveStatus | null>(null);
+function useLiveStatus(): LiveStatus {
+  const value = useContext(LiveStatusContext);
+  if (!value) throw new Error('LiveStatusContext missing');
+  return value;
+}
 
 export function DatabasesClient({
   initialOverview,
   initialNotice,
   initialError,
   platform,
+  probes,
 }: {
   initialOverview: PreprodBackupOverview | null;
   initialNotice?: string;
   initialError?: string;
   platform: PlatformServicesSnapshot;
+  probes: DatabaseProbes;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -251,6 +239,10 @@ export function DatabasesClient({
   const langfuseStatus = describeLangfuse(platform);
   const clickhouseStatus = describeClickHouse(platform);
   const redisStatus = describeRedis(platform);
+  const litellmStatus = describeLiteLlm(platform);
+  const qdrantStatus = describeServiceProbe(getCatalogService(platform, 'qdrant'));
+  const stackStatus = (id: string) =>
+    probes.supabase[id] ?? { label: 'UNKNOWN', tone: 'info' as PlatformTone, detail: 'No probe result.' };
 
   const filteredEntries = useMemo(
     () => filterRecentBackups(overview?.entries || [], BACKUP_RETENTION_DAYS),
@@ -286,7 +278,10 @@ export function DatabasesClient({
 
   const switchTab = useCallback((next: TabId) => setTab(next), []);
 
+  const live: LiveStatus = { probes, litellmStatus, qdrantStatus, stackStatus };
+
   return (
+    <LiveStatusContext.Provider value={live}>
     <div className="portal-body">
       <Breadcrumb category="Infra & Persistence" page="Databases" />
       <PageIntro
@@ -391,6 +386,7 @@ export function DatabasesClient({
 
       <DatabasesPageStyles />
     </div>
+    </LiveStatusContext.Provider>
   );
 }
 
@@ -403,6 +399,7 @@ function OverviewTab({
   latestLabel: string;
   onSelectTab: (id: TabId) => void;
 }) {
+  const { stackStatus, litellmStatus } = useLiveStatus();
   return (
     <div className="portal-db-overview-grid">
       <section className="portal-panel">
@@ -441,7 +438,7 @@ function OverviewTab({
               actionLabel="Open Studio"
               actionHref={stack.studioUrl}
               external
-              badge={statusBadge(stack.tone, stack.status)}
+              badge={statusBadge(stackStatus(stack.id).tone, stackStatus(stack.id).label)}
             />
           ))}
           <SurfaceRow
@@ -456,7 +453,7 @@ function OverviewTab({
             name="LiteLLM DB"
             description="Model gateway config DB"
             meta="Database: litellm"
-            badge={<span className="portal-status portal-status-good">ONLINE</span>}
+            badge={statusBadge(litellmStatus.tone, litellmStatus.label)}
           />
           <SurfaceRow
             icon="⟷"
@@ -600,6 +597,7 @@ function DatabasesTab({
   redisStatus: { tone: PlatformTone; label: string };
 }) {
   const clickhousePrimary = platform.clickhouse.containers[0] || null;
+  const { probes, litellmStatus, qdrantStatus } = useLiveStatus();
 
   return (
     <section className="portal-panel">
@@ -613,7 +611,7 @@ function DatabasesTab({
         <section className="portal-panel">
           <div className="portal-detail-head">
             <h3 className="portal-detail-title">PostgreSQL 16</h3>
-            <span className="portal-status portal-status-good">HEALTHY</span>
+            {statusBadge(probes.postgres.tone, probes.postgres.label)}
           </div>
           <div className="portal-info-table">
             <div className="portal-info-table-row">
@@ -634,7 +632,7 @@ function DatabasesTab({
         <section className="portal-panel">
           <div className="portal-detail-head">
             <h3 className="portal-detail-title">pgAdmin 4</h3>
-            <span className="portal-status portal-status-good">ONLINE</span>
+            {statusBadge(probes.pgadmin.tone, probes.pgadmin.label)}
           </div>
           <div className="portal-info-table">
             <div className="portal-info-table-row">
@@ -680,7 +678,7 @@ function DatabasesTab({
         <section className="portal-panel">
           <div className="portal-detail-head">
             <h3 className="portal-detail-title">LiteLLM DB</h3>
-            <span className="portal-status portal-status-good">ONLINE</span>
+            {statusBadge(litellmStatus.tone, litellmStatus.label)}
           </div>
           <div className="portal-info-table">
             <div className="portal-info-table-row">
@@ -776,7 +774,7 @@ function DatabasesTab({
         <section className="portal-panel">
           <div className="portal-detail-head">
             <h3 className="portal-detail-title">Qdrant</h3>
-            <span className="portal-status portal-status-active">ONLINE</span>
+            {statusBadge(qdrantStatus.tone, qdrantStatus.label)}
           </div>
           <div className="portal-info-table">
             <div className="portal-info-table-row">
@@ -807,6 +805,7 @@ function DatabasesTab({
 }
 
 function SupabaseTab() {
+  const { stackStatus } = useLiveStatus();
   return (
     <section className="portal-panel">
       <div className="portal-panel-head">
@@ -822,7 +821,7 @@ function SupabaseTab() {
           <section key={stack.id} className="portal-panel">
             <div className="portal-detail-head">
               <h3 className="portal-detail-title">{stack.name}</h3>
-              {statusBadge(stack.tone, stack.status)}
+              {statusBadge(stackStatus(stack.id).tone, stackStatus(stack.id).label)}
             </div>
             <div className="portal-info-table">
               <div className="portal-info-table-row">

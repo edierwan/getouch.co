@@ -159,16 +159,19 @@ export default function ServersClient({
     .filter((value) => value !== 'Unavailable')
     .join(' · ');
 
+  // SERAPOD-INFRA-007: previously hardcoded HEALTHY with stale versions (Caddy was retired 2026-06-05).
+  // Only Docker has evidence on this page; the rest are monitored by host alerts, not by the portal.
   const runtimeStack = useMemo(
     () => [
-      { name: 'Coolify', detail: 'v4.0.0', tone: 'healthy' as StatusTone, status: 'HEALTHY' },
-      { name: 'Docker Engine', detail: '24.0.7', tone: 'healthy' as StatusTone, status: 'HEALTHY' },
-      { name: 'Caddy (Reverse Proxy)', detail: '2.7.6', tone: 'healthy' as StatusTone, status: 'HEALTHY' },
-      { name: 'Background Workers', detail: 'active', tone: 'healthy' as StatusTone, status: 'HEALTHY' },
-      { name: 'Tailscale', detail: 'connected', tone: 'active' as StatusTone, status: 'CONNECTED' },
-      { name: 'Cloudflare Tunnel', detail: 'active', tone: 'active' as StatusTone, status: 'ACTIVE' },
+      runningContainers != null && runningContainers > 0
+        ? { name: 'Docker Engine', detail: `${runningContainers} containers running`, tone: 'healthy' as StatusTone, status: 'RUNNING' }
+        : { name: 'Docker Engine', detail: 'no container data', tone: 'warning' as StatusTone, status: 'UNKNOWN' },
+      { name: 'Traefik (coolify-proxy)', detail: 'monitored by host alerts', tone: 'info' as StatusTone, status: 'NOT PROBED' },
+      { name: 'Coolify', detail: 'monitored by host alerts', tone: 'info' as StatusTone, status: 'NOT PROBED' },
+      { name: 'Cloudflare Tunnel', detail: 'monitored by host alerts', tone: 'info' as StatusTone, status: 'NOT PROBED' },
+      { name: 'Tailscale', detail: 'monitored by host alerts', tone: 'info' as StatusTone, status: 'NOT PROBED' },
     ],
-    []
+    [runningContainers]
   );
 
   const alerts = useMemo(() => {
