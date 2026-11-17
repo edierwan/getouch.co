@@ -315,9 +315,23 @@ function buttonClass(tone: RuntimeAction['tone']) {
   return 'portal-admin-btn portal-admin-btn-primary';
 }
 
+// SERAPOD-INFRA-007: status for link-only services comes from /api/admin/service-reachability.
+function reachLabel(reach: Record<string, { reachable: boolean; code: number | null }> | null, key: string) {
+  if (!reach) return 'CHECKING';
+  const r = reach[key];
+  if (!r) return 'UNKNOWN';
+  return r.reachable ? 'REACHABLE' : `UNREACHABLE${r.code ? ` (${r.code})` : ''}`;
+}
+
+function reachTone(reach: Record<string, { reachable: boolean; code: number | null }> | null, key: string): 'healthy' | 'active' | 'warning' {
+  if (!reach || !reach[key]) return 'active';
+  return reach[key].reachable ? 'healthy' : 'warning';
+}
+
 export function AiServicesConsole() {
   const [status, setStatus] = useState<AiRuntimeStatus | null>(null);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
+  const [reach, setReach] = useState<Record<string, { reachable: boolean; code: number | null }> | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -350,6 +364,10 @@ export function AiServicesConsole() {
 
       setStatus(runtimePayload);
       setGatewayStatus(gatewayPayload);
+      // SERAPOD-INFRA-007: live reachability for link-only services (non-fatal if it fails).
+      fetchJson<{ services: Record<string, { reachable: boolean; code: number | null }> }>('/api/admin/service-reachability')
+        .then((payload) => setReach(payload.services))
+        .catch(() => setReach({}));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load AI services status');
     } finally {
@@ -415,8 +433,8 @@ export function AiServicesConsole() {
         name: 'Dify',
         description: 'Standard self-hosted Dify workspace and application UI.',
         type: 'ORCHESTRATION',
-        status: 'ONLINE',
-        tone: 'healthy' as const,
+        status: reachLabel(reach, 'dify'),
+        tone: reachTone(reach, 'dify'),
         href: 'https://dify.getouch.co',
         detail: 'Existing orchestration workspace remains unchanged.',
       },
@@ -424,8 +442,8 @@ export function AiServicesConsole() {
         name: 'MCP',
         description: 'Public developer page and bearer-authenticated Streamable HTTP endpoint.',
         type: 'PROTOCOL',
-        status: 'ONLINE',
-        tone: 'healthy' as const,
+        status: reachLabel(reach, 'mcp'),
+        tone: reachTone(reach, 'mcp'),
         href: 'https://mcp.getouch.co',
         detail: 'Public root page plus `/mcp` bearer endpoint with central API key validation.',
       },
@@ -467,8 +485,8 @@ export function AiServicesConsole() {
         name: 'SearXNG',
         description: 'Private search stack used by AI workflows.',
         type: 'SEARCH',
-        status: 'ACTIVE',
-        tone: 'active' as const,
+        status: reachLabel(reach, 'searxng'),
+        tone: reachTone(reach, 'searxng'),
         href: 'https://search.getouch.co',
         detail: 'Search and RAG augmentation remain unchanged.',
       },
@@ -483,7 +501,7 @@ export function AiServicesConsole() {
           : status.assistant.error || 'Pipeline routing stays on the existing Open WebUI path.',
       },
     ];
-  }, [status, gatewayStatus]);
+  }, [status, gatewayStatus, reach]);
 
   const assistantNamingWarning = useMemo(() => {
     if (!status) return null;

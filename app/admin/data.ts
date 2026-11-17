@@ -84,7 +84,8 @@ const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
-const N8N_URL = 'https://n8n.getouch.my';
+// SERAPOD-INFRA-007: n8n.getouch.my resolves to another (unreachable) server; the n8n on this VPS is news-flow.
+const N8N_URL = 'https://n8n.getouch.co';
 const OPEN_WEBUI_URL = 'https://ai.getouch.co';
 
 export const ADMIN_NAV: NavSection[] = [
@@ -104,7 +105,8 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'LiteLLM Gateway', href: LITELLM_URL, icon: '◎', external: true },
       { label: 'n8n Workflows', href: N8N_URL, icon: '⇄', external: true },
-      { label: 'Airbyte', href: AIRBYTE_URL, icon: '⟷', external: true },
+      // SERAPOD-INFRA-007: no Airbyte runtime is provisioned on the VPS (DNS only). Shown disabled, not as a live link.
+      { label: 'Airbyte · not provisioned', href: AIRBYTE_URL, icon: '⟷', external: true, disabled: true },
       { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
       { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
       { label: 'Webhooks', href: '/admin/automation/webhooks', icon: '↺' },
@@ -728,7 +730,7 @@ export const QUICK_LINK_GROUPS: QuickLinkGroup[] = [
     links: [
       { label: 'pgAdmin', href: 'https://db.getouch.co', external: true },
       { label: 'Grafana', href: 'https://grafana.getouch.co', external: true },
-      { label: 'Analytics', href: 'https://analytics.getouch.co', external: true },
+      // SERAPOD-INFRA-007: Analytics (Umami) removed — no runtime is deployed (database only).
     ],
   },
   {

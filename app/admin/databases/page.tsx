@@ -1,6 +1,8 @@
 import { DatabasesClient } from './DatabasesClient';
 import { getPreprodBackupOverview } from '@/lib/preprod-backups';
 import { getPlatformServicesSnapshot } from '@/lib/platform-services';
+import { getDatabaseProbes } from '@/lib/database-probes';
+import { SUPABASE_GATEWAY_TARGETS } from './supabase-stacks';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +21,10 @@ export async function renderDatabasesPage({
 
   let overview = null;
   let overviewError = '';
-  const platform = await getPlatformServicesSnapshot();
+  const [platform, probes] = await Promise.all([
+    getPlatformServicesSnapshot(),
+    getDatabaseProbes(SUPABASE_GATEWAY_TARGETS),
+  ]);
 
   try {
     overview = await getPreprodBackupOverview();
@@ -33,6 +38,7 @@ export async function renderDatabasesPage({
       initialNotice={resolvedSearchParams.notice}
       initialError={resolvedSearchParams.error || overviewError}
       platform={platform}
+      probes={probes}
     />
   );
 }
