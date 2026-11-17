@@ -51,7 +51,7 @@ const FALLBACK_CATALOG_URLS: Record<string, string> = {
   'object-storage': 'https://s3.getouch.co',
 };
 
-function runRemoteScript(script: string): Promise<string> {
+export function runRemoteScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       'ssh',

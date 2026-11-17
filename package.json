@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "verify:portal-preprod-backups": "node scripts/verify-portal-preprod-backups.mjs",
-    "verify:live-deploy": "bash scripts/verify-live-deploy.sh"
+    "verify:live-deploy": "bash scripts/verify-live-deploy.sh",
+    "test": "node --test --experimental-strip-types --no-warnings tests/*.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",

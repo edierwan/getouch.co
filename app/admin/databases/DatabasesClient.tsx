@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PreprodBackupEntry, PreprodBackupOverview } from '@/lib/preprod-backups';
 import type { DatabaseProbes } from '@/lib/database-probes';
+import type { SupabaseHealthReport, SupabaseStackHealth } from '@/lib/supabase-stack-health';
+import { STUDIO_NOT_CONFIGURED } from '@/lib/supabase-health-classify';
 import {
   describeClickHouse,
   describeLangfuse,
@@ -25,8 +27,6 @@ const BACKUP_RETENTION_DAYS = 4;
 
 const PGADMIN_URL = 'https://db.getouch.co';
 const QDRANT_UI_URL = 'https://qdrant.getouch.co/dashboard';
-const SUPABASE_SSO_STUDIO = 'https://sb-sso.getouch.co';
-const SUPABASE_PREPROD_STUDIO = 'https://sb-stg-serapod.getouch.co';
 
 type TabId = 'overview' | 'databases' | 'supabase' | 'storage' | 'qdrant' | 'backups';
 
@@ -179,6 +179,7 @@ type LiveStatus = {
   litellmStatus: { tone: PlatformTone; label: string };
   qdrantStatus: { tone: PlatformTone; label: string };
   stackStatus: (id: string) => { tone: PlatformTone; label: string };
+  stackHealth: (id: string) => SupabaseStackHealth | null;
 };
 const LiveStatusContext = createContext<LiveStatus | null>(null);
 function useLiveStatus(): LiveStatus {
@@ -193,12 +194,14 @@ export function DatabasesClient({
   initialError,
   platform,
   probes,
+  supabaseHealth,
 }: {
   initialOverview: PreprodBackupOverview | null;
   initialNotice?: string;
   initialError?: string;
   platform: PlatformServicesSnapshot;
   probes: DatabaseProbes;
+  supabaseHealth: SupabaseHealthReport;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -241,8 +244,9 @@ export function DatabasesClient({
   const redisStatus = describeRedis(platform);
   const litellmStatus = describeLiteLlm(platform);
   const qdrantStatus = describeServiceProbe(getCatalogService(platform, 'qdrant'));
+  const stackHealth = (id: string): SupabaseStackHealth | null => supabaseHealth.stacks[id] ?? null;
   const stackStatus = (id: string) =>
-    probes.supabase[id] ?? { label: 'UNKNOWN', tone: 'info' as PlatformTone, detail: 'No probe result.' };
+    stackHealth(id)?.overall ?? { label: 'UNKNOWN', tone: 'info' as PlatformTone, detail: 'No probe result.' };
 
   const filteredEntries = useMemo(
     () => filterRecentBackups(overview?.entries || [], BACKUP_RETENTION_DAYS),
@@ -278,7 +282,7 @@ export function DatabasesClient({
 
   const switchTab = useCallback((next: TabId) => setTab(next), []);
 
-  const live: LiveStatus = { probes, litellmStatus, qdrantStatus, stackStatus };
+  const live: LiveStatus = { probes, litellmStatus, qdrantStatus, stackStatus, stackHealth };
 
   return (
     <LiveStatusContext.Provider value={live}>
@@ -399,7 +403,7 @@ function OverviewTab({
   latestLabel: string;
   onSelectTab: (id: TabId) => void;
 }) {
-  const { stackStatus, litellmStatus } = useLiveStatus();
+  const { stackStatus, stackHealth, litellmStatus } = useLiveStatus();
   return (
     <div className="portal-db-overview-grid">
       <section className="portal-panel">
@@ -432,11 +436,11 @@ function OverviewTab({
             <SurfaceRow
               key={stack.id}
               icon="◫"
-              name={`Supabase Studio – ${stack.environment}`}
+              name={`Supabase – ${stack.name}`}
               description={stack.description}
-              meta={stack.apiUrl ? `API: ${stack.apiUrl}` : undefined}
+              meta={`API (Kong): ${stack.apiUrl}`}
               actionLabel="Open Studio"
-              actionHref={stack.studioUrl}
+              actionHref={stackHealth(stack.id)?.studio.enabled ? stackHealth(stack.id)?.studio.url ?? undefined : undefined}
               external
               badge={statusBadge(stackStatus(stack.id).tone, stackStatus(stack.id).label)}
             />
@@ -473,8 +477,19 @@ function OverviewTab({
         </div>
         <div className="portal-quick-action-list">
           <QuickAction icon="◈" label="Open pgAdmin" href={PGADMIN_URL} external />
-          <QuickAction icon="◫" label="Open Supabase Studio – Preprod" href={SUPABASE_PREPROD_STUDIO} external />
-          <QuickAction icon="◫" label="Open Supabase Studio – SSO" href={SUPABASE_SSO_STUDIO} external />
+          {SUPABASE_STACKS.map((stack) => {
+            const studio = stackHealth(stack.id)?.studio;
+            return studio?.enabled && studio.url ? (
+              <QuickAction key={stack.id} icon="◫" label={`Open Supabase Studio – ${stack.name}`} href={studio.url} external />
+            ) : (
+              <QuickAction
+                key={stack.id}
+                icon="◫"
+                label={`Supabase Studio – ${stack.name}: not configured`}
+                onClick={() => onSelectTab('supabase')}
+              />
+            );
+          })}
           <QuickAction icon="⟲" label="Create Backup Now" onClick={() => onSelectTab('backups')} />
           <QuickAction icon="◷" label="View Latest Backup" onClick={() => onSelectTab('backups')} />
         </div>
@@ -804,55 +819,91 @@ function DatabasesTab({
   );
 }
 
+function HealthRow({ label, health }: { label: string; health: { tone: PlatformTone; label: string; detail: string } | undefined }) {
+  return (
+    <div className="portal-info-table-row">
+      <span className="portal-info-table-label">{label}</span>
+      <span className="portal-info-table-value">
+        {health ? statusBadge(health.tone, health.label) : statusBadge('info', 'UNKNOWN')}{' '}
+        <span className="portal-page-sub">{health?.detail ?? 'No probe result.'}</span>
+      </span>
+    </div>
+  );
+}
+
+// GETOUCH-UAT-001: API gateway and Studio are separate. Studio is only linked when a live probe proves
+// Cloudflare Access protects its hostname; it is never linked to the Kong gateway.
 function SupabaseTab() {
-  const { stackStatus } = useLiveStatus();
+  const { stackStatus, stackHealth } = useLiveStatus();
   return (
     <section className="portal-panel">
       <div className="portal-panel-head">
         <div>
           <h3 className="portal-panel-title">Supabase Stacks</h3>
           <p className="portal-page-sub">
-            Self-hosted Supabase environments. Click <strong>Open Studio</strong> to jump directly into the right environment.
+            Self-hosted Supabase environments. The <strong>API gateway</strong> (Kong) is an API, not a UI: a browser visit
+            returns <code>no Route matched</code> or <code>No API key found</code>, which is expected.{' '}
+            <strong>Studio</strong> is the admin UI and opens only through Cloudflare Access.
           </p>
         </div>
       </div>
       <div className="portal-detail-grid">
-        {SUPABASE_STACKS.map((stack) => (
-          <section key={stack.id} className="portal-panel">
-            <div className="portal-detail-head">
-              <h3 className="portal-detail-title">{stack.name}</h3>
-              {statusBadge(stackStatus(stack.id).tone, stackStatus(stack.id).label)}
-            </div>
-            <div className="portal-info-table">
-              <div className="portal-info-table-row">
-                <span className="portal-info-table-label">Environment</span>
-                <span className="portal-info-table-value">{stack.environment}</span>
+        {SUPABASE_STACKS.map((stack) => {
+          const health = stackHealth(stack.id);
+          const studio = health?.studio;
+          return (
+            <section key={stack.id} className="portal-panel">
+              <div className="portal-detail-head">
+                <h3 className="portal-detail-title">{stack.name}</h3>
+                {statusBadge(stackStatus(stack.id).tone, stackStatus(stack.id).label)}
               </div>
-              {stack.apiUrl ? (
+              <div className="portal-info-table">
                 <div className="portal-info-table-row">
-                  <span className="portal-info-table-label">API (Kong)</span>
-                  <span className="portal-info-table-value">{stack.apiUrl}</span>
+                  <span className="portal-info-table-label">Environment</span>
+                  <span className="portal-info-table-value">{stack.environment}</span>
                 </div>
-              ) : null}
-              <div className="portal-info-table-row">
-                <span className="portal-info-table-label">Studio</span>
-                <span className="portal-info-table-value">{stack.studioUrl}</span>
+                <div className="portal-info-table-row">
+                  <span className="portal-info-table-label">API Gateway (Kong)</span>
+                  <span className="portal-info-table-value">
+                    <code>{stack.apiUrl}</code>{' '}
+                    <a className="portal-action-link" href={`${stack.apiUrl}/rest/v1/`} target="_blank" rel="noopener noreferrer" title="Requires an API key; a 401 here is expected.">
+                      View API Endpoint ↗
+                    </a>
+                  </span>
+                </div>
+                <HealthRow label="Gateway Health" health={health?.gateway} />
+                <HealthRow label="Auth Service" health={health?.auth} />
+                <HealthRow label="PostgREST" health={health?.rest} />
+                <HealthRow label="Database" health={health?.database} />
+                <div className="portal-info-table-row">
+                  <span className="portal-info-table-label">Supabase Studio</span>
+                  <span className="portal-info-table-value">
+                    {studio ? statusBadge(studio.tone, studio.label) : statusBadge('info', 'UNKNOWN')}{' '}
+                    {studio?.enabled && studio.url ? <code>{studio.url}</code> : <span className="portal-page-sub">{studio?.detail ?? STUDIO_NOT_CONFIGURED}</span>}
+                  </span>
+                </div>
+                <div className="portal-info-table-row">
+                  <span className="portal-info-table-label">Description</span>
+                  <span className="portal-info-table-value">{stack.description}</span>
+                </div>
+                <div className="portal-info-table-row">
+                  <span className="portal-info-table-label">Action</span>
+                  <span className="portal-info-table-value">
+                    {studio?.enabled && studio.url ? (
+                      <a className="portal-action-link" href={studio.url} target="_blank" rel="noopener noreferrer">
+                        Open Studio ↗
+                      </a>
+                    ) : (
+                      <span className="portal-action-link" aria-disabled="true" style={{ opacity: 0.5, cursor: 'not-allowed' }} title={STUDIO_NOT_CONFIGURED}>
+                        Open Studio — {STUDIO_NOT_CONFIGURED}
+                      </span>
+                    )}
+                  </span>
+                </div>
               </div>
-              <div className="portal-info-table-row">
-                <span className="portal-info-table-label">Description</span>
-                <span className="portal-info-table-value">{stack.description}</span>
-              </div>
-              <div className="portal-info-table-row">
-                <span className="portal-info-table-label">Action</span>
-                <span className="portal-info-table-value">
-                  <a className="portal-action-link" href={stack.studioUrl} target="_blank" rel="noopener noreferrer">
-                    Open Studio ↗
-                  </a>
-                </span>
-              </div>
-            </div>
-          </section>
-        ))}
+            </section>
+          );
+        })}
       </div>
     </section>
   );
