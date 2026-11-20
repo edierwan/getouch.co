@@ -37,6 +37,7 @@ const FALLBACK_CATALOG_URLS: Record<string, string> = {
   authentik: 'https://sso.getouch.co',
   qdrant: 'https://qdrant.getouch.co',
   airbyte: 'https://airbyte.getouch.co',
+  postiz: 'https://postiz.serapod.com',
   infisical: 'https://infisical.getouch.co',
   coolify: 'https://coolify.getouch.co',
   grafana: 'https://grafana.getouch.co',
@@ -346,6 +347,17 @@ catalog = {
     'http://127.0.0.1:8006',
     ['Data ingestion / ELT runtime.', 'Installed via abctl (kind cluster airbyte-abctl); state in bundled airbyte-db.', 'Public route is protected by Cloudflare Access.'],
     health=('http://127.0.0.1:8006/api/v1/health', 'localhost', '"available":true'),
+  ),
+  # TASK 4: Postiz (compose project 'postiz' in /home/deploy/apps/postiz). Only the app container is the
+  # primary runtime; the health check exercises Traefik route -> frontend -> backend -> postiz_db.
+  'postiz': build_probe(
+    [r'^postiz-app$'],
+    'https://postiz.serapod.com',
+    'postiz.serapod.com',
+    '/',
+    'http://postiz-app:5000',
+    ['Social media scheduling (Serapod Marketing).', 'Database: postiz_db on getouch-postgres; Temporal has its own persistence.', 'Public route is protected by Cloudflare Access.'],
+    health=('http://127.0.0.1/api/auth/can-register', 'postiz.serapod.com', '"register"'),
   ),
   'infisical': build_probe(
     [r'infisical'],
