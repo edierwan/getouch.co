@@ -54,11 +54,11 @@ export default async function N8nAutomationPage() {
         </div>
 
         <div className="portal-info-table">
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{snapshot.n8n.publicUrl || 'Not configured'}</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Public URL</span><span className="portal-info-table-value">{snapshot.n8n.publicUrl || 'None (internal only)'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Origin route</span><span className="portal-info-table-value">{formatOriginStatus(snapshot.n8n.publicOriginCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Public edge</span><span className="portal-info-table-value">{formatEdgeStatus(snapshot.n8n.publicEdgeCode)}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Runtime source</span><span className="portal-info-table-value">{primary ? `${formatRuntimeSource(resolveRuntimeSource(primary))} · ${primary.name}` : 'Existing news automation stack'}</span></div>
-          <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">Public workflow route responds at the origin and basic auth remains enabled.</span></div>
+          <div className="portal-info-table-row"><span className="portal-info-table-label">Health check</span><span className="portal-info-table-value">{snapshot.n8n.publicUrl ? 'Public workflow route responds at the origin and basic auth remains enabled.' : 'Container health check (/healthz) on the host; no public route is published.'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Auth / Security</span><span className="portal-info-table-value">{snapshot.n8n.basicAuthEnabled ? 'Basic auth enabled' : 'Authentication signal not detected from probe.'}</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Setup / Onboarding</span><span className="portal-info-table-value">Workflow metrics are still awaiting API integration.</span></div>
           <div className="portal-info-table-row"><span className="portal-info-table-label">Internal URL</span><span className="portal-info-table-value">{snapshot.n8n.internalUrl || 'Unknown'}</span></div>
