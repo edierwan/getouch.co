@@ -325,8 +325,8 @@ catalog = {
     'https://airbyte.getouch.co',
     'airbyte.getouch.co',
     '/',
-    'http://airbyte-server:8000',
-    ['Data ingestion / ELT runtime.', 'Database target: airbyte.', 'Official abctl install is currently blocked on this host because kind control-plane boot fails until the root inotify limit is increased.'],
+    'http://127.0.0.1:8006',
+    ['Data ingestion / ELT runtime.', 'Installed via abctl (kind cluster airbyte-abctl); state in bundled airbyte-db.', 'Public route is protected by Cloudflare Access.'],
   ),
   'infisical': build_probe(
     [r'infisical'],

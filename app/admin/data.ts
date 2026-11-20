@@ -105,8 +105,8 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'LiteLLM Gateway', href: LITELLM_URL, icon: '◎', external: true },
       { label: 'n8n Workflows', href: N8N_URL, icon: '⇄', external: true },
-      // SERAPOD-INFRA-007: no Airbyte runtime is provisioned on the VPS (DNS only). Shown disabled, not as a live link.
-      { label: 'Airbyte · not provisioned', href: AIRBYTE_URL, icon: '⟷', external: true, disabled: true },
+      // SERAPOD-INFRA-008: Airbyte provisioned via abctl (kind), behind Cloudflare Access.
+      { label: 'Airbyte', href: AIRBYTE_URL, icon: '⟷', external: true },
       { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },
       { label: 'MCP Endpoint', href: '/admin/ai/mcp', icon: '⌬' },
       { label: 'Webhooks', href: '/admin/automation/webhooks', icon: '↺' },
