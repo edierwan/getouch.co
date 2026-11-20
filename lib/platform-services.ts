@@ -214,7 +214,14 @@ def find_containers(patterns):
         ]
         if any(re.search(pattern, haystack, re.IGNORECASE) for pattern in patterns for haystack in haystacks):
             matched.append(inspected)
-    matched.sort(key=lambda item: item['name'])
+    # Primary container = containers[0]. Prefer running containers, then direct name matches,
+    # so a stale 'Created'/'Exited' leftover or a sidecar matched only via compose labels
+    # is never reported as the service's primary runtime.
+    def sort_key(item):
+        name = item.get('name') or ''
+        name_match = any(re.search(pattern, name, re.IGNORECASE) for pattern in patterns)
+        return (item.get('status') != 'running', not name_match, name)
+    matched.sort(key=sort_key)
     return matched
 
 
@@ -267,7 +274,17 @@ def strip_env(container):
     return cleaned
 
 
-def build_probe(patterns, public_url=None, host=None, path='/', internal_url=None, notes=None, force_found=False, edge_path=None):
+def app_health_ok(health):
+    # health = (url, host_header, expected_substring). Returns True/False, or None when no check is defined.
+    if not health:
+        return None
+    url, host, expected = health
+    host_arg = f"-H 'Host: {host}' " if host else ''
+    rc, out, _err = run(f"curl --connect-timeout 2 --max-time 3 -s {host_arg}{json.dumps(url)} || true")
+    return bool(out) and expected in out
+
+
+def build_probe(patterns, public_url=None, host=None, path='/', internal_url=None, notes=None, force_found=False, edge_path=None, health=None):
     containers = find_containers(patterns)
     public_origin = host_header_code(host, path) if host else None
     public_edge = public_edge_code(host, edge_path or path) if host and public_url else None
@@ -280,6 +297,7 @@ def build_probe(patterns, public_url=None, host=None, path='/', internal_url=Non
       'publicOriginCode': public_origin,
       'publicEdgeCode': public_edge,
       'internalUrl': internal_url if (containers or force_found) else None,
+      'healthOk': app_health_ok(health) if containers else None,
       'notes': notes or [],
     }
 
@@ -327,6 +345,7 @@ catalog = {
     '/',
     'http://127.0.0.1:8006',
     ['Data ingestion / ELT runtime.', 'Installed via abctl (kind cluster airbyte-abctl); state in bundled airbyte-db.', 'Public route is protected by Cloudflare Access.'],
+    health=('http://127.0.0.1:8006/api/v1/health', 'localhost', '"available":true'),
   ),
   'infisical': build_probe(
     [r'infisical'],
@@ -543,6 +562,7 @@ function normalizeService(service: Partial<PlatformServiceProbe> | null | undefi
     publicOriginCode: normalizeCode(service?.publicOriginCode ?? fallback.publicOriginCode),
     publicEdgeCode: normalizeCode(service?.publicEdgeCode ?? fallback.publicEdgeCode),
     internalUrl: service?.internalUrl ?? fallback.internalUrl ?? null,
+    healthOk: typeof service?.healthOk === 'boolean' ? service.healthOk : null,
     notes: normalizeNotes(service?.notes, normalizeNotes(fallback.notes)),
   };
 }
@@ -670,7 +690,8 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
         if (cachedSnapshot) {
           return cachedSnapshot;
         }
-        return emptySnapshot(error instanceof Error ? error.message : 'Platform service probe failed.');
+        // Prefix so status classifiers treat this as UNKNOWN (probe failed), not as NOT INSTALLED.
+        return emptySnapshot(`Live probe unavailable: ${error instanceof Error ? error.message : 'platform service probe failed.'}`);
       } finally {
         inFlightSnapshot = null;
       }

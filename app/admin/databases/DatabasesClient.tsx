@@ -462,9 +462,9 @@ function OverviewTab({
           <SurfaceRow
             icon="⟷"
             name="Airbyte DB"
-            description="Data sync metadata DB"
+            description="Reserved, unused — Airbyte runs its own bundled DB"
             meta="Database: airbyte"
-            badge={<span className="portal-status portal-status-warning">PREPARED</span>}
+            badge={statusBadge('info', 'UNUSED')}
           />
         </div>
       </section>
@@ -768,7 +768,7 @@ function DatabasesTab({
         <section className="portal-panel">
           <div className="portal-detail-head">
             <h3 className="portal-detail-title">Airbyte DB</h3>
-            <span className="portal-status portal-status-warning">PREPARED</span>
+            {statusBadge('info', 'UNUSED')}
           </div>
           <div className="portal-info-table">
             <div className="portal-info-table-row">
@@ -781,7 +781,7 @@ function DatabasesTab({
             </div>
             <div className="portal-info-table-row">
               <span className="portal-info-table-label">Purpose</span>
-              <span className="portal-info-table-value">Data sync metadata. Runtime is pending VPS inotify limit fix.</span>
+              <span className="portal-info-table-value">Reserved on the shared PostgreSQL but not used. Airbyte 2.5.0 (abctl/kind) keeps its state in the bundled in-cluster airbyte-db.</span>
             </div>
           </div>
         </section>

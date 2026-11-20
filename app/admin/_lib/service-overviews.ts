@@ -125,13 +125,15 @@ export const SERVICE_OVERVIEW_CONFIGS: Record<string, ServiceOverviewConfig> = {
       'Tag jobs and destination tables with tenant metadata to support lineage and revocation.',
     ],
     externalOpenUrl: 'https://airbyte.getouch.co',
-    healthCheck: 'GET /api/v1/health returns {"available":true} at the origin; the public hostname redirects to Cloudflare Access.',
+    healthCheck: 'Live probe: GET http://127.0.0.1:8006/api/v1/health on the host must return {"available":true}; the public hostname must redirect to Cloudflare Access.',
     securityStatus: 'Cloudflare Access (operator allow-list policy) plus Airbyte basic auth; Traefik route is tunnel-only.',
     setupStatus: 'Runtime verified with a non-production Faker -> dev-null sync. No production sources (e.g. TikTok) are connected yet.',
     statusOptions: {
       requirePublicRoute: true,
       missingDetail: 'No Airbyte runtime is detected and the public route is not yet served.',
-      onlineDetail: 'Airbyte is installed (abctl/kind) and the Access-protected public route responds.',
+      onlineDetail: 'Airbyte /api/v1/health reports available and the Cloudflare Access-protected public route responds.',
+      degradedDetail: 'The abctl kind node is running, but Airbyte /api/v1/health is not reporting available (or the public route is failing).',
+      offlineDetail: 'The abctl kind node container (airbyte-abctl-control-plane) is not running.',
     },
   },
   infisical: {

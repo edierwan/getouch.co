@@ -84,8 +84,10 @@ const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
-// SERAPOD-INFRA-007: n8n.getouch.my resolves to another (unreachable) server; the n8n on this VPS is news-flow.
-const N8N_URL = 'https://n8n.getouch.co';
+// SERAPOD-INFRA-008: the n8n on this VPS is the news-flow container. n8n.getouch.co has no DNS record and
+// its configured host (flow.news.getouch.co) fails TLS at the Cloudflare edge, so the sidebar points at the
+// portal's live-probed n8n overview instead of a dead external link.
+const N8N_ADMIN_PATH = '/admin/automation/n8n';
 const OPEN_WEBUI_URL = 'https://ai.getouch.co';
 
 export const ADMIN_NAV: NavSection[] = [
@@ -104,7 +106,7 @@ export const ADMIN_NAV: NavSection[] = [
     accentRgb: '78, 206, 199',
     items: [
       { label: 'LiteLLM Gateway', href: LITELLM_URL, icon: '◎', external: true },
-      { label: 'n8n Workflows', href: N8N_URL, icon: '⇄', external: true },
+      { label: 'n8n Workflows', href: N8N_ADMIN_PATH, icon: '⇄' },
       // SERAPOD-INFRA-008: Airbyte provisioned via abctl (kind), behind Cloudflare Access.
       { label: 'Airbyte', href: AIRBYTE_URL, icon: '⟷', external: true },
       { label: 'vLLM Gateway', href: '/admin/ai/vllm', icon: '◉' },

@@ -19,6 +19,8 @@ export type PlatformServiceProbe = {
   publicOriginCode: number | null;
   publicEdgeCode: number | null;
   internalUrl: string | null;
+  /** Result of an application-level health check (e.g. Airbyte /api/v1/health). null/undefined = no check defined. */
+  healthOk?: boolean | null;
   notes: string[];
 };
 
@@ -57,6 +59,7 @@ export type DescribeProbeOptions = {
   onlineDetail?: string;
   publicOnlyDetail?: string;
   degradedDetail?: string;
+  offlineDetail?: string;
 };
 
 function hasProbeFailureNotes(notes: string[]) {
@@ -65,9 +68,9 @@ function hasProbeFailureNotes(notes: string[]) {
 
 function createPendingStatus(detail?: string): PlatformDisplayStatus {
   return {
-    label: 'STATUS PENDING',
+    label: 'UNKNOWN',
     tone: 'info',
-    detail: detail || 'The latest shared runtime probe did not complete, so the dashboard is waiting for a fresh service snapshot.',
+    detail: detail || 'Health could not be verified: the latest shared runtime probe did not complete. Waiting for a fresh service snapshot.',
   };
 }
 
@@ -89,7 +92,8 @@ export function formatRuntimeSource(source: PlatformRuntimeSource) {
 }
 
 function summarizeContainer(service: PlatformServiceProbe) {
-  return service.containers[0] || null;
+  // Prefer a running container so a stale 'created'/'exited' leftover never masks the live runtime.
+  return service.containers.find(isContainerOnline) || service.containers[0] || null;
 }
 
 function hasRouteCode(code: number | null | undefined): code is number {
@@ -112,6 +116,15 @@ export function describeServiceProbe(
   const publicLive = isReachableRoute(resolvePublicRouteCode(service));
   const edgeFailed = hasRouteCode(service.publicEdgeCode) && !isReachableRoute(service.publicEdgeCode);
   const probePending = hasProbeFailureNotes(service.notes);
+  const appHealthFailed = service.healthOk === false;
+
+  if (isContainerOnline(container) && appHealthFailed) {
+    return {
+      label: 'DEGRADED',
+      tone: 'warning',
+      detail: options.degradedDetail || 'Runtime container is up, but the application health check is failing.',
+    };
+  }
 
   if (isContainerOnline(container) && (publicLive || !options.requirePublicRoute)) {
     return {
@@ -147,6 +160,14 @@ export function describeServiceProbe(
 
   if (probePending) {
     return createPendingStatus();
+  }
+
+  if (container && !publicLive && !service.containers.some((item) => item.status === 'running')) {
+    return {
+      label: 'OFFLINE',
+      tone: 'critical',
+      detail: options.offlineDetail || `Installed, but no container is running (${container.name}: ${container.status || 'unknown state'}).`,
+    };
   }
 
   if (service.found) {
