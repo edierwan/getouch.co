@@ -212,6 +212,9 @@ export function describeN8n(snapshot: PlatformServicesSnapshot): PlatformDisplay
   if (publicLive) {
     return { label: 'ONLINE', tone: isContainerOnline(container) ? 'healthy' : 'active', detail: 'Workflow automation runtime is online. Metrics are still awaiting API integration.' };
   }
+  if (isContainerOnline(container) && !snapshot.n8n.publicUrl) {
+    return { label: 'ONLINE', tone: 'healthy', detail: 'Workflow runtime is healthy (internal only; no public hostname is published).' };
+  }
   if (isContainerOnline(container)) {
     return { label: 'INSTALLED', tone: 'active', detail: 'Container is healthy. Public route verification is still pending.' };
   }

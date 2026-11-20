@@ -84,9 +84,9 @@ const GRAFANA_URL = 'https://grafana.getouch.co';
 const INFISICAL_URL = 'https://infisical.getouch.co';
 const LANGFUSE_URL = 'https://langfuse.getouch.co';
 const LITELLM_URL = 'https://litellm.getouch.co';
-// SERAPOD-INFRA-008: the n8n on this VPS is the news-flow container. n8n.getouch.co has no DNS record and
-// its configured host (flow.news.getouch.co) fails TLS at the Cloudflare edge, so the sidebar points at the
-// portal's live-probed n8n overview instead of a dead external link.
+// SERAPOD-INFRA-008/009: the n8n on this VPS is the news-flow container and is internal only
+// (flow.news.getouch.co retired; n8n.getouch.co has no DNS record), so the sidebar opens the portal's
+// live-probed n8n overview.
 const N8N_ADMIN_PATH = '/admin/automation/n8n';
 const OPEN_WEBUI_URL = 'https://ai.getouch.co';
 

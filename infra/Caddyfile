@@ -416,11 +416,6 @@ http://cms-news.getouch.co {
   reverse_proxy news-cms:1337
 }
 
-http://flow.news.getouch.co {
-  import common_headers
-  reverse_proxy news-flow:5678
-}
-
 http://rss.news.getouch.co {
   import common_headers
   reverse_proxy news-rss:1200

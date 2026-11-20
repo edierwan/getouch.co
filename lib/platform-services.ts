@@ -309,8 +309,12 @@ n8n_public = (
     n8n_env.get('N8N_EDITOR_BASE_URL')
     or n8n_env.get('WEBHOOK_URL')
     or build_public_url(n8n_env.get('N8N_PROTOCOL', 'https'), n8n_env.get('N8N_HOST', ''), n8n_env.get('N8N_PORT', ''))
-  or 'https://flow.news.getouch.co/'
 )
+# SERAPOD-INFRA-009: flow.news.getouch.co is retired (DNS, tunnel and proxy route removed). The news-flow
+# container still carries it in N8N_HOST/WEBHOOK_URL, so never present it as n8n's public URL.
+RETIRED_N8N_HOSTS = ('flow.news.getouch.co',)
+if n8n_public and any(h in n8n_public for h in RETIRED_N8N_HOSTS):
+    n8n_public = None
 n8n_host = None
 if n8n_public:
     n8n_host = re.sub(r'^https?://', '', n8n_public).split('/')[0]
@@ -591,7 +595,7 @@ function emptySnapshot(error: string): PlatformServicesSnapshot {
     n8n: {
       found: false,
       containers: [],
-      publicUrl: 'https://flow.news.getouch.co',
+      publicUrl: null,
       publicOriginCode: null,
       publicEdgeCode: null,
       internalUrl: null,
@@ -649,7 +653,7 @@ export async function getPlatformServicesSnapshot(): Promise<PlatformServicesSna
         const parsed = JSON.parse(raw) as RemotePlatformServicesSnapshot;
 
         const n8n = normalizeService(parsed.n8n, {
-          publicUrl: 'https://flow.news.getouch.co',
+          publicUrl: null,
           notes: ['Workflow metrics awaiting API integration.'],
         });
 

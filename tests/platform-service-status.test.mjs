@@ -65,3 +65,11 @@ test('nothing detected => NOT INSTALLED', () => {
   const s = describeServiceProbe(probe({ found: false, publicOriginCode: null, publicEdgeCode: null }));
   assert.equal(s.label, 'NOT INSTALLED');
 });
+
+// SERAPOD-INFRA-009 — n8n is internal-only after flow.news.getouch.co retirement.
+import { describeN8n } from '../lib/platform-service-shared.ts';
+test('n8n healthy with no public URL => ONLINE (internal only), not "pending"', () => {
+  const s = describeN8n({ n8n: probe({ publicUrl: null, publicOriginCode: null, publicEdgeCode: null, containers: [container('news-flow')] }) });
+  assert.equal(s.label, 'ONLINE');
+  assert.match(s.detail, /internal only/);
+});
