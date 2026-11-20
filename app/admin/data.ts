@@ -127,6 +127,13 @@ export const ADMIN_NAV: NavSection[] = [
     ],
   },
   {
+    label: 'BUSINESS APPLICATIONS',
+    accentRgb: '255, 184, 108',
+    items: [
+      { label: 'Postiz', href: '/admin/business/postiz', icon: '✎' },
+    ],
+  },
+  {
     label: 'ACCESS & SECURITY',
     accentRgb: '196, 161, 255',
     items: [
