@@ -13,9 +13,9 @@
 >
 > AI agents: follow [`AGENTS.md`](../AGENTS.md).
 
-- **Last reconciled:** 2026-11-21 (SERAPOD-INFRA-GOV-001, live-checked)
+- **Last reconciled:** 2026-11-21 (SERAPOD-INFRA-GOV-001 final gate, live-checked)
 - **Production portal commit:** `fc57ab3` (= `main`), deployed 2026-11-20 17:17 UTC, healthy — VERIFIED 2026-11-21
-- **Deployment policy:** production deploys are **manual** in Coolify, after review and green CI checks. Merging does not deploy.
+- **Deployment policy:** production deploys are **manual** in Coolify, after review and green CI checks. Merging does not deploy. The portal's Coolify auto-deploy toggle is **off** (VERIFIED 2026-11-21).
 
 ## 1. Status vocabulary
 
@@ -33,7 +33,7 @@ The board's **Stage** column is the furthest point reached: `PLANNED` → `IMPLE
 
 | Task ID | Title | Stage | Next safe action |
 |---|---|---|---|
-| SERAPOD-INFRA-007 | Portal statuses from live probes | DEPLOYED | None |
+| SERAPOD-INFRA-007 | Portal statuses from live probes | VERIFIED | None |
 | GETOUCH-UAT-001 | Separate Supabase API gateway from Studio | DEPLOYED | Owner: confirm Studio access in production |
 | SERAPOD-INFRA-008 | Airbyte in portal + verified service statuses | VERIFIED | None |
 | AIRBYTE-RUNTIME | Airbyte platform on the VPS | VERIFIED | Connect data sources only after approval |
@@ -51,7 +51,10 @@ The board's **Stage** column is the furthest point reached: `PLANNED` → `IMPLE
 | SEC-001-BACKUP | Backup resilience | PLANNED | Owner decision on destination |
 | BROKER-W1…W7 | Platform broker hardening waves | PLANNED | Approve wave 1 |
 | GOV-001 | Project tracker, agent rules, CI checks | IMPLEMENTED | Review PR #7 |
-| GOV-001-DEPLOY | Manual deploy policy + Coolify configuration | PLANNED | Owner: turn off the portal's auto-deploy toggle (D3) |
+| GOV-001-DEPLOY | Manual deploy policy + portal auto-deploy toggle off | VERIFIED | None |
+| GOV-001-WEBHOOK | Coolify GitHub webhook delivery (misdirected) | PLANNED | Decide other apps' auto-deploy before any fix |
+| GOV-001-DEBUG | Portal deployment debug logging | PLANNED | Owner: decide whether to keep it on |
+| SEC-002 | Repository visibility and history hygiene | PLANNED | Owner approval (restricted plan) |
 | GOV-001-UI | Admin-only Project Control page | PLANNED | Approve proposal |
 
 ## 3. Task records
@@ -110,7 +113,7 @@ owner approval.
 - **Implementation:** IMPLEMENTED (portal part); APPLIED (edge part, 2026-11-20)
 - **Tests:** `npm test` 23/23, `tsc`, `next build` at PR time
 - **Deployment:** NOT DEPLOYED (portal part)
-- **Verification:** edge part VERIFIED 2026-11-20 (hostname no longer resolves; sibling hostnames unaffected)
+- **Verification:** UNVERIFIED (portal part); edge part VERIFIED 2026-11-20 (hostname no longer resolves; sibling hostnames unaffected)
 - **Rollback:** portal — revert PR; edge — restore data in the restricted register
 - **Blockers:** review
 - **Next safe action:** review PR #4
@@ -235,16 +238,49 @@ owner approval.
 - **Blockers:** review
 - **Next safe action:** review PR #7
 
-### GOV-001-DEPLOY — Manual deploy policy + Coolify configuration
+### GOV-001-DEPLOY — Manual deploy policy + portal auto-deploy toggle off
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** policy and CI in PR #7; setting changed directly (operational)
+- **Implementation:** APPLIED 2026-11-21 — portal application's Coolify auto-deploy toggle changed from on to off (target verified first; no other application changed)
+- **Tests:** n/a
+- **Deployment:** N/A (no restart, no redeploy; production still `fc57ab3`)
+- **Verification:** VERIFIED 2026-11-21 — setting read back as off; other applications unchanged; no deployment queued; container not restarted; manual deploy action does not depend on the toggle (Coolify source)
+- **Rollback:** switch the toggle back on in the portal application's Coolify settings
+- **Blockers:** none
+- **Next safe action:** none
+
+### GOV-001-WEBHOOK — Coolify GitHub webhook delivery (misdirected)
 - **Owner:** repo owner
-- **Branch / PR:** policy and CI in PR #7
-- **Implementation:** PLANNED — policy decided (manual deploy after review and green CI). The portal's Coolify auto-deploy toggle is still on (D3)
+- **Branch / PR:** none (operational)
+- **Implementation:** PLANNED — cause VERIFIED: the GitHub App's webhook URL points to a host that does not run Coolify, so deliveries fail (see [audit](ops/coolify-auto-deploy-audit-2026-11-21.md))
 - **Tests:** n/a
 - **Deployment:** N/A
-- **Verification:** suspected cause of non-delivery is **INFERRED** (see [audit](ops/coolify-auto-deploy-audit-2026-11-21.md)); confirm with GitHub *Recent Deliveries*
-- **Rollback:** re-enable the toggle
-- **Blockers:** owner action in Coolify and GitHub
-- **Next safe action:** owner turns off the portal's auto-deploy toggle; checks *Recent Deliveries*
+- **Verification:** N/A — nothing changed yet (the cause itself was confirmed from the App's delivery log on 2026-11-21)
+- **Rollback:** n/a
+- **Blockers:** correcting the URL would start auto-deploys for other applications whose toggles are still on
+- **Next safe action:** leave as is; review other applications' auto-deploy toggles before any change
+
+### GOV-001-DEBUG — Portal deployment debug logging
+- **Owner:** repo owner
+- **Branch / PR:** none (operational)
+- **Implementation:** PLANNED — debug logging was turned on in the Coolify UI on 2026-11-20 (D4, confirmed from the Coolify audit log); still on
+- **Tests:** recent deployment logs scanned: no credential-like content found
+- **Deployment:** N/A
+- **Verification:** N/A — nothing changed yet
+- **Rollback:** toggle in Coolify settings
+- **Blockers:** owner decision
+- **Next safe action:** turn it off when no deployment is being debugged
+
+### SEC-002 — Repository visibility and history hygiene
+- **Owner:** repo owner
+- **Branch / PR:** none
+- **Implementation:** PLANNED — restricted plan prepared; making the repository private does not affect Coolify builds (verified)
+- **Tests:** n/a
+- **Deployment:** N/A
+- **Verification:** UNVERIFIED
+- **Rollback:** repository visibility can be changed back
+- **Blockers:** owner approval of the restricted plan
+- **Next safe action:** owner reviews the restricted plan and approves the steps in order
 
 ### GOV-001-UI — Admin-only Project Control page
 - **Owner:** repo owner · AI agent
@@ -269,6 +305,7 @@ Details, evidence and remediation specifics are in the restricted register. List
 | S8 | Admin UI accuracy about enforced controls | Fix in review | SEC-001-UI |
 | S9 | Platform credential lifecycle controls | Open | BROKER-W1…W3 |
 | S10 | Edge identity integration | Open | BROKER-W6 |
+| S11 | Repository history hygiene | Open | SEC-002 |
 
 ## 5. Discrepancy log
 
@@ -278,10 +315,11 @@ Mismatches between earlier records and verified live evidence.
 |---|---|---|---|---|
 | D1 | 2026-11-20 | PR #3 description: merging to `main` triggers a deploy | No webhook-triggered deploy has ever been recorded; all deploys manual | Corrected here and in the audit |
 | D2 | 2026-11-21 | `docs/ops/deployment-source-of-truth.md`: pushes auto-deploy; Caddy is the edge | Deploys are manual; the edge is Coolify's proxy | Banner added to that file |
-| D3 | 2026-11-21 | Deploy policy: manual | Coolify auto-deploy toggle for the portal is **on** (inert only because GitHub does not deliver pushes) | Open — owner turns the toggle off |
-| D4 | 2026-11-21 | — | A portal settings change was made in the Coolify UI on 2026-11-20 16:40 UTC, followed by a redeploy; not linked to any task | Open — owner confirms what changed |
+| D3 | 2026-11-21 | Deploy policy: manual | Coolify auto-deploy toggle for the portal was **on** | Resolved 2026-11-21 — toggle off (GOV-001-DEPLOY) |
+| D4 | 2026-11-21 | — | A portal settings change was made in the Coolify UI on 2026-11-20 16:40 UTC, followed by a redeploy; not linked to any task | Resolved — Coolify audit log: the admin account turned on deployment debug logging; tracked as GOV-001-DEBUG |
 | D5 | 2026-11-21 | First draft of this file (PR #7, first commit) | Contained security details unsuitable for a public repository | Removed in a later commit; the earlier commit remains visible in PR history — owner decision |
 | D6 | 2026-11-21 | First draft: auto-deploy "not working since at least 2026-09" | Evidence shows no webhook deploy recorded at all, not a start date | Wording corrected |
+| D7 | 2026-11-21 | Audit (earlier revision): cause INFERRED as missing repository access for the GitHub App | App delivery log: the App covers all repositories; deliveries fail because its webhook URL points to the wrong host | Cause corrected to VERIFIED (GOV-001-WEBHOOK) |
 
 ## 6. Known issues and limitations
 

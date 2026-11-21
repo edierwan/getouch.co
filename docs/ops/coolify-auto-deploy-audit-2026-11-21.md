@@ -2,46 +2,47 @@
 
 **Question:** why does merging to `main` not deploy the portal?
 
-**Status of the cause: INFERRED** (not confirmed). It stays INFERRED until the GitHub App's *Recent
-Deliveries* page is checked by the repository owner.
+**Cause: VERIFIED.** The organisation's GitHub App sends its webhook deliveries to a host that does not run
+Coolify. Every recent delivery for this repository (pushes and pull requests) was answered with HTTP 404, so
+Coolify never sees them. Confirmed from the App's own delivery log on 2026-11-21.
 
-**Policy outcome:** production deploys stay **manual**, after review and green CI checks. Unconditional
-auto-deploy on merge is **not** to be enabled.
+**Earlier inference corrected (tracker D7).** An earlier revision of this audit inferred that the App's
+installation did not include this repository. The App's installation actually covers **all** repositories,
+including this one; that inference was wrong.
 
-The audit was read-only. Detailed evidence (identifiers, timestamps, configuration values) is kept in the
-restricted register held by the repository owner, because this repository is public.
+**Policy outcome:** production deploys stay **manual**, after review and green CI checks. The portal's Coolify
+auto-deploy toggle was turned **off** on 2026-11-21 (GOV-001-DEPLOY). Unconditional auto-deploy is not to be
+enabled.
+
+Detailed evidence (identifiers, hostnames, timestamps, configuration values) is kept in the restricted register
+held by the repository owner, because this repository is public.
 
 ## Findings
 
 | # | Check | Result | Label |
 |---|---|---|---|
-| 1 | Portal app in Coolify | Linked to `main` through the organisation's GitHub App; Coolify's auto-deploy toggle is **on** | VERIFIED |
-| 2 | Deployment history | Every recorded portal deployment was started manually; no webhook-triggered deployment has ever been recorded for any app using this GitHub App | VERIFIED |
-| 3 | Webhook endpoint | Reachable through the edge and answering | VERIFIED |
-| 4 | Do GitHub deliveries reach Coolify? | Yes, for at least one repository: a delivery arrived seconds after a push to that repository | VERIFIED |
-| 5 | Coolify's matching rules for this repo (repository id, branch, App) | All correct | VERIFIED |
-| 6 | Merge of PR #3 | No deployment queued and no signature failure logged | VERIFIED |
-| 7 | Which repositories receive deliveries | Only a private repository was observed; `getouch.co` is public | VERIFIED |
+| 1 | Portal app in Coolify | Linked to `main` through the organisation's GitHub App. Auto-deploy toggle was on; now **off** | VERIFIED |
+| 2 | Deployment history | Every recorded portal deployment was started manually; no webhook-triggered deployment has ever been recorded for any app using this App | VERIFIED |
+| 3 | App installation | Covers all repositories; subscribed to push and pull-request events | VERIFIED |
+| 4 | App webhook target | Points to a host that does not run Coolify | VERIFIED |
+| 5 | Recent App deliveries for this repository | Pushes and pull requests, all answered 404 | VERIFIED |
+| 6 | Coolify's own webhook endpoint | Reachable through the edge and answering | VERIFIED |
+| 7 | Manual deployment | The UI deploy action does not depend on the auto-deploy toggle | VERIFIED (Coolify source) |
 
-## Inference
+## Caution before any webhook fix
 
-A delivery for this repository that reached Coolify would either fail its signature check (which is logged —
-none seen) or match the portal app (all matching values are correct, so a deployment would be queued — none
-seen). So GitHub most likely **does not send** push events for this repository to the App. The likely reason
-is that the App's installation covers *selected repositories* that do not include this public repository.
-Manual builds still work because public repositories can be read without being in the installation.
+Several other applications on the same Coolify instance still have their auto-deploy toggles **on**. They are
+inert only because deliveries are misdirected. Correcting the App's webhook URL would immediately start
+automatic deployments for those applications. Review and decide each application's toggle first
+(GOV-001-WEBHOOK).
 
-**Confirm (owner, needs GitHub login):** GitHub → Settings → Developer settings → GitHub Apps → the Coolify
-app → *Install App* (repository access) and *Advanced → Recent Deliveries* for a push to `main`.
+## Options (owner approval needed)
 
-## Recommended actions (owner approval needed; none applied)
-
-1. **Turn off the portal's auto-deploy toggle in Coolify.** Today it is on but inert. If the App's repository
-   access ever changes, every merge would start deploying unconditionally, contrary to policy.
-2. **Keep deploys manual** with the CI checks added in PR #7 (`.github/workflows/ci.yml`: tests, type-check,
-   build on every PR and on `main`). Deploy only a commit whose checks passed.
-3. **Optionally confirm the inference** via *Recent Deliveries*. Changing the App's repository access is not
-   needed for the manual policy and should not be done together with an enabled auto-deploy toggle.
+| Option | Change | Effect |
+|---|---|---|
+| **A. Keep as is (recommended)** | None | Manual deploys everywhere in practice; webhooks keep failing harmlessly |
+| B. Correct the webhook URL later | Update the App's webhook URL after reviewing every application's toggle | Applications with toggles on start auto-deploying; the portal stays manual |
+| C. CI-triggered deploy | Not recommended: would store a deploy-capable Coolify credential in GitHub | — |
 
 ## Documentation drift
 

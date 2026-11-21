@@ -30,7 +30,7 @@ const STAGES = new Set(['PLANNED', 'IMPLEMENTED', 'MERGED', 'DEPLOYED', 'VERIFIE
 const REQUIRED_FIELDS = ['Owner', 'Branch / PR', 'Implementation', 'Tests', 'Deployment', 'Verification', 'Rollback', 'Blockers', 'Next safe action'];
 const IMPLEMENTATION = /^(PLANNED|IMPLEMENTED|MERGED|APPLIED|BLOCKED|N\/A)\b/;
 const DEPLOYMENT = /^(NOT DEPLOYED|DEPLOYED|N\/A)\b/;
-const VERIFICATION = /^(UNVERIFIED|VERIFIED \(LIMITED\)|VERIFIED|N\/A|edge part VERIFIED|suspected cause)/;
+const VERIFICATION = /^(UNVERIFIED|VERIFIED \(LIMITED\)|VERIFIED|N\/A)\b/;
 
 const boardRows = () => section('2. Board')
   .split('\n')
@@ -73,6 +73,20 @@ test('every board task has a complete task record', () => {
     assert.match(field(text, 'Implementation'), IMPLEMENTATION, `${id}: bad Implementation value`);
     assert.match(field(text, 'Deployment'), DEPLOYMENT, `${id}: bad Deployment value`);
     assert.match(field(text, 'Verification'), VERIFICATION, `${id}: bad Verification value`);
+  }
+});
+
+test('board stage matches the task record', () => {
+  const recs = new Map(records().map((r) => [r.id, r.text]));
+  for (const { id, stage } of boardRows()) {
+    const text = recs.get(id);
+    const impl = field(text, 'Implementation');
+    const dep = field(text, 'Deployment');
+    const ver = field(text, 'Verification');
+    const expected = ver.startsWith('VERIFIED') ? 'VERIFIED'
+      : dep.startsWith('DEPLOYED') ? 'DEPLOYED'
+      : impl.split(/[\s—(]/)[0];
+    assert.equal(stage, expected, `${id}: board stage ${stage} but record implies ${expected}`);
   }
 });
 
