@@ -1,138 +1,326 @@
 # GetTouch / Serapod Infrastructure — Project Status
 
-> **This file is the single source of truth for project status.** Chat transcripts, Claude reports, PR
-> descriptions and older `docs/` files are evidence, not status. If they disagree with this file, this
-> file wins until it is corrected here. AI agents: read [`AGENTS.md`](../AGENTS.md) before working.
+> **Canonical project tracker.** This file is the single place where project status is recorded. Chat
+> transcripts, private reports and PR descriptions are evidence, not status.
+>
+> **Live evidence wins.** When verified live evidence (the running production commit, the GitHub PR state,
+> a health check) contradicts this file, the evidence is correct: record the mismatch in
+> [§5 Discrepancy log](#5-discrepancy-log) and fix this file in the same change.
+>
+> **This repository is public.** This file holds no secrets, credentials, host paths, internal resource IDs,
+> component versions or vulnerability details. Security evidence is kept in a **restricted register held by
+> the repository owner**; this file refers to findings by ID only.
+>
+> AI agents: follow [`AGENTS.md`](../AGENTS.md).
 
-- **Last reconciled:** 2026-11-21 (SERAPOD-INFRA-GOV-001)
-- **Production portal:** `main` @ `fc57ab3`, image `mqmo5bwkxysedbg7vvh6tk1f:fc57ab3…`, deployed 2026-11-20 17:17 UTC — VERIFIED 2026-11-21
-- **Deploys are manual.** Merging to `main` does **not** deploy (see [Coolify auto-deploy audit](ops/coolify-auto-deploy-audit-2026-11-21.md)).
+- **Last reconciled:** 2026-11-21 (SERAPOD-INFRA-GOV-001, live-checked)
+- **Production portal commit:** `fc57ab3` (= `main`), deployed 2026-11-20 17:17 UTC, healthy — VERIFIED 2026-11-21
+- **Deployment policy:** production deploys are **manual** in Coolify, after review and green CI checks. Merging does not deploy.
 
-## Status legend
+## 1. Status vocabulary
 
-Use exactly one of these per item, and move items forward only with evidence.
+Each task record carries three separate statuses.
 
-| Status | Meaning | Required evidence |
-|---|---|---|
-| `PLANNED` | Designed or agreed, nothing built | Link to the plan or decision |
-| `IMPLEMENTED` | Code exists on a branch or open PR, not on `main` | PR number |
-| `MERGED` | On `main`, not yet running in production | Merge commit |
-| `DEPLOYED` | Running in production | Deployed commit / image tag and date |
-| `VERIFIED` | Checked in production after deployment | What was checked, when, by whom |
-| `APPLIED` | Operational change made directly in production (no code / PR) | Exact change, date, rollback |
-| `BLOCKED` | Cannot proceed | The blocker and who must decide |
+| Field | Allowed values |
+|---|---|
+| Implementation | `PLANNED` · `IMPLEMENTED` (on a branch / open PR) · `MERGED` (on `main`) · `APPLIED` (operational change, no code) · `BLOCKED` · `N/A` |
+| Deployment | `NOT DEPLOYED` · `DEPLOYED` (running in production; give commit and date) · `N/A` |
+| Verification | `UNVERIFIED` · `VERIFIED` (checked in production; say what, when) · `VERIFIED (LIMITED)` (say what could not be checked) |
 
-`APPLIED` items still need `VERIFIED` when checked. Record verification limits honestly (what could *not* be checked).
+The board's **Stage** column is the furthest point reached: `PLANNED` → `IMPLEMENTED` → `MERGED` → `DEPLOYED` → `VERIFIED`, or `APPLIED`, `BLOCKED`.
 
-## 1. Work items
+## 2. Board
 
-### Delivered
-
-| ID | Item | Status | Evidence | Notes |
-|---|---|---|---|---|
-| SERAPOD-INFRA-007 | Portal statuses from live probes instead of hardcoded values | DEPLOYED | PR #1 → `d932de2`; in production image `fc57ab3` | Behaviour later corrected by INFRA-008 |
-| GETOUCH-UAT-001 | Separate Supabase API gateway from Studio (both stacks) | DEPLOYED | PR #2 → `a38d46d`; in production image `fc57ab3` | Production verification not recorded |
-| SERAPOD-INFRA-008 | Airbyte shown as provisioned; verified-health Airbyte probe; status fixes (Open WebUI, Langfuse primary container, OFFLINE/UNKNOWN states, n8n link) | VERIFIED | PR #3 → `fc57ab3`; deployed 2026-11-20 16:40 UTC; `/api/build-info` route table checked 2026-11-21 | Airbyte link opens `https://airbyte.getouch.co` behind Cloudflare Access |
-| AIRBYTE-RUNTIME | Airbyte 2.5.0 (abctl / kind) on NVMe | APPLIED · VERIFIED | 9/9 pods running, `/api/v1/health` = available (2026-11-20) | Installed before this tracker existed; config not in this repo |
-| SERAPOD-INFRA-009 (ops) | Retire `flow.news.getouch.co`: DNS record, tunnel rule, Traefik host rule | APPLIED · VERIFIED | 2026-11-20; restore data recorded in PR #4 | `news-flow` (n8n) kept running, internal only |
-| TASK-4 | Postiz v2.26.0 at `https://postiz.serapod.com` (own compose project, Temporal, Redis, `postiz_db`) | APPLIED · VERIFIED | Healthy; hourly Temporal job fired 6/6; restore test 88 + 37 tables (2026-11-20/21) | See §4 for runtime details |
-| TASK-4 (ops) | Old unused Postiz `news-social` + `social.news.getouch.co` retired | APPLIED · VERIFIED | 2026-11-20 | `news_social` DB and uploads kept |
-| TASK-4 (ops) | Postiz self-registration enabled for internal evaluation | APPLIED · VERIFIED | 2026-11-21; admin account unchanged; still behind Cloudflare Access | Revisit before Marketing Team onboarding (§3) |
-| SEC-001-WAPI | Dormant WAPI Platform App Key (`pk_wapi`, `platform:*`) set to `disabled` | APPLIED · VERIFIED (limited) | 2026-11-21: DB shows `disabled` + containment marker; broker still answers 401 for missing/invalid keys | **Limit:** not tested with the real key (not held). Rejection follows from code (`validatePlatformAppKey` requires `active`). Rollback: set `status='active'` on the row with `metadata.containment = 'SERAPOD-INFRA-SEC-001'`. **Do not repeat or undo without approval.** |
-
-### In review (open PRs)
-
-| ID | Item | Status | PR | Notes |
-|---|---|---|---|---|
-| SERAPOD-INFRA-009 | Portal: stop showing `flow.news` as n8n's URL; drop Caddy block | IMPLEMENTED | #4 | Ops part already APPLIED |
-| TASK-4 | Portal: Business Applications → Postiz with live status | IMPLEMENTED | #5 | |
-| SEC-001-UI | Security UI: stop claiming unenforced protections | IMPLEMENTED | #6 | Copy-only; adds `tests/security-ui-claims.test.mjs` |
-| GOV-001 | This tracker, `AGENTS.md`, Coolify audit, Project Control proposal | IMPLEMENTED | (this PR) | Docs only |
-
-All four are independent and can ship in one manual deploy after review.
-
-### Planned / awaiting decision
-
-| ID | Item | Status | Decision needed from | Reference |
-|---|---|---|---|---|
-| SEC-001-PG-A | Portal least-privilege PostgreSQL role (Phase A) | PLANNED | Management | Tested in isolation 57/57; cutover + rollback in the SEC-001 report |
-| SEC-001-PG-B | Move table ownership off the superuser (Phase B) | PLANNED | After Phase A | |
-| SEC-001-ADMINROLE | Disable login for extra superuser `admin@getouch.co` | PLANNED | Management (check pgAdmin first) | |
-| SEC-001-SSH | Replace portal's root-equivalent SSH access with a restricted read-only probe account | PLANNED | Management (design) | Finding S1, critical |
-| SEC-001-MFA | Enforce MFA for Authentik administrators | PLANNED | Management | Enrol a device before enforcing |
-| SEC-001-BACKUP | Off-host copy of nightly backups | PLANNED | Management (destination) | Finding S6 |
-| GOV-001-DEPLOY | Fix Coolify auto-deploy (GitHub App repository access) — or decide to stay manual | PLANNED | Management | [Audit](ops/coolify-auto-deploy-audit-2026-11-21.md) |
-| BROKER-W1…W7 | Broker hardening waves: default-deny scopes, audit logs, expiry/rotation, rate limits, tenant isolation + Infisical, Postiz read adapter, Authentik tokens | PLANNED | Per wave | SEC-001 report, roadmap |
-| TASK-4B | Postiz CLI v2.0.29 on operator Mac | BLOCKED | Management | Installed locally; every API call is stopped by Cloudflare Access. Resolution = broker Postiz adapter (wave 5) or a scoped service token + local proxy |
-| GOV-001-UI | Admin-only Project Control page sourced from this file | PLANNED | Management | [Proposal](proposals/project-control-page.md) |
-
-## 2. Security findings register
-
-| # | Severity | Finding | Status |
+| Task ID | Title | Stage | Next safe action |
 |---|---|---|---|
-| S1 | Critical | Portal holds SSH to the host as a Docker-group user (root-equivalent) | Open — SEC-001-SSH |
-| S2 | High | Dormant WAPI key could send WhatsApp messages via a public, unthrottled broker | **Contained** — SEC-001-WAPI (APPLIED) |
-| S3 | High | Portal (and Chatwoot, Evolution, news CMS, n8n, Open WebUI) connect to PostgreSQL as a superuser | Open — SEC-001-PG-A (portal first) |
-| S4 | High | Extra superuser login role `admin@getouch.co` with password, no expiry | Open — SEC-001-ADMINROLE |
-| S5 | High | Authentik admin has no MFA (MFA stage = skip); no OIDC apps/providers configured | Open — SEC-001-MFA |
-| S6 | High | Backups (nightly, OK) never leave the server | Open — SEC-001-BACKUP |
-| S7 | Medium | Portal env holds unused pgAdmin password and a second superuser password | Open — removed during SEC-001-PG-A |
-| S8 | Medium | Management UI claimed unenforced protections | Fix IMPLEMENTED — PR #6 |
-| S9 | Medium | Broker keys: default `platform:*`, no expiry, no-overlap rotation, no admin audit, no rate limits | Open — broker waves 1–3 |
-| S10 | Info | Cloudflare Access uses one-time PIN + Google; Authentik not connected | Open — broker wave 6 |
+| SERAPOD-INFRA-007 | Portal statuses from live probes | DEPLOYED | None |
+| GETOUCH-UAT-001 | Separate Supabase API gateway from Studio | DEPLOYED | Owner: confirm Studio access in production |
+| SERAPOD-INFRA-008 | Airbyte in portal + verified service statuses | VERIFIED | None |
+| AIRBYTE-RUNTIME | Airbyte platform on the VPS | VERIFIED | Connect data sources only after approval |
+| SERAPOD-INFRA-009 | Retire an unused n8n hostname | IMPLEMENTED | Review PR #4 |
+| TASK-4 | Postiz platform | VERIFIED | Decide registration policy before team onboarding |
+| TASK-4-PORTAL | Postiz in portal Business Applications | IMPLEMENTED | Review PR #5 |
+| TASK-4B | Postiz CLI integration | BLOCKED | Decide access route (broker adapter or scoped service credential) |
+| SEC-001-CONTAIN | Contain dormant platform credential | VERIFIED | None — do not repeat or reverse |
+| SEC-001-UI | Security UI accuracy | IMPLEMENTED | Review PR #6 |
+| SEC-001-DB-A | Least-privilege database access for the portal (phase A) | PLANNED | Owner approval |
+| SEC-001-DB-B | Database object ownership (phase B) | PLANNED | After phase A |
+| SEC-001-ROLE | Remove unused privileged database login | PLANNED | Owner approval |
+| SEC-001-HOST | Reduce portal host-access privilege | PLANNED | Owner approval of design |
+| SEC-001-IDP | Identity provider administrator hardening | PLANNED | Owner approval |
+| SEC-001-BACKUP | Backup resilience | PLANNED | Owner decision on destination |
+| BROKER-W1…W7 | Platform broker hardening waves | PLANNED | Approve wave 1 |
+| GOV-001 | Project tracker, agent rules, CI checks | IMPLEMENTED | Review PR #7 |
+| GOV-001-DEPLOY | Manual deploy policy + Coolify configuration | PLANNED | Owner: turn off the portal's auto-deploy toggle (D3) |
+| GOV-001-UI | Admin-only Project Control page | PLANNED | Approve proposal |
 
-No secrets belong in this file. Record secret *locations* only (e.g. "Coolify env", "`/home/deploy/apps/postiz/.env`").
+## 3. Task records
 
-## 3. Known issues and limitations
+Every record lists: owner, branch, PR, implementation, tests, deployment, verification, rollback, blockers,
+next safe action. "Owner" is the accountable role; "AI agent" means work done by an AI coding agent under
+owner approval.
 
-| Item | State | Notes |
+### SERAPOD-INFRA-007 — Portal statuses from live probes
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `infra-007/evidence-based-status` · PR #1
+- **Implementation:** MERGED (`d932de2`)
+- **Tests:** not recorded at the time
+- **Deployment:** DEPLOYED (included in `fc57ab3`, 2026-11-20)
+- **Verification:** VERIFIED via SERAPOD-INFRA-008 (2026-11-21)
+- **Rollback:** redeploy an earlier commit in Coolify
+- **Blockers:** none
+- **Next safe action:** none
+
+### GETOUCH-UAT-001 — Separate Supabase API gateway from Studio
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `getouch-uat-001/supabase-studio` · PR #2
+- **Implementation:** MERGED (`a38d46d`)
+- **Tests:** `tests/supabase-health-classify.test.mjs` (passing on `main`, 2026-11-21)
+- **Deployment:** DEPLOYED (included in `fc57ab3`)
+- **Verification:** UNVERIFIED (no production check recorded)
+- **Rollback:** redeploy an earlier commit in Coolify
+- **Blockers:** none
+- **Next safe action:** owner confirms Studio access works in production
+
+### SERAPOD-INFRA-008 — Airbyte in portal + verified service statuses
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `infra008-airbyte-provisioned` · PR #3
+- **Implementation:** MERGED (`fc57ab3`)
+- **Tests:** `npm test` 22/22 (7 status-classification tests), `tsc`, `next build` — 2026-11-20
+- **Deployment:** DEPLOYED 2026-11-20 16:40 UTC (manual), redeployed 17:17 UTC
+- **Verification:** VERIFIED 2026-11-21 — running commit, navigation table and edge access control on the Airbyte link
+- **Rollback:** redeploy `a38d46d` in Coolify
+- **Blockers:** none
+- **Next safe action:** none
+
+### AIRBYTE-RUNTIME — Airbyte platform
+- **Owner:** repo owner
+- **Branch / PR:** none (operational)
+- **Implementation:** APPLIED (before this tracker existed)
+- **Tests:** n/a
+- **Deployment:** N/A
+- **Verification:** VERIFIED 2026-11-20 — health endpoint available, all components running
+- **Rollback:** see restricted runbook
+- **Blockers:** none
+- **Next safe action:** connect production data sources only after approval
+
+### SERAPOD-INFRA-009 — Retire an unused n8n hostname
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `infra009-retire-flow-news` · PR #4
+- **Implementation:** IMPLEMENTED (portal part); APPLIED (edge part, 2026-11-20)
+- **Tests:** `npm test` 23/23, `tsc`, `next build` at PR time
+- **Deployment:** NOT DEPLOYED (portal part)
+- **Verification:** edge part VERIFIED 2026-11-20 (hostname no longer resolves; sibling hostnames unaffected)
+- **Rollback:** portal — revert PR; edge — restore data in the restricted register
+- **Blockers:** review
+- **Next safe action:** review PR #4
+
+### TASK-4 — Postiz platform
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** none (operational)
+- **Implementation:** APPLIED 2026-11-20 (isolated stack, pinned image, own database role, separate scheduler persistence)
+- **Tests:** controlled restart, media persistence, backup + restore into a throwaway database, scheduler timer fired on schedule 6/6
+- **Deployment:** N/A
+- **Verification:** VERIFIED 2026-11-21 — all containers healthy; registration enabled for internal evaluation behind edge access control; existing admin unchanged
+- **Rollback:** runbook on the host (restricted)
+- **Blockers:** none
+- **Next safe action:** decide registration and edge-access policy before Marketing Team onboarding
+
+### TASK-4-PORTAL — Postiz in portal Business Applications
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `task4-postiz-portal` · PR #5
+- **Implementation:** IMPLEMENTED
+- **Tests:** `npm test` 22/22, `tsc`, `next build` at PR time
+- **Deployment:** NOT DEPLOYED
+- **Verification:** UNVERIFIED
+- **Rollback:** revert PR
+- **Blockers:** review
+- **Next safe action:** review PR #5
+
+### TASK-4B — Postiz CLI integration
+- **Owner:** repo owner
+- **Branch / PR:** none
+- **Implementation:** BLOCKED — CLI installed on an operator workstation; API calls are stopped by edge access control
+- **Tests:** read-only connectivity checks only
+- **Deployment:** N/A
+- **Verification:** N/A
+- **Rollback:** uninstall the CLI
+- **Blockers:** access-route decision
+- **Next safe action:** choose broker read adapter (BROKER wave 5) or a scoped service credential
+
+### SEC-001-CONTAIN — Contain dormant platform credential
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** none (operational)
+- **Implementation:** APPLIED 2026-11-21 (one credential disabled; nothing deleted or rotated; dependency check done first)
+- **Tests:** n/a
+- **Deployment:** N/A
+- **Verification:** VERIFIED (LIMITED) 2026-11-21 — stored state confirmed and endpoint behaviour unchanged for other callers; not tested with the real credential (not held)
+- **Rollback:** documented in the restricted register
+- **Blockers:** none
+- **Next safe action:** none. **Do not repeat or reverse without owner approval.**
+
+### SEC-001-UI — Security UI accuracy
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `sec001-security-ui-corrections` · PR #6
+- **Implementation:** IMPLEMENTED (copy-only)
+- **Tests:** `npm test` 27/27 (adds `tests/security-ui-claims.test.mjs`), `tsc`, `next build`
+- **Deployment:** NOT DEPLOYED
+- **Verification:** UNVERIFIED
+- **Rollback:** revert PR
+- **Blockers:** review
+- **Next safe action:** review PR #6
+
+### SEC-001-DB-A — Least-privilege database access for the portal (phase A)
+- **Owner:** repo owner
+- **Branch / PR:** none yet
+- **Implementation:** PLANNED — role design tested in an isolated environment (57/57 checks)
+- **Tests:** isolated permission matrix, functional and denial tests (2026-11-21)
+- **Deployment:** NOT DEPLOYED
+- **Verification:** UNVERIFIED
+- **Rollback:** restore previous connection settings and redeploy (documented in the restricted register)
+- **Blockers:** owner approval
+- **Next safe action:** approve rehearsal on an on-host copy, then cutover
+
+### SEC-001-DB-B — Database object ownership (phase B)
+- **Owner:** repo owner
+- **Branch / PR:** none · **Implementation:** PLANNED · **Tests:** isolated rollback test passed
+- **Deployment:** NOT DEPLOYED · **Verification:** UNVERIFIED
+- **Rollback:** documented in the restricted register · **Blockers:** phase A
+- **Next safe action:** none until phase A is stable
+
+### SEC-001-ROLE — Remove unused privileged database login
+- **Owner:** repo owner
+- **Branch / PR:** none · **Implementation:** PLANNED · **Tests:** n/a
+- **Deployment:** N/A · **Verification:** UNVERIFIED
+- **Rollback:** re-enable login · **Blockers:** owner approval; confirm no admin tool depends on it
+- **Next safe action:** dependency check, then approval
+
+### SEC-001-HOST — Reduce portal host-access privilege
+- **Owner:** repo owner
+- **Branch / PR:** none · **Implementation:** PLANNED (restricted, read-only probe account) · **Tests:** to be defined
+- **Deployment:** NOT DEPLOYED · **Verification:** UNVERIFIED
+- **Rollback:** restore previous access configuration · **Blockers:** design approval
+- **Next safe action:** approve design
+
+### SEC-001-IDP — Identity provider administrator hardening
+- **Owner:** repo owner
+- **Branch / PR:** none · **Implementation:** PLANNED · **Tests:** n/a
+- **Deployment:** N/A · **Verification:** UNVERIFIED
+- **Rollback:** documented in the restricted register · **Blockers:** owner action (device enrolment first)
+- **Next safe action:** owner enrols an MFA device, then approves enforcement
+
+### SEC-001-BACKUP — Backup resilience
+- **Owner:** repo owner
+- **Branch / PR:** none · **Implementation:** PLANNED · **Tests:** restore test required after change
+- **Deployment:** N/A · **Verification:** UNVERIFIED
+- **Rollback:** n/a · **Blockers:** destination decision
+- **Next safe action:** choose destination
+
+### BROKER-W1…W7 — Platform broker hardening
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** none yet · **Implementation:** PLANNED (waves: default-deny scopes and audit logs; credential lifecycle; rate limits; tenant isolation and secret manager; Postiz read adapter; identity-provider tokens; optional separate runtime)
+- **Tests:** each wave ships with its own security tests (listed in the restricted plan)
+- **Deployment:** NOT DEPLOYED · **Verification:** UNVERIFIED
+- **Rollback:** per wave (feature flags or revert) · **Blockers:** approval per wave
+- **Next safe action:** approve wave 1
+
+### GOV-001 — Project tracker, agent rules, CI checks
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** `gov001-project-tracker` · PR #7
+- **Implementation:** IMPLEMENTED (docs, CI workflow, documentation checks)
+- **Tests:** `npm test` incl. `tests/docs-governance.test.mjs`; `tsc`; `next build`
+- **Deployment:** NOT DEPLOYED (no runtime change)
+- **Verification:** UNVERIFIED (CI runs on the PR)
+- **Rollback:** revert PR
+- **Blockers:** review
+- **Next safe action:** review PR #7
+
+### GOV-001-DEPLOY — Manual deploy policy + Coolify configuration
+- **Owner:** repo owner
+- **Branch / PR:** policy and CI in PR #7
+- **Implementation:** PLANNED — policy decided (manual deploy after review and green CI). The portal's Coolify auto-deploy toggle is still on (D3)
+- **Tests:** n/a
+- **Deployment:** N/A
+- **Verification:** suspected cause of non-delivery is **INFERRED** (see [audit](ops/coolify-auto-deploy-audit-2026-11-21.md)); confirm with GitHub *Recent Deliveries*
+- **Rollback:** re-enable the toggle
+- **Blockers:** owner action in Coolify and GitHub
+- **Next safe action:** owner turns off the portal's auto-deploy toggle; checks *Recent Deliveries*
+
+### GOV-001-UI — Admin-only Project Control page
+- **Owner:** repo owner · AI agent
+- **Branch / PR:** none · **Implementation:** PLANNED ([proposal](proposals/project-control-page.md))
+- **Tests:** defined in the proposal · **Deployment:** NOT DEPLOYED · **Verification:** UNVERIFIED
+- **Rollback:** revert PR · **Blockers:** approval
+- **Next safe action:** approve proposal
+
+## 4. Security findings (public summary)
+
+Details, evidence and remediation specifics are in the restricted register. Listed in priority order.
+
+| ID | Area | Status | Task |
+|---|---|---|---|
+| S1 | Portal host-access privilege | Open | SEC-001-HOST |
+| S2 | Dormant platform credential | Contained | SEC-001-CONTAIN |
+| S3 | Database connection privileges | Open | SEC-001-DB-A |
+| S4 | Unused privileged database login | Open | SEC-001-ROLE |
+| S5 | Identity provider administrator hardening | Open | SEC-001-IDP |
+| S6 | Backup resilience | Open | SEC-001-BACKUP |
+| S7 | Unused credentials in application configuration | Open | SEC-001-DB-A |
+| S8 | Admin UI accuracy about enforced controls | Fix in review | SEC-001-UI |
+| S9 | Platform credential lifecycle controls | Open | BROKER-W1…W3 |
+| S10 | Edge identity integration | Open | BROKER-W6 |
+
+## 5. Discrepancy log
+
+Mismatches between earlier records and verified live evidence.
+
+| # | Found | Earlier record said | Live evidence | Resolution |
+|---|---|---|---|---|
+| D1 | 2026-11-20 | PR #3 description: merging to `main` triggers a deploy | No webhook-triggered deploy has ever been recorded; all deploys manual | Corrected here and in the audit |
+| D2 | 2026-11-21 | `docs/ops/deployment-source-of-truth.md`: pushes auto-deploy; Caddy is the edge | Deploys are manual; the edge is Coolify's proxy | Banner added to that file |
+| D3 | 2026-11-21 | Deploy policy: manual | Coolify auto-deploy toggle for the portal is **on** (inert only because GitHub does not deliver pushes) | Open — owner turns the toggle off |
+| D4 | 2026-11-21 | — | A portal settings change was made in the Coolify UI on 2026-11-20 16:40 UTC, followed by a redeploy; not linked to any task | Open — owner confirms what changed |
+| D5 | 2026-11-21 | First draft of this file (PR #7, first commit) | Contained security details unsuitable for a public repository | Removed in a later commit; the earlier commit remains visible in PR history — owner decision |
+| D6 | 2026-11-21 | First draft: auto-deploy "not working since at least 2026-09" | Evidence shows no webhook deploy recorded at all, not a start date | Wording corrected |
+
+## 6. Known issues and limitations
+
+| Item | State |
+|---|---|
+| Older `docs/` files contain infrastructure detail (addresses, host paths) in a public repository | Open — owner decision (sanitise and/or repository visibility) |
+| Origin certificate renewal error on an internal route | Accepted — no user impact |
+| vLLM portal gateway disabled by configuration | Product decision |
+| n8n runs internal-only; news stack compose still references retired services | Cleanup pending |
+| Stale container left from an earlier redeploy | Cleanup pending |
+| Postiz: Google login button cannot be hidden in the current version | Limitation |
+| Postiz: some media platforms need an edge-access decision before channels are connected | Decision needed |
+| Postiz: email delivery not configured | Open |
+| Postiz: self-registered users get separate workspaces | Use in-app invites |
+| Portal status probe prefers the first running container | Small follow-up |
+
+## 7. Production map
+
+| Component | Runs as | Deploy method |
 |---|---|---|
-| Coolify auto-deploy | Not working since at least 2026-09 | Root cause INFERRED: GitHub App installation does not include the public repos. See audit |
-| `coolify.getouch.co` Let's Encrypt renewal fails | Accepted (no user impact) | Origin cert unused behind tunnel; fix options in the ACME assessment (not applied) |
-| vLLM portal gateway | Disabled by config | `/ready` 503 is accurate; enabling is a product decision |
-| n8n (`news-flow`) | Internal only | `n8n.getouch.co` has no DNS; `news/compose.yaml` still names `flow.news` in env |
-| `news/compose.yaml` still defines `news-social` | Drift | Container removed; `news-redis` now unused |
-| Stale `e22ff0999a6a_open-webui` container (Created state) | Cleanup pending | Harmless after INFRA-008 probe fix |
-| Postiz Google login button | Limitation of v2.26.0 | No supported option to hide it; Google login reuses `YOUTUBE_*` credentials |
-| Postiz before connecting Instagram/TikTok media channels | Needs Access bypass for `/uploads/*` | Decision needed |
-| Postiz email (SMTP) | Not configured | No password-reset emails |
-| Self-registered Postiz users | Each gets a separate workspace | Use in-app invites for shared workspace; add Marketing to a Postiz-specific Access policy, **not** the shared operator policy |
-| `docs/ops/deployment-source-of-truth.md` | Partly outdated | Edge is now Coolify Traefik, not Caddy; deploys are manual (banner added) |
-| Portal status probe | Prefers the first *running* container | For multi-container services without a required public route this could mask a stopped main container — small follow-up |
+| GetTouch Portal | Coolify application | Manual Coolify deploy |
+| Edge | Cloudflare (tunnel + Access) → Coolify proxy | Cloudflare and Coolify consoles |
+| Postiz | Dedicated compose project on the VPS | Compose, runbook on host |
+| Airbyte | abctl-managed cluster on the VPS | abctl |
+| PostgreSQL | Shared database server | — |
+| Backups | Nightly systemd job | — |
+| Identity | Authentik | Coolify |
 
-## 4. Production map (no secrets)
-
-| Component | Where | Deploy method |
-|---|---|---|
-| GetTouch Portal | Coolify app `mqmo5bwkxysedbg7vvh6tk1f` (`getouch-coolify-app`) | Manual Coolify deploy |
-| Edge | Cloudflare → tunnel `getouch-home` (remote-managed ingress) → Coolify Traefik (`coolify-proxy`) | Cloudflare dashboard/API; Traefik dynamic files in `/data/coolify/proxy/dynamic/` |
-| Postiz | `/home/deploy/apps/postiz` (compose project `postiz`); data `/data/getouch/postiz` + `./data`; runbook `RESTORE.md` there | `docker compose` on the VPS |
-| Airbyte | abctl kind cluster `airbyte-abctl`, ingress `127.0.0.1:8006` | abctl |
-| PostgreSQL (shared) | `getouch-postgres` (PG 16) | — |
-| Backups | `getouch-backup.timer` → `/srv/backups/<date>` (14 days, same host) | systemd |
-| Identity | Authentik 2025.10.3 at `sso.getouch.co` | Coolify |
-
-## 5. Production deployment log (portal)
-
-All rows are manual (`is_webhook = false` in Coolify).
+## 8. Production deployment log (portal)
 
 | Date (UTC) | Commit | Trigger | Verified |
 |---|---|---|---|
-| 2026-11-20 17:17 | `fc57ab3` | Manual UI redeploy (after a UI settings change at 16:40:57) | Running now, healthy |
-| 2026-11-20 16:40 | `fc57ab3` (PR #3) | Manual UI | `/api/build-info` 2026-11-21 |
+| 2026-11-20 17:17 | `fc57ab3` | Manual (after a UI settings change, see D4) | 2026-11-21 |
+| 2026-11-20 16:40 | `fc57ab3` (PR #3) | Manual | 2026-11-21 |
 | 2026-11-17 14:29 | `a38d46d` (PR #2) | Manual | — |
 | 2026-11-17 14:02 | `d932de2` (PR #1) | Manual | — |
 | 2026-09-22 10:42 | `dd6c07a` | Manual | — |
 
-## 6. Pre-tracker history
+## 9. Pre-tracker history
 
-Earlier work (2026-03 → 2026-06) is documented in `docs/` (AI gateway, Baileys, Evolution, Chatwoot, MCP,
-object storage, FusionPBX, Supabase self-hosting, monitoring, latency and shutdown investigations). Those
-documents were **not re-verified** for this tracker; treat their status claims as historical.
-
-## 7. How to update this file
-
-1. Change the item's row; never delete history — move it to *Delivered* with evidence.
-2. Update **Last reconciled** and, after any deploy, §5 and the header line.
-3. One status per item, from the legend. No secrets, ever.
-4. Ship tracker edits in the same PR as the work they describe (ops changes: a docs PR).
+Work from 2026-03 to 2026-06 is described in older `docs/` files. Those files were not re-verified for this
+tracker; treat their status claims as historical.

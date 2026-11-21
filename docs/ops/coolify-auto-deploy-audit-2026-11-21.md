@@ -1,54 +1,49 @@
 # Coolify auto-deploy audit (SERAPOD-INFRA-GOV-001, 2026-11-21)
 
-**Question:** why does merging to `edierwan/getouch.co` `main` not deploy the portal?
+**Question:** why does merging to `main` not deploy the portal?
 
-**Answer (INFERRED, high confidence):** GitHub never sends push events for this repository to Coolify's
-GitHub App, most likely because the App's installation does not include the (public) repository. Coolify
-can still build it manually because public repositories are readable without being in the installation.
-**Definitive check (needs the owner's GitHub login):** GitHub → Settings → Developer settings → GitHub Apps →
-the Coolify app → *Install App* (repository access) and *Advanced → Recent Deliveries*.
+**Status of the cause: INFERRED** (not confirmed). It stays INFERRED until the GitHub App's *Recent
+Deliveries* page is checked by the repository owner.
 
-Audit was read-only: no Coolify, GitHub, Cloudflare or database changes.
+**Policy outcome:** production deploys stay **manual**, after review and green CI checks. Unconditional
+auto-deploy on merge is **not** to be enabled.
 
-## Evidence
+The audit was read-only. Detailed evidence (identifiers, timestamps, configuration values) is kept in the
+restricted register held by the repository owner, because this repository is public.
+
+## Findings
 
 | # | Check | Result | Label |
 |---|---|---|---|
-| 1 | Coolify app for the portal | id 2, `edierwan/getouch.co`, branch `main`, source = private GitHub App (id 2), **auto-deploy enabled** | VERIFIED |
-| 2 | GitHub App record in Coolify | App id, installation id, webhook secret and private key all set | VERIFIED |
-| 3 | Deployment history | 6 portal deploys (2026-09-22 → 2026-11-20), **all manual** (`is_webhook = false`); **0 webhook-triggered deploys for any of the 9 apps** on this GitHub App | VERIFIED |
-| 4 | Webhook path through the edge | `POST https://coolify.getouch.co/webhooks/source/github/events` (unsigned ping) → `pong` from Coolify; Cloudflare Access bypass for this path exists since 2026-03-16 | VERIFIED |
-| 5 | Do GitHub deliveries reach Coolify? | Yes: Coolify logged a push delivery at 2026-11-20 05:14:29 UTC, matching a push to **`edierwan/serapod2u_new`** (private) at 05:14:23 UTC | VERIFIED |
-| 6 | Coolify's matching rule | Push → app matched by GitHub numeric repo id (`repository_project_id`), App id, branch | VERIFIED (source) |
-| 7 | Stored repo ids | All 9 apps' `repository_project_id` match GitHub's ids | VERIFIED |
-| 8 | PR #3 merge push (2026-11-20 15:41:24 UTC) | No deploy queued; **no signature-failure audit entry** (Coolify 4.7.6 audits those; audit log covers the whole day) | VERIFIED |
-| 9 | Repository visibility | `getouch.co`, `partime`, `wapi`, `systemqr.com` (and others tracked) are **public**; `serapod2u_new` is the only **private** one | VERIFIED |
-| 10 | Repo-level webhooks on `getouch.co` | None (expected: a GitHub App delivers its own events) | VERIFIED |
+| 1 | Portal app in Coolify | Linked to `main` through the organisation's GitHub App; Coolify's auto-deploy toggle is **on** | VERIFIED |
+| 2 | Deployment history | Every recorded portal deployment was started manually; no webhook-triggered deployment has ever been recorded for any app using this GitHub App | VERIFIED |
+| 3 | Webhook endpoint | Reachable through the edge and answering | VERIFIED |
+| 4 | Do GitHub deliveries reach Coolify? | Yes, for at least one repository: a delivery arrived seconds after a push to that repository | VERIFIED |
+| 5 | Coolify's matching rules for this repo (repository id, branch, App) | All correct | VERIFIED |
+| 6 | Merge of PR #3 | No deployment queued and no signature failure logged | VERIFIED |
+| 7 | Which repositories receive deliveries | Only a private repository was observed; `getouch.co` is public | VERIFIED |
 
-**Reasoning:** a delivery for `getouch.co` that reached Coolify would either fail signature (audited — none
-seen) or match the app (ids, branch and source all match → a webhook deploy would be queued — none seen). So
-the delivery is not sent. The only repository with observed deliveries is the only private one, which fits an
-installation limited to *selected repositories* that never included the public repos.
+## Inference
 
-**Not ruled out without GitHub access:** the App's push-event subscription being disabled for that repo
-(unlikely — push events are delivered for `serapod2u_new`), or GitHub delivery failures (Recent Deliveries
-would show them).
+A delivery for this repository that reached Coolify would either fail its signature check (which is logged —
+none seen) or match the portal app (all matching values are correct, so a deployment would be queued — none
+seen). So GitHub most likely **does not send** push events for this repository to the App. The likely reason
+is that the App's installation covers *selected repositories* that do not include this public repository.
+Manual builds still work because public repositories can be read without being in the installation.
 
-## Remediation options (all need approval — none applied)
+**Confirm (owner, needs GitHub login):** GitHub → Settings → Developer settings → GitHub Apps → the Coolify
+app → *Install App* (repository access) and *Advanced → Recent Deliveries* for a push to `main`.
 
-| Option | Change | Effect | Rollback |
-|---|---|---|---|
-| **A. Grant the App access to the repo** | GitHub App → Install App → *Only select repositories* → add `edierwan/getouch.co` (and other Coolify-tracked public repos), or *All repositories* | Every merge to `main` deploys the portal automatically | Remove the repository from the installation |
-| B. Stay manual (current practice) | None; document it (done in `PROJECT_STATUS.md`) | Deploys remain a deliberate step after merge | — |
-| C. Coolify deploy webhook from CI | A GitHub Action calls Coolify's deploy API with a stored token on merge | Automatic, but adds a long-lived Coolify token in GitHub secrets | Delete the workflow and revoke the token |
+## Recommended actions (owner approval needed; none applied)
 
-**Recommendation:** decide the deploy policy first. If automatic deploys are wanted, Option A is the smallest
-correct fix. Enabling it means **every merge to `main` deploys immediately**, so merges must be treated as
-releases. After enabling, verify with the next merge: Coolify should show a deployment with `is_webhook = true`
-and Recent Deliveries should show `200` for the push.
+1. **Turn off the portal's auto-deploy toggle in Coolify.** Today it is on but inert. If the App's repository
+   access ever changes, every merge would start deploying unconditionally, contrary to policy.
+2. **Keep deploys manual** with the CI checks added in PR #7 (`.github/workflows/ci.yml`: tests, type-check,
+   build on every PR and on `main`). Deploy only a commit whose checks passed.
+3. **Optionally confirm the inference** via *Recent Deliveries*. Changing the App's repository access is not
+   needed for the manual policy and should not be done together with an enabled auto-deploy toggle.
 
-## Related documentation drift
+## Documentation drift
 
-`docs/ops/deployment-source-of-truth.md` (2026-05-01) states that a push to `main` auto-deploys via the
-Coolify GitHub webhook and that Caddy is the edge with the Coolify proxy disabled. Both are no longer true:
-deploys are manual, and the edge is Coolify's Traefik (`coolify-proxy`). A banner was added to that file.
+`docs/ops/deployment-source-of-truth.md` states that pushes auto-deploy and names a different edge proxy;
+both are outdated. A banner was added to that file.

@@ -3,8 +3,7 @@
 > **Partly outdated (2026-11-21, SERAPOD-INFRA-GOV-001).** Current status lives in
 > [`docs/PROJECT_STATUS.md`](../PROJECT_STATUS.md). Two statements below are no longer true:
 > (1) pushing to `main` does **not** auto-deploy — deploys are manual
-> ([audit](coolify-auto-deploy-audit-2026-11-21.md)); (2) the edge is Coolify's Traefik (`coolify-proxy`),
-> not Caddy, and no Caddy container runs.
+> ([audit](coolify-auto-deploy-audit-2026-11-21.md)); (2) the edge is Coolify's proxy, not Caddy.
 
 ## Final state
 
