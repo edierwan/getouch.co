@@ -670,7 +670,7 @@ export function ApiKeyManagerConsole() {
           </fieldset>
 
           <label className="portal-akm-field">
-            <span>Rate Limit (req / minute)</span>
+            <span>Rate Limit (req / minute) — stored only, not enforced yet</span>
             <input type="number" min="0" value={formRateLimit} onChange={(e) => setFormRateLimit(e.target.value)} />
           </label>
 
@@ -678,6 +678,11 @@ export function ApiKeyManagerConsole() {
             <span>Expiry Date (optional)</span>
             <input type="date" value={formExpires} onChange={(e) => setFormExpires(e.target.value)} />
           </label>
+
+          <div className="portal-banner portal-banner-warning" role="note">
+            Central API Keys are currently validated only by the MCP endpoint. Status, expiry, services and scopes are enforced there.
+            Rate limits and allowed origins are stored but <strong>not enforced</strong> by any runtime code yet.
+          </div>
 
           {formError && <div className="portal-banner portal-banner-warning">{formError}</div>}
 
