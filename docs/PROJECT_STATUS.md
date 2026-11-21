@@ -13,7 +13,7 @@
 >
 > AI agents: follow [`AGENTS.md`](../AGENTS.md).
 
-- **Last reconciled:** 2026-11-21 (SERAPOD-INFRA-GOV-001 final gate, live-checked)
+- **Last reconciled:** 2026-11-21 (SEC-002 preflight, live-checked)
 - **Production portal commit:** `fc57ab3` (= `main`), deployed 2026-11-20 17:17 UTC, healthy — VERIFIED 2026-11-21
 - **Deployment policy:** production deploys are **manual** in Coolify, after review and green CI checks. Merging does not deploy. The portal's Coolify auto-deploy toggle is **off** (VERIFIED 2026-11-21).
 
@@ -54,7 +54,7 @@ The board's **Stage** column is the furthest point reached: `PLANNED` → `IMPLE
 | GOV-001-DEPLOY | Manual deploy policy + portal auto-deploy toggle off | VERIFIED | None |
 | GOV-001-WEBHOOK | Coolify GitHub webhook delivery (misdirected) | PLANNED | Decide other apps' auto-deploy before any fix |
 | GOV-001-DEBUG | Portal deployment debug logging | PLANNED | Owner: decide whether to keep it on |
-| SEC-002 | Repository visibility and history hygiene | PLANNED | Owner approval (restricted plan) |
+| SEC-002 | Repository visibility and history hygiene | PLANNED | Owner: approve gate G0 of the restricted runbook |
 | GOV-001-UI | Admin-only Project Control page | PLANNED | Approve proposal |
 
 ## 3. Task records
@@ -274,13 +274,13 @@ owner approval.
 ### SEC-002 — Repository visibility and history hygiene
 - **Owner:** repo owner
 - **Branch / PR:** none
-- **Implementation:** PLANNED — restricted plan prepared; making the repository private does not affect Coolify builds (verified)
-- **Tests:** n/a
+- **Implementation:** PLANNED — preflight completed 2026-11-21 (read-only); gated execution runbook held in the restricted register. Treated as a security incident. Making the repository private does not affect Coolify builds (verified)
+- **Tests:** preflight checks only (read-only); per-step verification defined in the runbook
 - **Deployment:** N/A
 - **Verification:** UNVERIFIED
 - **Rollback:** repository visibility can be changed back
 - **Blockers:** owner approval of the restricted plan
-- **Next safe action:** owner reviews the restricted plan and approves the steps in order
+- **Next safe action:** owner reviews the restricted runbook and approves gate G0 (access, maintenance window, approvals)
 
 ### GOV-001-UI — Admin-only Project Control page
 - **Owner:** repo owner · AI agent
