@@ -402,7 +402,7 @@ function AppOverviewCard({ app }: { app: PlatformAppItem }) {
         <StatusBadge value={app.status} />
       </div>
       <p className="portal-aac-panel-copy">
-        {app.description || 'Product container and control-plane header for tenant isolation and shared ecosystem access.'}
+        {app.description || 'Registry entry for this app. It holds the Platform App Key plus registry records for tenants, service links and secret references.'}
       </p>
       <dl className="portal-aac-detail-list">
         <div>
@@ -419,7 +419,7 @@ function AppOverviewCard({ app }: { app: PlatformAppItem }) {
         </div>
         <div>
           <dt>Ecosystem Access</dt>
-          <dd>Enabled</dd>
+          <dd>Registry default (not enforced per service)</dd>
         </div>
         <div>
           <dt>Platform App Key</dt>
@@ -443,8 +443,14 @@ function AppOverviewCard({ app }: { app: PlatformAppItem }) {
         </div>
       </dl>
       <p className="portal-aac-helper-note">
-        App Code is generated automatically and used internally for logs, routing, broker auth, and service mappings.
+        App Code is generated automatically and used for broker auth, logs and registry mappings. It does not route traffic.
       </p>
+      <div className="portal-banner portal-banner-warning" role="note">
+        <strong>What the broker enforces today:</strong> the key must be active, the app must be active, and the key must hold
+        the broker scope for the endpoint (auth check, WhatsApp, AI chat).{' '}
+        <strong>Not enforced yet:</strong> key expiry, rate limits, tenant bindings, service links and secret references.
+        Those are registry records only.
+      </div>
     </section>
   );
 }
@@ -594,7 +600,8 @@ function PlatformBrokerPanel({
           <StatusBadge value={platformBrokerAuthStatus(app)} />
         </div>
         <p className="portal-aac-panel-copy">
-          The broker exposes one app-scoped entry point for shared services. WAPI should use this instead of carrying raw downstream service keys.
+          The broker exposes one app-scoped entry point for an auth check, WhatsApp OTP / messages and AI chat. Apps should use it instead of carrying raw downstream service keys.
+          It does not rate-limit requests yet.
         </p>
         <dl className="portal-aac-detail-list">
           <div>
@@ -690,7 +697,8 @@ function CapabilityGrid({ rows }: { rows: PlatformAccessSnapshot['appCapabilitie
         <span className="portal-aac-count-chip">{rows.length}</span>
       </div>
       <p className="portal-aac-panel-copy">
-        Shared ecosystem services are available to the app by default. Linking actual resources happens later and stays registry-only.
+        Capabilities are registry records and are marked available by default. The broker checks them only for AI chat
+        (LiteLLM / vLLM), and only blocks when a capability is explicitly disabled. No other service is gated by them.
       </p>
       <div className="portal-aac-capability-grid">
         {rows.map((row) => (
@@ -743,7 +751,7 @@ function TenantSummaryCard({
         <StatusBadge value={tenant.status} />
       </div>
       <p className="portal-aac-panel-copy">
-        {tenant.description || 'Isolation island inside the app. Link actual resources here when this tenant needs dedicated routing or resource ownership.'}
+        {tenant.description || 'Registry record for a tenant of this app. Not enforced: the broker does not check tenant bindings, so a binding does not isolate requests or route traffic.'}
       </p>
       <dl className="portal-aac-detail-list">
         <div>
@@ -930,7 +938,7 @@ function TenantBindingFormModal({
     <ModalShell
       title={mode === 'create' ? 'Add Tenant Binding' : `Edit ${initial?.displayName || initial?.appTenantKey || 'Tenant'}`}
       eyebrow="Tenant Setup"
-      subtitle="Tenant keys are generated automatically per app. This stays inside the portal registry and does not create product data inside the app itself."
+      subtitle="Tenant keys are generated automatically per app. This stays inside the portal registry, does not create product data inside the app, and is not enforced by the broker."
       onClose={onClose}
     >
       <form className="portal-aac-form" onSubmit={handleSubmit}>
@@ -1198,7 +1206,7 @@ function SecretReferenceFormModal({
     <ModalShell
       title={mode === 'create' ? 'Add Secret Reference' : 'Edit Secret Reference'}
       eyebrow="Secret References"
-      subtitle="Secret values stay in Infisical or runtime env. This registry stores only the reference path."
+      subtitle="Secret values stay in Infisical or runtime env. This registry stores only the reference path; the runtime does not resolve it."
       onClose={onClose}
     >
       <form className="portal-aac-form" onSubmit={handleSubmit}>
@@ -2108,7 +2116,8 @@ export function AppAccessControlConsole() {
                   {selectedTenantBinding ? <StatusBadge value="available" /> : null}
                 </div>
                 <p className="portal-aac-panel-copy">
-                  Service Links map this app or tenant to the actual resource in each tool. Example: Evolution instance, Dify dataset, Chatwoot inbox, LiteLLM model alias.
+                  Service Links record which resource in each tool belongs to this app or tenant (for example an Evolution instance, Dify dataset, Chatwoot inbox or LiteLLM model alias).
+                  Registry-only: the broker does not use these links to route or restrict requests, and the base URLs are not called.
                 </p>
                 {selectedTenantBinding ? (
                   <TenantServiceStatusTable
@@ -2171,6 +2180,7 @@ export function AppAccessControlConsole() {
               </div>
               <p className="portal-aac-panel-copy">
                 Secret values stay in Infisical or runtime env. This registry stores only the reference path.
+                Registry-only: the portal runtime does not resolve these references and reads nothing from Infisical.
               </p>
               {selectedApp ? (
                 <SecretReferencesTable
